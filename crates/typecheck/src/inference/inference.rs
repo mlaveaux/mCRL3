@@ -25,9 +25,9 @@ use crate::ResolvedSort;
 use crate::ResolvedSortId;
 use crate::Signature;
 use crate::SortInterner;
+use crate::DisplaySortContext;
 use crate::TypeCheckContext;
 use crate::Unifier;
-use crate::display_sort;
 use crate::is_lowered;
 use crate::is_supported_binder_sort;
 use crate::number_generality;
@@ -131,6 +131,7 @@ impl InferenceError {
 pub(crate) fn query_equation_typing(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
     key: (EqnSpecId, EquationId),
 ) -> Result<Rc<EquationTyping>, InferenceError> {
     let (eqn_spec_id, equation_id) = key;
@@ -152,14 +153,15 @@ pub(crate) fn query_equation_typing(
     {
         Some(result) => result.clone(),
         None => {
-            let result = infer_equation(ctx, spec, eqn_spec_id, equation_id).map(Rc::new);
+            let result = infer_equation(ctx, spec, system, eqn_spec_id, equation_id).map(Rc::new);
             ctx.equation_typing.unlock(key, result).clone()
         }
     }
 }
 
-/// Infers the sorts of every user equation, positionally parallel to
-/// `equation_declarations` (outer) and each equation list (inner). Phase-3
+/// Infers and validates the sort of every user equation, populating the
+/// `equation_typing` cache (read back during lowering); the first equation
+/// that fails inference is returned as the error. Phase-3
 /// (constraint-based) inference does not run over the system-defined
 /// equations — they are checked separately and more cheaply, by
 /// `check_system_specification`'s structural well-formedness pass (debug
@@ -173,18 +175,18 @@ pub(crate) fn query_equation_typing(
 pub(crate) fn check_equations(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
-) -> Result<Vec<Vec<Rc<EquationTyping>>>, InferenceError> {
-    let mut typings = Vec::with_capacity(spec.equation_declarations.len());
+    system: &UntypedDataSpecification,
+) -> Result<(), InferenceError> {
     for eqn_spec in &spec.equation_declarations {
         let eqn_spec_id = eqn_spec.id.expect("assign_declaration_ids ran before check_equations");
-        let mut spec_typings = Vec::with_capacity(eqn_spec.equations.len());
         for equation in &eqn_spec.equations {
             let equation_id = equation.id.expect("assign_declaration_ids ran before check_equations");
-            spec_typings.push(query_equation_typing(ctx, spec, (eqn_spec_id, equation_id))?);
+            // Validate the equation and populate `ctx.equation_typing`; the
+            // typing is read back from that cache during lowering.
+            query_equation_typing(ctx, spec, system, (eqn_spec_id, equation_id))?;
         }
-        typings.push(spec_typings);
     }
-    Ok(typings)
+    Ok(())
 }
 
 /// Infers the sorts of a single equation: generates constraints over the
@@ -197,6 +199,7 @@ pub(crate) fn check_equations(
 fn infer_equation(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
     eqn_spec_id: EqnSpecId,
     equation_id: EquationId,
 ) -> Result<EquationTyping, InferenceError> {
@@ -360,11 +363,11 @@ fn infer_equation(
                         trace!(
                             "inference:   variable {}: {}",
                             var.identifier,
-                            display_sort(ctx, spec, sort)
+                            DisplaySortContext::new(ctx, spec, system, sort)
                         );
                     }
                     for (&sort, text) in sorts.iter().zip(&expr_texts) {
-                        trace!("inference:   '{text}': {}", display_sort(ctx, spec, sort));
+                        trace!("inference:   '{text}': {}", DisplaySortContext::new(ctx, spec, system, sort));
                     }
                 }
                 Ok(EquationTyping { sorts, names })
@@ -872,9 +875,10 @@ impl<'a> ConstraintGenerator<'a> {
     }
 
     /// Resolves the candidates of a name: the equation variables shadow
-    /// everything, then the user overloads joined by either the built-in
-    /// scheme (for the polymorphic comparison operators and `if`) or the
-    /// system-defined overloads.
+    /// everything, then the user overloads joined by the system-defined
+    /// overloads and the polymorphic built-in schemes (the container and
+    /// function-update operations, the comparison operators and `if`), each
+    /// instantiated fresh per occurrence.
     fn gen_name(&mut self, id: ExprId, node: InferSortId, name: &'a str, span: &Span) -> Result<(), GenFailure> {
         if let Some(&sort) = self.variables.get(name) {
             self.names.insert(id, NameTarget::Variable);
@@ -900,11 +904,7 @@ impl<'a> ConstraintGenerator<'a> {
         };
 
         push_signature(&self.signature, &mut disjuncts, self.unifier);
-        if let Some(instance) = self.scheme_instance(name) {
-            // The scheme subsumes the per-sort declarations of the system
-            // specification, so those are not added as candidates.
-            disjuncts.push((NameTarget::Builtin, instance));
-        } else if disjuncts.is_empty()
+        if disjuncts.is_empty()
             && is_numeric_family(name)
             && self.system_signature.mappings.contains_key(name)
             && !POLYMORPHIC_SIGNATURE.ops.contains_key(name)
@@ -920,19 +920,19 @@ impl<'a> ConstraintGenerator<'a> {
                 candidates: self.system_signature.mappings[name].clone(),
             }));
             return Ok(());
-        } else {
-            push_signature(&self.system_signature, &mut disjuncts, self.unifier);
+        }
 
-            // The container operations (`in`, `#`, `|>`, `head`, ...) exist
-            // for every element sort, so they are further schemes: each
-            // template overload is instantiated with fresh variables per
-            // occurrence, mirroring mCRL2's polymorphic symbol table. Phase-4
-            // lowering recovers the concrete operation from the name and the
-            // inferred sort, as for the comparison schemes.
-            for overload in POLYMORPHIC_SIGNATURE.ops.get(name).into_iter().flatten() {
-                let instance = self.template_instance(overload);
-                disjuncts.push((NameTarget::Builtin, instance));
-            }
+        push_signature(&self.system_signature, &mut disjuncts, self.unifier);
+
+        // The polymorphic built-ins exist for every element sort, so they are
+        // schemes: the container and function-update operations (`in`, `#`,
+        // `|>`, `head`, ...) and the comparison operators and `if` alike. Each
+        // template overload is instantiated with fresh variables per occurrence,
+        // mirroring mCRL2's polymorphic symbol table; Phase-4 lowering recovers
+        // the concrete operation from the name and the inferred sort.
+        for overload in POLYMORPHIC_SIGNATURE.ops.get(name).into_iter().flatten() {
+            let instance = self.template_instance(overload);
+            disjuncts.push((NameTarget::Builtin, instance));
         }
 
         match disjuncts.as_slice() {
@@ -1017,25 +1017,6 @@ impl<'a> ConstraintGenerator<'a> {
         }
     }
 
-    /// A fresh instance of the polymorphic built-in `name`, or `None` when the
-    /// name is not one. The comparison operators and `if` exist for *every*
-    /// sort, so they are typed as schemes (`?a # ?a -> Bool`) instantiated per
-    /// occurrence instead of one overload per declared sort.
-    fn scheme_instance(&mut self, name: &str) -> Option<InferSortId> {
-        match name {
-            "==" | "!=" | "<" | "<=" | ">" | ">=" => {
-                let element = self.unifier.fresh_var();
-                let bool_node = self.unifier.resolved_node(self.ctx.sorts.bool_sort());
-                Some(self.unifier.function(vec![element, element], bool_node))
-            }
-            "if" => {
-                let element = self.unifier.fresh_var();
-                let bool_node = self.unifier.resolved_node(self.ctx.sorts.bool_sort());
-                Some(self.unifier.function(vec![bool_node, element, element], element))
-            }
-            _ => None,
-        }
-    }
 }
 
 /// A candidate solution: the measure ranks it against other leaves, and the
@@ -1484,6 +1465,8 @@ mod tests {
     use std::collections::HashMap;
 
     use merc_syntax::ComplexSort;
+    use merc_syntax::EqnSpecId;
+    use merc_syntax::EquationId;
     use merc_syntax::UntypedDataSpecification;
 
     use crate::DataSpecification;
@@ -1514,7 +1497,7 @@ mod tests {
 
         // Ids: 0 = `f(n)`, 1 = `n` (arguments before the function), 2 = `f`,
         // 3 = `true`.
-        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         let interner = &spec.context().sorts;
         assert_eq!(sorts[0], interner.bool_sort());
         assert_eq!(sorts[1], interner.nat_sort());
@@ -1528,7 +1511,7 @@ mod tests {
         // typed like any other equation. (There is no longer a "skipped"
         // outcome: every equation that type checks is fully inferred.)
         let spec = typed("map f: (struct t) -> Bool; g: (struct t) -> Bool; eqn g = lambda x: struct t. f(x);");
-        let EquationTyping { .. } = &*spec.equation_typings()[0][0];
+        let EquationTyping { .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
     }
 
     #[test]
@@ -1536,7 +1519,7 @@ mod tests {
         let spec = typed("map p: Pos; eqn p = 1 + 2;");
 
         // Ids: 0 = `p`, 1 = `+(1, 2)`, 2 = `1`, 3 = `2`, 4 = `+`.
-        let EquationTyping { sorts, .. } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         let interner = &spec.context().sorts;
         assert_eq!(sorts[1], interner.pos_sort());
         assert_eq!(sorts[2], interner.pos_sort());
@@ -1549,7 +1532,7 @@ mod tests {
 
         // Ids: 0 = `b`, 1 = `f(1)`, 2 = `1`, 3 = `f`. The literal keeps its
         // minimal sort; Phase-4 lowering inserts the upcast to `Int`.
-        let EquationTyping { sorts, .. } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         let interner = &spec.context().sorts;
         assert_eq!(sorts[1], interner.bool_sort());
         assert_eq!(sorts[2], interner.pos_sort());
@@ -1560,7 +1543,7 @@ mod tests {
         let spec = typed("sort D; cons d: D; map b: Bool; eqn b = d == d;");
 
         // Ids: 0 = `b`, 1 = `==(d, d)`, 2/3 = `d`, 4 = `==`.
-        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         assert_eq!(names[&ExprId::new(4)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.bool_sort());
         assert_eq!(sorts[2], spec.sort_of_constructor(merc_syntax::ConstructorId::new(0)));
@@ -1572,7 +1555,7 @@ mod tests {
 
         // Ids: 0 = `n`, 1 = the application, 2 = `true`, 3 = `1`, 4 = `2`,
         // 5 = `if`. The branches stay `Pos`; the join upcasts to `Nat`.
-        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         assert_eq!(names[&ExprId::new(5)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.pos_sort());
     }
@@ -1646,7 +1629,7 @@ mod tests {
 
         // Ids: 0 = `f`, 1 = `1`. The literal stays `Pos` and is upcast into
         // the join with the `Nat` left-hand side.
-        let EquationTyping { sorts, .. } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         let interner = &spec.context().sorts;
         assert_eq!(sorts[0], interner.nat_sort());
         assert_eq!(sorts[1], interner.pos_sort());
@@ -1705,7 +1688,7 @@ mod tests {
         // (here upcast to `Nat`, matching `g`'s declared sort), rather than a
         // declared binder sort.
         let spec = typed("map g: Nat; eqn g = (x + 1) whr x = 2 end;");
-        let EquationTyping { .. } = &*spec.equation_typings()[0][0];
+        let EquationTyping { .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
     }
 
     #[test]
@@ -1727,7 +1710,7 @@ mod tests {
 
     /// Extracts the inferred sorts and name targets of the first equation.
     fn typing(spec: &DataSpecification) -> (&[ResolvedSortId], &HashMap<ExprId, NameTarget>) {
-        let EquationTyping { sorts, names } = &*spec.equation_typings()[0][0];
+        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         (sorts, names)
     }
 
@@ -1899,7 +1882,7 @@ mod tests {
         // and stops shadowing it after the comprehension.
         let spec = typed("map n: Bool; s: Set(Nat); b: Bool; eqn b = ({ n: Nat | n < 3 } == s) && n;");
 
-        let EquationTyping { .. } = &*spec.equation_typings()[0][0];
+        let EquationTyping { .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
     }
 
     #[test]

@@ -109,17 +109,34 @@ pub(crate) fn number_sort_from_generality(generality: u32) -> Sort {
 }
 
 /// Renders a resolved sort for debug logging. Nominal sorts take their name
-/// from [TypeckContext::sort_name] (a user or system-internal sort such as
+/// from [TypeCheckContext::sort_name] (a user or system-internal sort such as
 /// `@NatPair`), falling back to a bare index.
 pub(crate) struct DisplaySortContext<'a> {
     ctx: &'a TypeCheckContext,
     spec: &'a UntypedDataSpecification,
+    system: &'a UntypedDataSpecification,
     id: ResolvedSortId,
 }
 
 impl<'a> DisplaySortContext<'a> {
-    fn new(ctx: &'a TypeCheckContext, spec: &'a UntypedDataSpecification, id: ResolvedSortId) -> Self {
-        DisplaySortContext { ctx, spec, id }
+    pub(crate) fn new(
+        ctx: &'a TypeCheckContext,
+        spec: &'a UntypedDataSpecification,
+        system: &'a UntypedDataSpecification,
+        id: ResolvedSortId,
+    ) -> Self {
+        DisplaySortContext { ctx, spec, system, id }
+    }
+
+    /// A [DisplaySortContext] for a sub-sort of `self`, reusing the same context
+    /// and specifications.
+    fn sub(&self, id: ResolvedSortId) -> Self {
+        DisplaySortContext {
+            ctx: self.ctx,
+            spec: self.spec,
+            system: self.system,
+            id,
+        }
     }
 }
 
@@ -129,22 +146,14 @@ impl fmt::Display for DisplaySortContext<'_> {
             ResolvedSort::Unit => write!(f, "@Unit"),
             ResolvedSort::Primitive(sort) => write!(f, "{sort}"),
             ResolvedSort::Generic { op, subsort } => {
-                write!(f, "{op}({})", DisplaySortContext { ctx: self.ctx, spec: self.spec, id: *subsort })
+                write!(f, "{op}({})", self.sub(*subsort))
             }
             ResolvedSort::Function { domain, range } => {
-                let domain: Vec<String> = domain
-                    .iter()
-                    .map(|sort| DisplaySortContext { ctx: self.ctx, spec: self.spec, id: *sort }.to_string())
-                    .collect();
-                write!(
-                    f,
-                    "{} -> {}",
-                    domain.join(" # "),
-                    DisplaySortContext { ctx: self.ctx, spec: self.spec, id: *range }
-                )
+                let domain: Vec<String> = domain.iter().map(|sort| self.sub(*sort).to_string()).collect();
+                write!(f, "{} -> {}", domain.join(" # "), self.sub(*range))
             }
             ResolvedSort::Def(def) => {
-                if let Some(name) = self.ctx.sort_name(self.spec, *def) {
+                if let Some(name) = self.ctx.sort_name(self.spec, self.system, *def) {
                     write!(f, "{name}")
                 } else {
                     write!(f, "@sort_{}", **def)

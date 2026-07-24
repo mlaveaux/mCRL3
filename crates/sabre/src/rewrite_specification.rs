@@ -175,7 +175,7 @@ mod tests {
     /// Parses and type-checks the given mCRL2 data specification text.
     fn lower(source: &str) -> Mcrl2DataSpecification {
         let untyped = UntypedDataSpecification::parse(source).unwrap();
-        let mut data_spec = DataSpecification::from_untyped(untyped).unwrap();
+        let data_spec = DataSpecification::from_untyped(untyped).unwrap();
         data_spec.lower_data_specification()
     }
 

@@ -65,19 +65,30 @@ impl TypeCheckContext {
 
 impl TypeCheckContext {
     /// The declared name of the sort that [DefId] `def` resolves to, whether a
-    /// user sort or a system-internal one, or `None` when it is out of range of
+    /// user sort (looked up in `spec`) or a system-internal one such as
+    /// `@NatPair` (looked up in `system`), or `None` when it is out of range of
     /// both.
     ///
-    /// This is the single place aware that a system-internal `DefId` indexes
-    /// [system_sort_decls](Self::system_sort_decls) offset by the user sort
-    /// count, the layout `resolve_system_signature` establishes.
-    pub(crate) fn sort_name<'a>(&'a self, spec: &'a UntypedDataSpecification, def: DefId) -> Option<&'a str> {
+    /// This is the single place aware that a system-internal `DefId` continues
+    /// the user sort numbering: it indexes `system.sort_declarations` offset by
+    /// the user sort count, the layout `resolve_system_signature` establishes.
+    /// The names are derived from the specifications on demand rather than
+    /// cached, so nothing here needs to stay in sync with them.
+    pub(crate) fn sort_name<'a>(
+        &'a self,
+        spec: &'a UntypedDataSpecification,
+        system: &'a UntypedDataSpecification,
+        def: DefId,
+    ) -> Option<&'a str> {
         if let Some(decl) = spec.sort_declarations.get(*def) {
             return Some(&decl.identifier);
         }
 
         let system_index = (*def).checked_sub(spec.sort_declarations.len())?;
-        self.system_sort_decls.get(system_index).map(String::as_str)
+        system
+            .sort_declarations
+            .get(system_index)
+            .map(|decl| decl.identifier.as_str())
     }
 }
 

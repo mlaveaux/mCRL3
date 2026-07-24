@@ -43,7 +43,7 @@ fn boolean(value: bool) -> DataExpression {
 /// [`RewriteSpecification::native_symbols`].
 fn rules() -> RewriteSpecification {
     let untyped = UntypedDataSpecification::parse("map q: Nat;").expect("the specification should parse");
-    let mut data_spec = DataSpecification::from_untyped_with(untyped, NumberEncoding::MachineWord)
+    let data_spec = DataSpecification::from_untyped_with(untyped, NumberEncoding::MachineWord)
         .expect("the MachineWord encoding should type check");
     RewriteSpecification::from_data_specification(&data_spec.lower_data_specification())
 }

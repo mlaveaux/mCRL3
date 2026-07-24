@@ -341,7 +341,11 @@ mod inner {
 
     impl fmt::Display for DataApplication {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.data_function_symbol())?;
+            // The head is not always a function symbol: higher-order
+            // applications such as `f(x)` for a function-sorted variable `f`,
+            // or curried applications such as `g(x)(y)`, have a variable or
+            // another application as their head.
+            write!(f, "{}", DataExpressionRef::from(self.term.arg(0)))?;
 
             let mut first = true;
             for arg in self.data_arguments() {

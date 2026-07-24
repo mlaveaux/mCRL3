@@ -8,7 +8,8 @@ use crate::ResolvedSortId;
 use crate::TypeCheckContext;
 use crate::WellTypedError;
 use crate::check_products_within_domains;
-use crate::resolve_sort;
+use crate::query_sort_of_constructor;
+use crate::query_sort_of_map;
 use crate::target_sort;
 
 /// The (S, C, M) signature of a specification (Definition 15.1.5): the resolved
@@ -77,7 +78,11 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
     let mut constants: HashMap<String, ResolvedSortId> = HashMap::new();
 
     for decl in &spec.constructor_declarations {
-        let id = resolve_sort(ctx, spec, &decl.sort);
+        // Resolve through the memoized query so lowering can later read the
+        // interned constructor sort straight from the context, instead of
+        // re-resolving it (`resolve_sort` gives the same id, unmemoized).
+        let constructor_id = decl.id.expect("assign_declaration_ids ran before build_signature");
+        let id = query_sort_of_constructor(ctx, spec, constructor_id);
 
         // The constructor targets the range of its (function) sort. The check
         // is semantic — an alias of `Nat` is rejected like `Nat` itself — but
@@ -109,7 +114,8 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
     }
 
     for decl in &spec.map_declarations {
-        let id = resolve_sort(ctx, spec, &decl.sort);
+        let map_id = decl.id.expect("assign_declaration_ids ran before build_signature");
+        let id = query_sort_of_map(ctx, spec, map_id);
 
         // The constructors and mappings must be disjoint *as symbols*: the same
         // name under both `cons` and `map` conflicts exactly when the resolved
