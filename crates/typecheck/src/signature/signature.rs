@@ -5,7 +5,7 @@ use merc_syntax::UntypedDataSpecification;
 
 use crate::ResolvedSort;
 use crate::ResolvedSortId;
-use crate::TypeckContext;
+use crate::TypeCheckContext;
 use crate::WellTypedError;
 use crate::check_products_within_domains;
 use crate::resolve_sort;
@@ -13,7 +13,7 @@ use crate::target_sort;
 
 /// The (S, C, M) signature of a specification (Definition 15.1.5): the resolved
 /// overload set of every constructor and mapping name, the lookup table for
-/// Phase-3 overload resolution.
+/// overload resolution.
 ///
 /// A symbol is a name together with its sort, so a name maps to one
 /// [ResolvedSortId] per overload; duplicate declarations of the same symbol
@@ -33,7 +33,7 @@ pub(crate) struct Signature {
 /// indirection lazily via `query_sort_of_def`. Requires names to be resolved
 /// and structured sorts to be desugared.
 pub(crate) fn build_signature<'a>(
-    ctx: &'a mut TypeckContext,
+    ctx: &'a mut TypeCheckContext,
     spec: &UntypedDataSpecification,
 ) -> Result<&'a Signature, WellTypedError> {
     if ctx.signature.is_none() {
@@ -44,7 +44,7 @@ pub(crate) fn build_signature<'a>(
     Ok(ctx.signature.as_deref().expect("the signature was just computed"))
 }
 
-fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -> Result<Signature, WellTypedError> {
+fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification) -> Result<Signature, WellTypedError> {
     // resolve_sort has no meaning for (and panics on) a product sort outside a
     // function domain, so every sort this query resolves is checked first: the
     // constructor and mapping sorts, and the alias bodies reachable from them
@@ -52,6 +52,7 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
     for sort in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
         check_products_within_domains(sort)?;
     }
+    
     for sort in spec
         .constructor_declarations
         .iter()
@@ -138,7 +139,7 @@ fn compute_signature(ctx: &mut TypeckContext, spec: &UntypedDataSpecification) -
 /// pass through untouched.
 fn check_constant_name(
     constants: &mut HashMap<String, ResolvedSortId>,
-    ctx: &TypeckContext,
+    ctx: &TypeCheckContext,
     name: &str,
     id: ResolvedSortId,
 ) -> Result<(), WellTypedError> {
@@ -170,7 +171,7 @@ mod tests {
 
     use crate::DataSpecification;
     use crate::Signature;
-    use crate::TypeckContext;
+    use crate::TypeCheckContext;
     use crate::WellTypedError;
     use crate::build_signature;
 
@@ -309,7 +310,7 @@ mod tests {
     fn test_build_signature_is_idempotent() {
         let spec = typecheck("sort D; cons c: D; map f: D -> Bool;");
 
-        let mut ctx = TypeckContext::new();
+        let mut ctx = TypeCheckContext::new();
         let first: *const Signature = build_signature(&mut ctx, spec.data_specification()).unwrap();
         let second: *const Signature = build_signature(&mut ctx, spec.data_specification()).unwrap();
         assert!(

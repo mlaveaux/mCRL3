@@ -42,13 +42,12 @@ use crate::NameTarget;
 use crate::NumberEncoding;
 use crate::ResolvedSort;
 use crate::ResolvedSortId;
-use crate::TypeckContext;
+use crate::TypeCheckContext;
 use crate::query_sort_of_constructor;
 use crate::query_sort_of_map;
 
 /// The mCRL2 name of a basic sort, matching the literal `SortId` names the
-/// binary aterm format uses (not `Sort`'s derived `Debug`/`Display`, which
-/// happens to coincide but isn't a stated contract).
+/// binary aterm format uses.
 fn primitive_name(sort: Sort) -> &'static str {
     match sort {
         Sort::Bool => "Bool",
@@ -159,7 +158,7 @@ fn container_coerce(term: DataExpression, op: ComplexSort, element: DataSortExpr
 /// action, never a data-expression sort.
 #[allow(dead_code)]
 pub(crate) fn lower_sort(
-    ctx: &TypeckContext,
+    ctx: &TypeCheckContext,
     spec: &UntypedDataSpecification,
     id: ResolvedSortId,
 ) -> DataSortExpression {
@@ -407,7 +406,7 @@ pub(crate) struct LoweredEquation {
 /// not an error — when a construct it does not yet cover is reached.
 #[allow(dead_code)]
 pub(crate) fn lower_equation(
-    ctx: &TypeckContext,
+    ctx: &TypeCheckContext,
     spec: &UntypedDataSpecification,
     typing: &EquationTyping,
     condition: Option<&DataExpr>,
@@ -451,7 +450,7 @@ pub(crate) fn lower_equation(
 }
 
 struct Lowering<'a> {
-    ctx: &'a TypeckContext,
+    ctx: &'a TypeCheckContext,
     spec: &'a UntypedDataSpecification,
     sorts: &'a [ResolvedSortId],
     names: &'a HashMap<ExprId, NameTarget>,
@@ -1251,7 +1250,7 @@ fn lower_system_equations(system: &UntypedDataSpecification, out: &mut Vec<DataE
 ///   only equations that still need full inference — binders, set/bag
 ///   enumerations — are skipped).
 pub(crate) fn lower_data_specification(
-    ctx: &mut TypeckContext,
+    ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
     equation_typings: &[Vec<Rc<EquationTyping>>],

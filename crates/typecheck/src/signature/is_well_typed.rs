@@ -27,6 +27,7 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
     for sort in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
         check_products_within_domains(sort)?;
     }
+
     for sort in spec
         .constructor_declarations
         .iter()
@@ -35,6 +36,7 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
     {
         check_products_within_domains(sort)?;
     }
+    
     for equation in &spec.equation_declarations {
         // Inference resolves a variable by name, so a duplicate would silently
         // shadow the earlier declaration; mCRL2 rejects the block outright.
