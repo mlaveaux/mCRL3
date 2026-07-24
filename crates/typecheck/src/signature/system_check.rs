@@ -10,12 +10,8 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::visit_sort_expr;
 
 use crate::WellTypedError;
+use crate::builtin_scheme_names;
 use crate::check_products_within_domains;
-
-/// The polymorphic built-ins of Phase-3 inference (`scheme_instance`): the
-/// comparison operators and `if` exist for every sort and are never declared,
-/// so the system equations may use them without a declaration.
-const BUILTIN_SCHEMES: [&str; 7] = ["==", "!=", "<", "<=", ">", ">=", "if"];
 
 /// Verifies that the generated system-defined specification is internally
 /// well-formed.
@@ -27,6 +23,11 @@ const BUILTIN_SCHEMES: [&str; 7] = ["==", "!=", "<", "<=", ">", ">=", "if"];
 ///   indexes a user sort declaration;
 /// - product sorts occur only as function domains, and no structured sort
 ///   survives.
+/// - no constructor targets a function sort (`cons c: A -> (B -> C)`); this is
+///   the one signature-level rule of `build_signature` the system specification
+///   does not legitimately break, so it catches an editing mistake. Its dual
+///   (no constructor for a basic sort) is deliberately *not* checked here — the
+///   system specification declares those on purpose (`@c0: Nat`);
 /// - no `var` block declares a variable twice;
 /// - every name in an equation resolves: to a binder or equation variable, a
 ///   constructor or mapping of `system` or `user_spec`, or a builtin scheme;
@@ -57,7 +58,12 @@ pub(crate) fn check_system_specification(
             .map(|decl| decl.identifier.as_str()),
     );
     symbols.extend(user_spec.map_declarations.iter().map(|decl| decl.identifier.as_str()));
-    symbols.extend(BUILTIN_SCHEMES);
+    // The comparison operators and `if` are polymorphic built-ins, usable in a
+    // system equation without a declaration. Inserted one at a time so each
+    // `'static` name coerces to the borrowed element lifetime of `symbols`.
+    for name in builtin_scheme_names() {
+        symbols.insert(name);
+    }
 
     let checker = Checker {
         sort_names,
@@ -72,6 +78,7 @@ pub(crate) fn check_system_specification(
     }
     for declaration in &system.constructor_declarations {
         checker.check_sort(&declaration.sort)?;
+        check_constructor_target(&declaration.identifier, &declaration.sort)?;
     }
     for declaration in &system.map_declarations {
         checker.check_sort(&declaration.sort)?;
@@ -112,6 +119,37 @@ pub(crate) fn check_system_specification(
 
 fn custom(message: String) -> WellTypedError {
     WellTypedError::Custom(message.into())
+}
+
+/// Rejects a system constructor whose target is itself a function sort
+/// (`cons c: A -> (B -> C)`).
+///
+/// This is the sole signature-level rule of `build_signature` the
+/// system specification does not legitimately break: the dual rule (no
+/// constructor for a basic sort) is broken on purpose (`@c0: Nat`), and the
+/// constant/overload-disjointness rules are broken by polymorphic nullary
+/// constructors (`[]: List(S)` instantiated at several element sorts). No
+/// template declares a function-sort constructor, so this only fires on an
+/// editing mistake.
+fn check_constructor_target(constructor: &str, sort: &SortExpression) -> Result<(), WellTypedError> {
+    // The target is the range of a function sort, or the whole sort otherwise.
+    // The system specification is never flattened, so a function sort may appear
+    // as either `Function` or (once substituted from the user spec)
+    // `FlattenedFunction`.
+    let target = match &sort.node {
+        SortExpressionKind::Function { range, .. } | SortExpressionKind::FlattenedFunction { range, .. } => range,
+        _ => sort,
+    };
+    if matches!(
+        target.node,
+        SortExpressionKind::Function { .. } | SortExpressionKind::FlattenedFunction { .. }
+    ) {
+        return Err(WellTypedError::ConstructorForFunctionSort {
+            constructor: constructor.to_string(),
+            sort: target.to_string(),
+        });
+    }
+    Ok(())
 }
 
 struct Checker<'a> {
@@ -279,8 +317,9 @@ mod tests {
             "map f: List(Nat);",
             "map f: Set(Bool);",
             "map f: Bag(Nat);",
-            // The function-update template.
+            // The function-update template, single- and multi-argument.
             "map f: Nat -> Bool;",
+            "map f: Nat # Bool -> Nat;",
             // The desugared-struct equations, over a user sort.
             "sort D = struct c(pr: Nat, other: Bool)?is_c | d;",
             // A comprehension contributes Set and Bag for its element sort.
@@ -307,6 +346,27 @@ mod tests {
         // `standard_sort` instantiation would leave behind.
         let err = check_broken("map f: List(S);");
         assert!(err.to_string().contains("'S'"), "{err}");
+    }
+
+    #[test]
+    fn test_constructor_for_function_sort_is_rejected() {
+        // A constructor whose target is a function sort is the one signature
+        // rule the system spec must still obey; `Bool` and `Nat` parse as basic
+        // sorts, so `check_sort` passes and the target check is what rejects it.
+        let err = check_broken("cons c: Bool -> (Nat -> Bool);");
+        assert!(
+            matches!(err, WellTypedError::ConstructorForFunctionSort { ref sort, .. } if sort == "(Nat -> Bool)"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn test_constructor_for_basic_sort_is_allowed() {
+        // The dual rule is deliberately not enforced: the system spec declares
+        // constructors for basic sorts on purpose (`@c0: Nat`).
+        let system = UntypedDataSpecification::parse("cons @c0: Nat;").unwrap();
+        check_system_specification(&UntypedDataSpecification::default(), &system)
+            .expect("a constructor for a basic sort is legitimate in the system spec");
     }
 
     #[test]

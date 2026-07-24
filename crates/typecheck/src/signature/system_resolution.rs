@@ -7,6 +7,7 @@ use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 
+use crate::BUILTIN_SCHEME_TEMPLATE;
 use crate::CONTAINER_TEMPLATES;
 use crate::ResolvedSortId;
 use crate::Signature;
@@ -42,8 +43,8 @@ pub(crate) fn resolve_system_signature(
     //
     // Each system-internal sort gets a fresh DefId that continues the user
     // sorts' numbering: `user_spec.sort_declarations.len() + decl_index`. This
-    // is the layout `TypeckContext::sort_name` relies on to map such a DefId
-    // back to its name in `system_sort_decls`.
+    // is the layout `TypeCheckContext::sort_name` relies on to recover such a
+    // DefId's name from the system specification's declarations on demand.
     let mut sort_ids: HashMap<String, ResolvedSortId> = HashMap::new();
     for (decl_index, decl) in system.sort_declarations.iter().enumerate() {
         if is_basic_sort_name(&decl.identifier) || sort_ids.contains_key(&decl.identifier) {
@@ -81,43 +82,53 @@ fn is_basic_sort_name(name: &str) -> bool {
     matches!(name, "Bool" | "Pos" | "Nat" | "Int" | "Real")
 }
 
-/// The polymorphic signature of the container and function-update operations:
-/// for each name, the overload sorts as written in the templates, with the
-/// sort variables (`S`, `T`) still unresolved `Reference` nodes.
+/// The polymorphic signature of the built-in operators that exist for *every*
+/// sort: the container and function-update operations, plus the comparison
+/// operators and `if`. For each name, the overload sorts as written in the
+/// templates, with the sort variables (`S`, `T`) still unresolved `Reference`
+/// nodes.
 ///
-/// These operations exist for *every* element sort, so — like the comparison
-/// schemes — inference looks them up here and instantiates the variables fresh
-/// per occurrence, mirroring mCRL2's built-in polymorphic symbol table. Their
-/// per-sort instantiations are deliberately *not* part of the resolved system
-/// signature: listing an operation both ways would misreport ambiguity.
+/// Inference looks a name up here and instantiates the variables fresh per
+/// occurrence (`template_instance`), mirroring mCRL2's built-in polymorphic
+/// symbol table. This one mechanism covers `|>` and `==` alike — the comparison
+/// operators and `if` are just further schemes, carried by
+/// [BUILTIN_SCHEME_TEMPLATE]. Their per-sort instantiations are deliberately
+/// *not* part of the resolved system signature: listing an operation both ways
+/// would misreport ambiguity.
 pub(crate) struct PolymorphicSignature {
     pub(crate) ops: HashMap<String, Vec<SortExpression>>,
 }
 
-/// The [PolymorphicSignature] of the bundled templates: the constructor and
-/// mapping declarations of every raw template, collected once.
+/// The [PolymorphicSignature] of the bundled container templates and the
+/// built-in schemes: the constructor and mapping declarations of each, collected
+/// once.
 pub(crate) static POLYMORPHIC_SIGNATURE: LazyLock<PolymorphicSignature> = LazyLock::new(|| {
     let mut ops: HashMap<String, Vec<SortExpression>> = HashMap::new();
     for template in CONTAINER_TEMPLATES.all() {
-        for (identifier, sort) in template
-            .constructor_declarations
-            .iter()
-            .map(|decl| (&decl.identifier, &decl.sort))
-            .chain(
-                template
-                    .map_declarations
-                    .iter()
-                    .map(|decl| (&decl.identifier, &decl.sort)),
-            )
-        {
-            let overloads = ops.entry(identifier.clone()).or_default();
-            if !overloads.contains(sort) {
-                overloads.push(sort.clone());
-            }
-        }
+        collect_overloads(&mut ops, template);
     }
+    // The comparison operators and `if` are polymorphic in exactly the same way
+    // as the container operations, so they join the same table rather than a
+    // separate, hand-written scheme instantiation.
+    collect_overloads(&mut ops, &BUILTIN_SCHEME_TEMPLATE);
     PolymorphicSignature { ops }
 });
+
+/// Collects the constructor and mapping declarations of `spec` into `ops`,
+/// keyed by name, dropping an overload sort already recorded for that name.
+fn collect_overloads(ops: &mut HashMap<String, Vec<SortExpression>>, spec: &UntypedDataSpecification) {
+    for (identifier, sort) in spec
+        .constructor_declarations
+        .iter()
+        .map(|decl| (&decl.identifier, &decl.sort))
+        .chain(spec.map_declarations.iter().map(|decl| (&decl.identifier, &decl.sort)))
+    {
+        let overloads = ops.entry(identifier.clone()).or_default();
+        if !overloads.contains(sort) {
+            overloads.push(sort.clone());
+        }
+    }
+}
 
 /// The system-defined counterpart of `resolve_sort`. It differs in two ways:
 /// `Reference` nodes are looked up among the system-internal sorts (the system
@@ -264,8 +275,9 @@ mod tests {
     #[test]
     fn test_system_internal_sort_gets_fresh_def() {
         // `@NatPair` exists only in the system specification; it gets a nominal
-        // DefId past the user declarations, and its name is recoverable via the
-        // declaration index stored in `system_sort_decls`.
+        // DefId past the user declarations, and its name is recovered by
+        // `sort_name`, which derives it from the system specification's
+        // declarations on demand rather than from a stored table.
         let (spec, ctx) = resolve("sort D; map f: D;");
         let signature = ctx.system_signature.as_ref().unwrap();
 
@@ -278,8 +290,10 @@ mod tests {
         };
         let user_len = spec.data_specification().sort_declarations.len();
         assert!(**def >= user_len);
-        let system_index = **def - user_len;
-        assert_eq!(ctx.system_sort_decls[system_index], "@NatPair");
+        assert_eq!(
+            ctx.sort_name(spec.data_specification(), spec.system_defined_specification(), *def),
+            Some("@NatPair")
+        );
     }
 
     #[test]

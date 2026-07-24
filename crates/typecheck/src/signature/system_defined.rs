@@ -23,12 +23,12 @@ use crate::standard_sort;
 /// The five basic sorts are always included. A container sort pulls in the
 /// containers it is defined in terms of — a `Set(S)` needs `FSet(S)`, a `Bag(S)`
 /// needs `FBag(S)`, `FSet(S)` and `Set(S)` — which the fixpoint below discovers
-/// by re-scanning each generated specification. A single-argument function sort
-/// `S -> T` contributes the function-update operators; multi-argument function
-/// sorts are deferred (their `S` would be a product, which the Appendix-B
-/// template cannot take as a stand-alone argument). Structured-sort equations
-/// are generated separately from the desugared declarations and merged in by
-/// `DataSpecification::from_untyped`.
+/// by re-scanning each generated specification. A function sort
+/// `D_0 # ... # D_{n-1} -> T` contributes the function-update operators for
+/// its declared arity — the bundled single-argument template when `n == 1`,
+/// otherwise [standard_sort] generalizes it to the flattened domain.
+/// Structured-sort equations are generated separately from the desugared
+/// declarations and merged in by `DataSpecification::from_untyped`.
 ///
 /// The result is deliberately left unresolved: it uses the built-in `Simple`
 /// sorts and the Appendix-B operator names, and is not re-checked against the
@@ -80,8 +80,9 @@ pub(crate) fn check_no_system_function_redeclaration(
             .map(|decl| decl.identifier.as_str()),
     );
     reserved.extend(basics.map_declarations.iter().map(|decl| decl.identifier.as_str()));
+    // The container/function-update operations *and* the comparison operators
+    // and `if` are all polymorphic built-ins, so they share one table.
     reserved.extend(POLYMORPHIC_SIGNATURE.ops.keys().map(String::as_str));
-    reserved.extend(["==", "!=", "<", "<=", ">", ">=", "if"]);
 
     for decl in &spec.constructor_declarations {
         if reserved.contains(decl.identifier.as_str()) {
@@ -174,12 +175,13 @@ fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, 
 /// Collects the system-defined sorts in a single sort expression, recursing
 /// through element, function, product and structured sorts.
 ///
-/// Container sorts are always collected. Single-argument function sorts are
+/// Container sorts are always collected. Function sorts of any arity are
 /// collected only when `include_functions` — see the call in
 /// [`build_system_defined_specification`] for why generated specifications are
-/// scanned without them. A multi-argument function is never collected: its `S`
-/// would be a product that [`standard_sort`] cannot turn into a valid
-/// declaration.
+/// scanned without them. A single-argument domain is converted to the nested
+/// `Function` form [`standard_sort`]'s single-argument branch expects; a
+/// multi-argument domain is passed through as `FlattenedFunction`, which
+/// `standard_sort`'s multi-argument branch consumes directly.
 fn collect_system_sorts(sort: &SortExpression, out: &mut Vec<SortExpression>, include_functions: bool) {
     visit_sort_expr::<(), _>(sort, |expr| {
         match &expr.node {
@@ -192,8 +194,8 @@ fn collect_system_sorts(sort: &SortExpression, out: &mut Vec<SortExpression>, in
                     out.push(expr.clone());
                 }
             }
-            SortExpressionKind::FlattenedFunction { domain, range } => {
-                if include_functions && let [single] = domain.as_slice() {
+            SortExpressionKind::FlattenedFunction { domain, range } if include_functions => {
+                if let [single] = domain.as_slice() {
                     out.push(
                         SortExpressionKind::Function {
                             domain: Box::new(single.clone()),
@@ -201,6 +203,8 @@ fn collect_system_sorts(sort: &SortExpression, out: &mut Vec<SortExpression>, in
                         }
                         .into(),
                     );
+                } else {
+                    out.push(expr.clone());
                 }
             }
             _ => {}
@@ -320,10 +324,10 @@ mod tests {
     }
 
     #[test]
-    fn test_multi_argument_function_update_is_deferred() {
-        // `Nat # Bool -> Nat` has a product domain, which the Appendix-B
-        // template cannot take as a stand-alone argument, so it is skipped.
-        assert!(!has_function_update("map f: Nat # Bool -> Nat;"));
+    fn test_multi_argument_function_gets_update_operators() {
+        // `Nat # Bool -> Nat` has a product domain; `standard_sort` generalizes
+        // the Appendix-B template to it instead of deferring it.
+        assert!(has_function_update("map f: Nat # Bool -> Nat;"));
     }
 
     #[test]
@@ -332,5 +336,14 @@ mod tests {
         // function sorts diverged, because `@is_not_an_update: (S -> T) -> Bool`
         // is itself a single-argument function, growing the sort without bound.
         assert!(has_function_update("map f: List(Nat) -> List(Nat);"));
+    }
+
+    #[test]
+    fn test_multi_argument_function_over_containers_terminates() {
+        // The same regression as above, but seeded from a multi-argument
+        // function so the fixpoint also terminates when it re-scans a
+        // generated multi-argument `@func_update`/`@is_not_an_update`/
+        // `@if_always_else` specification.
+        assert!(has_function_update("map f: List(Nat) # Bool -> List(Nat);"));
     }
 }
