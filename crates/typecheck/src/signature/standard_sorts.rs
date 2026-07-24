@@ -115,15 +115,9 @@ fn container_templates(encoding: NumberEncoding) -> &'static ContainerTemplates 
 /// The Appendix-B equations of the built-in operator *schemes* at `sort`: the
 /// conditional `if`, and the reflexive/derived cases of the comparison
 /// operators.
-///
-/// These operators are built-in schemes rather than per-sort declarations, so no
-/// bundled template defines them, and without these equations they never reduce
-/// (`10 == 10` would get stuck as `==(@c1, @c1)`, and every `if` would remain
-/// unevaluated). The numeric templates rely on `if` heavily — `nat64.mcrl2`
-/// alone applies it in 91 equations — so the machine-word encoding cannot
-/// rewrite at all without them.
-///
-/// Only the generic cases are generated here.
+/// 
+/// Note that the mappings are omitted, as they are declared in the basic sort
+/// templates.
 pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification {
     // The variable names are qualified by sort so that merging the blocks of
     // several sorts cannot collide, here or with a user declaration.
