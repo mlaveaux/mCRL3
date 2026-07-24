@@ -1,5 +1,4 @@
 use std::convert::Infallible;
-use std::rc::Rc;
 
 use log::debug;
 
@@ -9,6 +8,7 @@ use merc_syntax::ConstructorId;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
 use merc_syntax::EqnVarId;
+use merc_syntax::EquationId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
@@ -51,7 +51,6 @@ pub struct DataSpecification {
     sorts: IndexedSet<String>,
     system: UntypedDataSpecification,
     context: TypeCheckContext,
-    equation_typings: Vec<Vec<Rc<EquationTyping>>>,
     encoding: NumberEncoding,
 }
 
@@ -183,7 +182,7 @@ impl DataSpecification {
 
         // Inference over every user equation; an equation binding
         // a variable through an invalid sort (a bare product) is rejected here.
-        let equation_typings = check_equations(&mut context, &spec)?;
+        check_equations(&mut context, &spec, &system)?;
         debug!("typecheck: inference finished; the specification is well-typed");
 
         Ok(Self {
@@ -191,7 +190,6 @@ impl DataSpecification {
             sorts,
             system,
             context,
-            equation_typings,
             encoding,
         })
     }
@@ -216,8 +214,9 @@ impl DataSpecification {
     /// sorts that occur in the specification, plus the defining equations of
     /// the desugared structured sorts (Appendix B.10). This is generated
     /// content with unresolved sorts but lowered equation expressions, verified
-    /// in debug builds by `check_system_specification`; multi-argument function
-    /// updates are not included yet.
+    /// in debug builds by `check_system_specification`; function-update
+    /// operators are generated for every declared arity, single- and
+    /// multi-argument alike.
     pub fn system_defined_specification(&self) -> &UntypedDataSpecification {
         &self.system
     }
@@ -281,12 +280,18 @@ impl DataSpecification {
             .expect("build_signature ran in from_untyped")
     }
 
-    /// The Phase-3 typing of every user equation, positionally parallel to
-    /// `equation_declarations` (outer) and each equation list (inner).
+    /// The Phase-3 typing of the equation identified by `key`, read from the
+    /// `equation_typing` cache that `from_untyped` populated. Requires `key` to
+    /// index an equation of this specification.
     // Currently exercised by tests only.
     #[allow(dead_code)]
-    pub(crate) fn equation_typings(&self) -> &[Vec<Rc<EquationTyping>>] {
-        &self.equation_typings
+    pub(crate) fn equation_typing(&self, key: (EqnSpecId, EquationId)) -> &EquationTyping {
+        self.context
+            .equation_typing
+            .get(&key)
+            .expect("equation typings are all resolved during from_untyped")
+            .as_ref()
+            .expect("a well-typed specification has no equation inference errors")
     }
 
     /// Assembles and returns the fully typed mCRL2 data specification in the
@@ -302,16 +307,11 @@ impl DataSpecification {
     /// enumerations) are skipped.
     ///
     /// Call this once after [`Self::from_untyped`] when the typed specification
-    /// is needed; it may be called more than once (results are identical since
-    /// the underlying caches are warm after the first call).
-    pub fn lower_data_specification(&mut self) -> Mcrl2DataSpecification {
-        lower_data_specification(
-            &mut self.context,
-            &self.spec,
-            &self.system,
-            &self.equation_typings,
-            self.encoding,
-        )
+    /// is needed; it may be called more than once, reading the resolved
+    /// declaration sorts already interned in the [`TypeCheckContext`], so it
+    /// borrows `self` immutably and its result is identical each time.
+    pub fn lower_data_specification(&self) -> Mcrl2DataSpecification {
+        lower_data_specification(&self.context, &self.spec, &self.system, self.encoding)
     }
 }
 
@@ -392,19 +392,26 @@ mod tests {
         let spec = UntypedDataSpecification::parse("map f: Nat; eqn f = 1;").unwrap();
         let mut checked = DataSpecification::from_untyped(spec).unwrap();
 
-        let first = Rc::clone(&checked.equation_typings[0][0]);
-        let again = query_equation_typing(
-            &mut checked.context,
-            &checked.spec,
-            (EqnSpecId::new(0), EquationId::new(0)),
-        )
-        .unwrap();
+        let key = (EqnSpecId::new(0), EquationId::new(0));
+
+        // `from_untyped` already inferred and cached this equation; querying
+        // again must return the very same `Rc`, not recompute.
+        let first = Rc::clone(
+            checked
+                .context
+                .equation_typing
+                .get(&key)
+                .expect("from_untyped inferred the equation")
+                .as_ref()
+                .expect("the equation is well-typed"),
+        );
+        let again = query_equation_typing(&mut checked.context, &checked.spec, &checked.system, key).unwrap();
         assert!(Rc::ptr_eq(&first, &again));
     }
 
     #[test]
     fn test_mcrl2_data_specification_sections_populated() {
-        let mut spec = DataSpecification::from_untyped(
+        let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse(
                 "sort D; \
                  sort A = Nat; \
@@ -447,7 +454,7 @@ mod tests {
     #[test]
     fn test_mcrl2_data_specification_system_constructors_present() {
         // `Bool` always pulls in its system constructors; at least `true`/`false` must appear.
-        let mut spec =
+        let spec =
             DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
         let mcrl2 = spec.lower_data_specification();
         assert!(
@@ -460,7 +467,7 @@ mod tests {
     fn test_mcrl2_data_specification_system_equations_present() {
         // System Bool equations (e.g. `!true = false`) must appear now that
         // `lower_data_specification` includes structurally-lowerable system equations.
-        let mut spec =
+        let spec =
             DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
         let mcrl2 = spec.lower_data_specification();
         // `!true = false` should be among the system Bool equations.
@@ -477,7 +484,7 @@ mod tests {
         // which mention the empty-list literal `[]` (`in(d, []) = false`,
         // `#[] = @c0`). These are now lowered structurally via expected-sort
         // propagation rather than skipped.
-        let mut spec = DataSpecification::from_untyped(
+        let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse("sort D; map f: List(D) -> Bool;").unwrap(),
         )
         .unwrap();

@@ -31,7 +31,7 @@ const ENCODINGS: [NumberEncoding; 2] = [NumberEncoding::Binary, NumberEncoding::
 fn rewrite(expr: &str, sort: &str, encoding: NumberEncoding) -> String {
     let text = format!("map q: {sort};\neqn q = {expr};");
     let untyped = UntypedDataSpecification::parse(&text).expect("the specification should parse");
-    let mut spec = DataSpecification::from_untyped_with(untyped, encoding)
+    let spec = DataSpecification::from_untyped_with(untyped, encoding)
         .unwrap_or_else(|error| panic!("{encoding:?} should type check `{expr}`: {error:?}"));
     let lowered = spec.lower_data_specification();
 
