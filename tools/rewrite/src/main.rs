@@ -51,6 +51,11 @@ enum Commands {
     /// Convert a REC specification to the TRS format, which is the format used
     /// by the term rewrite system termination checking tool called AProVE.
     Convert(ConvertArgs),
+
+    /// Parse an mCRL2 data specification and print the stages of the pipeline:
+    /// the parsed AST, the resolved and desugared intermediate representation,
+    /// and the fully typed and lowered data specification.
+    Check(CheckArgs),
 }
 
 #[derive(Debug, clap::ValueEnum, Clone)]
@@ -88,6 +93,26 @@ struct ConvertArgs {
 
     /// The output file to write the TRS to.
     output: String,
+}
+
+#[derive(clap::Args, Debug)]
+struct CheckArgs {
+    /// The mCRL2 data specification to check.
+    #[arg(value_name = "SPEC")]
+    specification: PathBuf,
+
+    /// Print the parsed AST, before name resolution and typechecking.
+    #[arg(long)]
+    ast: bool,
+
+    /// Print the resolved and desugared intermediate representation, after
+    /// typechecking but before Phase-4 lowering.
+    #[arg(long)]
+    ir: bool,
+
+    /// Print the fully typed and lowered mCRL2 data specification.
+    #[arg(long)]
+    lowered: bool,
 }
 
 fn main() -> ExitCode {
@@ -178,6 +203,40 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                     let mut output = File::create(args.output)?;
                     write!(output, "{}", TrsFormatter::new(&spec))?;
                 }
+            }
+            Commands::Check(args) => {
+                // With none of the stage flags given, show every stage.
+                let show_all = !args.ast && !args.ir && !args.lowered;
+
+                let source = std::fs::read_to_string(&args.specification)?;
+                let untyped_spec = UntypedDataSpecification::parse(&source)?;
+
+                if show_all || args.ast {
+                    println!("=== AST ===\n");
+                    println!("{untyped_spec}");
+                }
+
+                let mut data_spec = match DataSpecification::from_untyped(untyped_spec) {
+                    Ok(data_spec) => data_spec,
+                    Err(err) => return Err(err.render(&source).into()),
+                };
+
+                if show_all || args.ir {
+                    println!("=== IR (resolved user declarations) ===\n");
+                    println!("{}", data_spec.data_specification());
+
+                    println!("=== IR (system-defined declarations) ===\n");
+                    println!("{}", data_spec.system_defined_specification());
+                }
+
+                if show_all || args.lowered {
+                    let mcrl2_spec = data_spec.lower_data_specification();
+
+                    println!("=== Lowered ===\n");
+                    println!("{mcrl2_spec}");
+                }
+
+                eprintln!("The data specification is well-typed.");
             }
         }
     }
