@@ -19,17 +19,17 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_syntax::map_data_expr;
 
-/// Hoists every anonymous structured sort — a `struct` occurring inside another
-/// sort expression rather than as the body of a sort declaration — into a fresh
-/// `@struct<n>` sort declaration, replacing the occurrence by a reference to it.
+/// Hoists every anonymous structured sort (a `struct` occurring inside another
+/// sort expression rather than as the body of a sort declaration) into a fresh
+/// `@struct<n>` sort declaration, replacing the occurrence by a reference to
+/// it.
 ///
 /// Structurally identical structs denote the same sort in mCRL2, so identical
 /// occurrences share one declaration, and an anonymous struct that matches an
 /// already-seen named struct alias reuses the user's name.
 ///
 /// Runs before name resolution so the generated declarations are resolved and
-/// checked exactly like user-written ones, after which
-/// [`desugar_structured_sorts`] only encounters named structs.
+/// checked exactly like user-written ones.
 pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
     let mut hoister = Hoister {
         table: Vec::new(),
@@ -54,6 +54,7 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
                     declaration.identifier.clone(),
                 ));
             }
+
             // Non-struct sort alias (e.g. `sort A = List(struct t);`): the
             // anonymous struct occurs inside a sort *declaration*, so it
             // should still generate its constructors like any other
@@ -66,17 +67,21 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
     for constructor in &mut spec.constructor_declarations {
         constructor.sort = hoister.hoist_non_decl(constructor.sort.clone());
     }
+
     for map in &mut spec.map_declarations {
         map.sort = hoister.hoist_non_decl(map.sort.clone());
     }
+
     for equation in &mut spec.equation_declarations {
         for variable in &mut equation.variables {
             variable.sort = hoister.hoist_non_decl(variable.sort.clone());
         }
+
         for eqn in &mut equation.equations {
             if let Some(condition) = &mut eqn.condition {
                 hoist_binder_sorts_in_place(&mut hoister, condition);
             }
+            
             hoist_binder_sorts_in_place(&mut hoister, &mut eqn.lhs);
             hoist_binder_sorts_in_place(&mut hoister, &mut eqn.rhs);
         }
