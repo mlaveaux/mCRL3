@@ -512,9 +512,10 @@ mod tests {
         // doc comment notes enumeration literals are not syntactically
         // apparent). Its Appendix-B equations must still be instantiated from
         // the inferred sort during lowering.
-        let spec =
-            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool; eqn f = 1 in [2, 3];").unwrap())
-                .unwrap();
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("map f: Bool; eqn f = 1 in [2, 3];").unwrap(),
+        )
+        .unwrap();
         let mcrl2 = spec.lower_data_specification();
 
         let in_empty = mcrl2
@@ -573,7 +574,11 @@ mod tests {
         assert!(
             mcrl2.mappings().iter().any(|m| m.name() == "@fbag_cinsert"),
             "the FBag(Nat) @fbag_cinsert mapping must be present: {:#?}",
-            mcrl2.mappings().iter().map(|m| m.name().to_string()).collect::<Vec<_>>()
+            mcrl2
+                .mappings()
+                .iter()
+                .map(|m| m.name().to_string())
+                .collect::<Vec<_>>()
         );
     }
 }
