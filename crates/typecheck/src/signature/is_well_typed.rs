@@ -6,6 +6,7 @@ use thiserror::Error;
 use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::try_visit_sort_expr_with;
 use merc_utilities::MercError;
@@ -37,6 +38,7 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
             if !names.insert(var.identifier.as_str()) {
                 return Err(WellTypedError::DuplicateEquationVariable {
                     variable: var.identifier.clone(),
+                    span: var.span.clone(),
                 });
             }
             // A product sort only has meaning as the domain of a function sort.
@@ -54,6 +56,7 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
         if !nonempty.contains(&id) {
             return Err(WellTypedError::EmptySort {
                 sort: sort.identifier.clone(),
+                span: sort.span.clone(),
             });
         }
     }
@@ -64,42 +67,54 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
 #[derive(Debug, Error)]
 pub enum WellTypedError {
     #[error("Constructor '{}' and mapping '{}' have the same identifier", constructor, map)]
-    ConstructorAndMappingConflict { constructor: String, map: String },
+    ConstructorAndMappingConflict {
+        constructor: String,
+        map: String,
+        span: Span,
+    },
 
     #[error("Zero-arity constant '{}' is declared more than once with different sorts", name)]
-    DuplicateConstantDifferentSort { name: String },
+    DuplicateConstantDifferentSort { name: String, span: Span },
 
     #[error("'{}' redeclares a system-defined function", name)]
-    SystemFunctionRedeclared { name: String },
+    SystemFunctionRedeclared { name: String, span: Span },
 
     #[error(
         "Constructors cannot be defined for basic sorts, but constructor '{}' is defined for sort '{}'",
         constructor,
         sort
     )]
-    ConstructorForBasicSort { constructor: String, sort: String },
+    ConstructorForBasicSort {
+        constructor: String,
+        sort: String,
+        span: Span,
+    },
 
     #[error(
         "Constructors cannot be defined for function sorts, but constructor '{}' is defined for sort '{}'",
         constructor,
         sort
     )]
-    ConstructorForFunctionSort { constructor: String, sort: String },
+    ConstructorForFunctionSort {
+        constructor: String,
+        sort: String,
+        span: Span,
+    },
 
     #[error("Sort '{}' is syntactically empty", sort)]
-    EmptySort { sort: String },
+    EmptySort { sort: String, span: Span },
 
     #[error("A product sort '{}' may only appear as the domain of a function sort", sort)]
-    ProductSortOutsideFunctionDomain { sort: String },
+    ProductSortOutsideFunctionDomain { sort: String, span: Span },
 
     #[error("The variable '{}' occurs multiple times in a var block", variable)]
-    DuplicateEquationVariable { variable: String },
+    DuplicateEquationVariable { variable: String, span: Span },
 
     #[error("Alias cycle detected: {:?}", sorts)]
-    AliasCycle { sorts: Vec<String> },
+    AliasCycle { sorts: Vec<String>, span: Span },
 
     #[error("Sort '{sort}' is recursively defined via a function sort, or a set or a bag type container")]
-    RecursiveAliasThroughFunctionSort { sort: String },
+    RecursiveAliasThroughFunctionSort { sort: String, span: Span },
 
     #[error("Error: '{0}'")]
     Custom(MercError),
@@ -110,21 +125,31 @@ pub enum WellTypedError {
 
     // These are name resolution errors, but we include them here to avoid having to define a separate error type for name resolution.
     #[error("Duplicate sort declaration: '{}'", sort)]
-    DuplicateSortDeclaration { sort: String },
+    DuplicateSortDeclaration { sort: String, span: Span },
 
     #[error("Undefined sort: '{}'", sort)]
-    UndefinedSort { sort: String },
+    UndefinedSort { sort: String, span: Span },
 }
 
 impl WellTypedError {
     /// The span of the offending sub-expression, for the variants that carry
-    /// one (currently only [InferenceError], the Phase-3 sort errors — the
-    /// other variants are declaration-level and have no expression to point
-    /// at yet).
-    pub fn span(&self) -> Option<&merc_syntax::Span> {
+    /// one. Only [WellTypedError::Custom] has no source location to point at.
+    pub fn span(&self) -> Option<&Span> {
         match self {
             WellTypedError::Inference(error) => Some(error.span()),
-            _ => None,
+            WellTypedError::ConstructorAndMappingConflict { span, .. }
+            | WellTypedError::DuplicateConstantDifferentSort { span, .. }
+            | WellTypedError::SystemFunctionRedeclared { span, .. }
+            | WellTypedError::ConstructorForBasicSort { span, .. }
+            | WellTypedError::ConstructorForFunctionSort { span, .. }
+            | WellTypedError::EmptySort { span, .. }
+            | WellTypedError::ProductSortOutsideFunctionDomain { span, .. }
+            | WellTypedError::DuplicateEquationVariable { span, .. }
+            | WellTypedError::AliasCycle { span, .. }
+            | WellTypedError::RecursiveAliasThroughFunctionSort { span, .. }
+            | WellTypedError::DuplicateSortDeclaration { span, .. }
+            | WellTypedError::UndefinedSort { span, .. } => Some(span),
+            WellTypedError::Custom(_) => None,
         }
     }
 
@@ -148,9 +173,10 @@ impl WellTypedError {
 /// that case is handled manually and pruned.
 pub(crate) fn check_products_within_domains(sort: &SortExpression) -> Result<(), WellTypedError> {
     try_visit_sort_expr_with::<WellTypedError, (), (), _>(sort, (), |expr, ()| match &expr.node {
-        SortExpressionKind::Product { .. } => {
-            Err(WellTypedError::ProductSortOutsideFunctionDomain { sort: expr.to_string() })
-        }
+        SortExpressionKind::Product { .. } => Err(WellTypedError::ProductSortOutsideFunctionDomain {
+            sort: expr.to_string(),
+            span: expr.span.clone(),
+        }),
         SortExpressionKind::Function { domain, range } => {
             check_product_spine(domain)?;
             check_products_within_domains(range)?;
@@ -200,7 +226,7 @@ mod tests {
         .unwrap();
 
         match DataSpecification::from_untyped(spec) {
-            Err(WellTypedError::ConstructorForBasicSort { constructor, sort })
+            Err(WellTypedError::ConstructorForBasicSort { constructor, sort, .. })
                 if constructor == "f" && sort == "Nat" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -220,7 +246,7 @@ mod tests {
         ] {
             let spec = UntypedDataSpecification::parse(text).unwrap();
             match DataSpecification::from_untyped(spec) {
-                Err(WellTypedError::DuplicateEquationVariable { variable }) if variable == "n" => {}
+                Err(WellTypedError::DuplicateEquationVariable { variable, .. }) if variable == "n" => {}
                 Err(other) => panic!("Unexpected error {:?}", other),
                 _ => panic!("Expected from_untyped to fail"),
             }

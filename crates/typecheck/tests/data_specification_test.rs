@@ -135,7 +135,7 @@ fn test_recursive_function_sort_reverse() {
 fn test_bare_self_alias_rejected() {
     // Row A1 = A1: the shortest possible cycle.
     match check_err("sort A1 = A1;") {
-        WellTypedError::AliasCycle { sorts } if sorts.contains(&"A1".to_string()) => {}
+        WellTypedError::AliasCycle { sorts, .. } if sorts.contains(&"A1".to_string()) => {}
         other => panic!("unexpected error {other}"),
     }
 }
@@ -144,11 +144,11 @@ fn test_bare_self_alias_rejected() {
 fn test_bare_fset_fbag_self_alias_rejected() {
     // Plain cycles through structured sorts are allowed.
     match check_err("sort A12 = FSet(A12);") {
-        WellTypedError::AliasCycle { sorts } if sorts.contains(&"A12".to_string()) => {}
+        WellTypedError::AliasCycle { sorts, .. } if sorts.contains(&"A12".to_string()) => {}
         other => panic!("unexpected error {other}"),
     }
     match check_err("sort A13 = FBag(A13);") {
-        WellTypedError::AliasCycle { sorts } if sorts.contains(&"A13".to_string()) => {}
+        WellTypedError::AliasCycle { sorts, .. } if sorts.contains(&"A13".to_string()) => {}
         other => panic!("unexpected error {other}"),
     }
 }
@@ -158,7 +158,7 @@ fn test_bare_set_self_alias_rejected() {
     // A bare struct alias cycle, since Set is a function sort, is rejected as a
     // cycle through a function sort.
     match check_err("sort A3 = Set(A3);") {
-        WellTypedError::RecursiveAliasThroughFunctionSort { sort } if sort == "A3" => {}
+        WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. } if sort == "A3" => {}
         other => panic!("unexpected error {other}"),
     }
 }
@@ -166,7 +166,7 @@ fn test_bare_set_self_alias_rejected() {
 #[test]
 fn test_bare_bag_self_alias_rejected() {
     match check_err("sort A4 = Bag(A4);") {
-        WellTypedError::RecursiveAliasThroughFunctionSort { sort } if sort == "A4" => {}
+        WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. } if sort == "A4" => {}
         other => panic!("unexpected error {other}"),
     }
 }
@@ -208,7 +208,7 @@ fn test_recursive_struct_without_base_case_is_empty() {
     // already-tested "abstract sort" and "constant constructor" cases.
     // mCRL2: test_recursive_struct_no_base.
     match check_err("sort D = struct f(D);") {
-        WellTypedError::EmptySort { sort } if sort == "D" => {}
+        WellTypedError::EmptySort { sort, .. } if sort == "D" => {}
         other => panic!("unexpected error {other}"),
     }
 }
@@ -237,7 +237,7 @@ fn test_recursive_struct_via_function_codomain() {
     // test_recursive_struct_through_function_sort). mCRL2:
     // test_recursive_struct_via_function.
     match check_err("sort G = struct f(Nat -> G);") {
-        WellTypedError::RecursiveAliasThroughFunctionSort { sort } if sort == "G" => {}
+        WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. } if sort == "G" => {}
         other => panic!("unexpected error {other}"),
     }
 }

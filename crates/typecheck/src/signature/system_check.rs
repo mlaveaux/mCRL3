@@ -90,6 +90,7 @@ pub(crate) fn check_system_specification(
             if !variables.insert(variable.identifier.as_str()) {
                 return Err(WellTypedError::DuplicateEquationVariable {
                     variable: variable.identifier.clone(),
+                    span: variable.span.clone(),
                 });
             }
             checker.check_sort(&variable.sort)?;
@@ -147,6 +148,7 @@ fn check_constructor_target(constructor: &str, sort: &SortExpression) -> Result<
         return Err(WellTypedError::ConstructorForFunctionSort {
             constructor: constructor.to_string(),
             sort: target.to_string(),
+            span: target.span.clone(),
         });
     }
     Ok(())

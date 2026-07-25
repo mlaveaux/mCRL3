@@ -12,6 +12,7 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
 
+use crate::BASIC_SORT_NAMES;
 use crate::NumberEncoding;
 use crate::apply_sorts_in_spec;
 
@@ -112,38 +113,6 @@ fn container_templates(encoding: NumberEncoding) -> &'static ContainerTemplates 
     }
 }
 
-/// The polymorphic built-in operators that exist for *every* sort: the
-/// comparison operators and the conditional `if`. Their sort variable `S`
-/// remains an unresolved `Reference` node, instantiated with fresh unification
-/// variables per occurrence, exactly like the container operations — they feed
-/// [`POLYMORPHIC_SIGNATURE`](crate::POLYMORPHIC_SIGNATURE) alongside the
-/// containers, so inference resolves `==` and `|>` through one mechanism.
-///
-/// Unlike the container templates this is written inline rather than bundled as
-/// a `spec/*.mcrl2` file: these operators are built in and never declared, and
-/// this static is deliberately *not* part of [`CONTAINER_TEMPLATES`], so no
-/// per-sort instantiation of `==`/`if` leaks into the system-defined
-/// specification. It is also the single source of the built-in scheme *names*
-/// (see [`builtin_scheme_names`]).
-pub(crate) static BUILTIN_SCHEME_TEMPLATE: LazyLock<UntypedDataSpecification> = LazyLock::new(|| {
-    parse_template(
-        "map ==: S # S -> Bool; !=: S # S -> Bool; \
-             <: S # S -> Bool; <=: S # S -> Bool; >: S # S -> Bool; >=: S # S -> Bool; \
-             if: Bool # S # S -> S;",
-    )
-});
-
-/// The names of the polymorphic built-in schemes (`==`, `!=`, `<`, `<=`, `>`,
-/// `>=`, `if`), derived from [`BUILTIN_SCHEME_TEMPLATE`] so the list has a
-/// single definition. These names are usable without a declaration, so the
-/// well-formedness and reserved-name checks admit them.
-pub(crate) fn builtin_scheme_names() -> impl Iterator<Item = &'static str> {
-    BUILTIN_SCHEME_TEMPLATE
-        .map_declarations
-        .iter()
-        .map(|decl| decl.identifier.as_str())
-}
-
 /// The Appendix-B equations of the built-in operator *schemes* at `sort`: the
 /// conditional `if`, and the reflexive/derived cases of the comparison
 /// operators.
@@ -151,8 +120,9 @@ pub(crate) fn builtin_scheme_names() -> impl Iterator<Item = &'static str> {
 /// Only equations are emitted; the `map` signatures are omitted deliberately.
 /// The comparison operators and `if` exist for *every* sort, so inference types
 /// them as polymorphic schemes instantiated per occurrence (their signatures
-/// live in [`BUILTIN_SCHEME_TEMPLATE`], resolved through `POLYMORPHIC_SIGNATURE`
-/// like the container operations) rather than declaring one overload per sort.
+/// live in `crate::BUILTIN_SCHEME_TEMPLATE`, resolved through
+/// `POLYMORPHIC_SIGNATURE` like the container operations) rather than declaring
+/// one overload per sort.
 pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification {
     // The variable names are qualified by sort so that merging the blocks of
     // several sorts cannot collide, here or with a user declaration.
@@ -168,9 +138,6 @@ pub(crate) fn builtin_operator_equations(sort: &str) -> UntypedDataSpecification
             if(false, x_{sort}, y_{sort}) = y_{sort};
     "})
 }
-
-/// The basic sorts each encoding defines `if` for.
-const BASIC_SORT_NAMES: [&str; 5] = ["Bool", "Pos", "Nat", "Int", "Real"];
 
 /// Returns a standard data specification containing the standard sorts and their
 /// associated constructors, mappings, and equations, in the given `encoding`.
@@ -228,7 +195,10 @@ pub(crate) fn standard_sort(sort: &SortExpression, encoding: NumberEncoding) -> 
 /// regardless of the syntactic nesting order of `f[a -> b][c -> d]`-style
 /// updates. This mirrors [structured_sort_equations]'s `lexicographic` helper,
 /// which solves the same problem for a constructor's argument tuple.
-pub(crate) fn multi_argument_function_update(domain: &[SortExpression], range: &SortExpression) -> UntypedDataSpecification {
+pub(crate) fn multi_argument_function_update(
+    domain: &[SortExpression],
+    range: &SortExpression,
+) -> UntypedDataSpecification {
     debug_assert!(
         domain.len() > 1,
         "single-argument function updates are generated from the bundled template"
@@ -239,7 +209,11 @@ pub(crate) fn multi_argument_function_update(domain: &[SortExpression], range: &
         range: Box::new(range.clone()),
     }
     .into();
-    let domain_sorts = domain.iter().map(SortExpression::to_string).collect::<Vec<_>>().join(" # ");
+    let domain_sorts = domain
+        .iter()
+        .map(SortExpression::to_string)
+        .collect::<Vec<_>>()
+        .join(" # ");
 
     let xs: Vec<String> = (0..domain.len()).map(|i| format!("x{i}")).collect();
     let ys: Vec<String> = (0..domain.len()).map(|i| format!("y{i}")).collect();
@@ -270,7 +244,11 @@ pub(crate) fn multi_argument_function_update(domain: &[SortExpression], range: &
     let x_lt_y = less(&xs, &ys);
 
     let mut spec = String::new();
-    writeln!(spec, "map @func_update: {function_sort} # {domain_sorts} # {range} -> {function_sort};").unwrap();
+    writeln!(
+        spec,
+        "map @func_update: {function_sort} # {domain_sorts} # {range} -> {function_sort};"
+    )
+    .unwrap();
     writeln!(
         spec,
         "    @func_update_stable: {function_sort} # {domain_sorts} # {range} -> {function_sort};"
@@ -329,7 +307,9 @@ pub(crate) fn multi_argument_function_update(domain: &[SortExpression], range: &
     .unwrap();
 
     UntypedDataSpecification::parse(&spec).unwrap_or_else(|err| {
-        panic!("the generated multi-argument function update for '{domain_sorts} -> {range}' does not parse: {err}\n{spec}")
+        panic!(
+            "the generated multi-argument function update for '{domain_sorts} -> {range}' does not parse: {err}\n{spec}"
+        )
     })
 }
 
@@ -548,7 +528,10 @@ mod tests {
 
         let generated = standard_sort(sort, NumberEncoding::Binary);
         assert!(
-            generated.map_declarations.iter().any(|map| map.identifier == "@func_update"),
+            generated
+                .map_declarations
+                .iter()
+                .any(|map| map.identifier == "@func_update"),
             "the multi-argument function sort should still declare @func_update"
         );
 
