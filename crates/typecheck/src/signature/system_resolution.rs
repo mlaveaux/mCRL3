@@ -13,6 +13,7 @@ use crate::ResolvedSortId;
 use crate::Signature;
 use crate::TypeCheckContext;
 use crate::WellTypedError;
+use crate::is_basic_sort_name;
 use crate::push_overload;
 use crate::query_sort_of_def;
 
@@ -76,10 +77,6 @@ pub(crate) fn resolve_system_signature(
 
     ctx.system_signature = Some(Rc::new(signature));
     Ok(())
-}
-
-fn is_basic_sort_name(name: &str) -> bool {
-    matches!(name, "Bool" | "Pos" | "Nat" | "Int" | "Real")
 }
 
 /// The polymorphic signature of the built-in operators that exist for *every*

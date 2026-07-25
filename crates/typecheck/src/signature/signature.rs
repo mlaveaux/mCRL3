@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::ResolvedSort;
@@ -97,18 +98,20 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
                 return Err(WellTypedError::ConstructorForBasicSort {
                     constructor: decl.identifier.clone(),
                     sort: target_sort(&decl.sort).to_string(),
+                    span: decl.span.clone(),
                 });
             }
             ResolvedSort::Function { .. } => {
                 return Err(WellTypedError::ConstructorForFunctionSort {
                     constructor: decl.identifier.clone(),
                     sort: target_sort(&decl.sort).to_string(),
+                    span: decl.span.clone(),
                 });
             }
             _ => {}
         }
 
-        check_constant_name(&mut constants, ctx, &decl.identifier, id)?;
+        check_constant_name(&mut constants, ctx, &decl.identifier, decl.span.clone(), id)?;
         push_overload(signature.constructors.entry(decl.identifier.clone()).or_default(), id);
     }
 
@@ -128,10 +131,11 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
             return Err(WellTypedError::ConstructorAndMappingConflict {
                 constructor: decl.identifier.clone(),
                 map: decl.identifier.clone(),
+                span: decl.span.clone(),
             });
         }
 
-        check_constant_name(&mut constants, ctx, &decl.identifier, id)?;
+        check_constant_name(&mut constants, ctx, &decl.identifier, decl.span.clone(), id)?;
         push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
     }
 
@@ -146,15 +150,17 @@ fn check_constant_name(
     constants: &mut HashMap<String, ResolvedSortId>,
     ctx: &TypeCheckContext,
     name: &str,
+    span: Span,
     id: ResolvedSortId,
 ) -> Result<(), WellTypedError> {
     if matches!(ctx.sorts.get(id), ResolvedSort::Function { .. }) {
         return Ok(());
     }
     match constants.get(name) {
-        Some(&existing) if existing != id => {
-            Err(WellTypedError::DuplicateConstantDifferentSort { name: name.to_string() })
-        }
+        Some(&existing) if existing != id => Err(WellTypedError::DuplicateConstantDifferentSort {
+            name: name.to_string(),
+            span,
+        }),
         _ => {
             constants.insert(name.to_string(), id);
             Ok(())
@@ -223,7 +229,7 @@ mod tests {
     #[test]
     fn test_constructor_and_mapping_conflict() {
         match typecheck_err("sort D; cons c: D; map c: D;") {
-            WellTypedError::ConstructorAndMappingConflict { constructor, map } => {
+            WellTypedError::ConstructorAndMappingConflict { constructor, map, .. } => {
                 assert_eq!(constructor, "c");
                 assert_eq!(map, "c");
             }
@@ -258,7 +264,7 @@ mod tests {
         // The target of `c` denotes the built-in `Nat` and is rejected, but the
         // error refers to the sort as the user wrote it, not to its expansion.
         match typecheck_err("sort D = Nat; cons c: D;") {
-            WellTypedError::ConstructorForBasicSort { constructor, sort } => {
+            WellTypedError::ConstructorForBasicSort { constructor, sort, .. } => {
                 assert_eq!(constructor, "c");
                 assert_eq!(sort, "D");
             }
@@ -270,7 +276,7 @@ mod tests {
     fn test_constructor_for_function_sort_is_rejected() {
         // The higher-order target is written directly, without alias indirection.
         match typecheck_err("cons c: Bool -> (Nat -> Bool);") {
-            WellTypedError::ConstructorForFunctionSort { constructor, sort } => {
+            WellTypedError::ConstructorForFunctionSort { constructor, sort, .. } => {
                 assert_eq!(constructor, "c");
                 assert_eq!(sort, "(Nat -> Bool)");
             }
@@ -281,7 +287,7 @@ mod tests {
     #[test]
     fn test_constructor_for_alias_of_function_sort_reports_written_name() {
         match typecheck_err("sort A = Nat -> Bool; cons c: Bool -> A;") {
-            WellTypedError::ConstructorForFunctionSort { constructor, sort } => {
+            WellTypedError::ConstructorForFunctionSort { constructor, sort, .. } => {
                 assert_eq!(constructor, "c");
                 assert_eq!(sort, "A");
             }
@@ -295,7 +301,7 @@ mod tests {
         // sort `Bool`; the error reports the written sort `A`, the closest the
         // user came to writing the target.
         match typecheck_err("sort A = Nat -> Bool; cons c: A;") {
-            WellTypedError::ConstructorForBasicSort { constructor, sort } => {
+            WellTypedError::ConstructorForBasicSort { constructor, sort, .. } => {
                 assert_eq!(constructor, "c");
                 assert_eq!(sort, "A");
             }

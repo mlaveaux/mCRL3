@@ -12,8 +12,12 @@ use merc_syntax::visit_sort_expr;
 
 use crate::NumberEncoding;
 use crate::POLYMORPHIC_SIGNATURE;
+use crate::ResolvedSort;
+use crate::ResolvedSortId;
+use crate::TypeCheckContext;
 use crate::WellTypedError;
 use crate::is_supported_binder_sort;
+use crate::lower_data_expressions;
 use crate::standard_sort;
 
 /// Builds the system-defined part of a specification: the Appendix-B
@@ -48,22 +52,134 @@ pub(crate) fn build_system_defined_specification(
     collect_system_sorts_in_spec(spec, &mut worklist, true);
 
     let mut seen: HashSet<SortExpression> = HashSet::new();
+    expand_container_sorts(worklist, &mut seen, encoding, |generated| result.merge(generated));
+
+    result
+}
+
+/// Drains `worklist` to a fixpoint: for every sort popped that has not already
+/// been `seen`, generates its Appendix-B specification and passes it to
+/// `on_generated`, then re-scans the generated content for further container
+/// sorts it in turn depends on (a container is defined in terms of other
+/// containers, e.g. `Set(S)` needs `FSet(S)`) and pushes those too.
+///
+/// Function sorts are not re-collected from generated content (only from the
+/// initial `worklist`): the function-update operators introduce ever-larger
+/// function sorts (`@is_not_an_update: (S -> T) -> Bool`), which would not
+/// terminate here.
+fn expand_container_sorts(
+    mut worklist: Vec<SortExpression>,
+    seen: &mut HashSet<SortExpression>,
+    encoding: NumberEncoding,
+    mut on_generated: impl FnMut(&UntypedDataSpecification),
+) {
     while let Some(sort) = worklist.pop() {
         if !seen.insert(sort.clone()) {
             continue;
         }
 
         let generated = standard_sort(&sort, encoding);
-        // A container is defined in terms of other containers, so re-scan the
-        // generated specification for those. Function sorts are collected from
-        // the user specification only: the function-update operators introduce
-        // ever-larger function sorts (`@is_not_an_update: (S -> T) -> Bool`),
-        // which the user did not ask for and which would not terminate here.
         collect_system_sorts_in_spec(&generated, &mut worklist, false);
-        result.merge(&generated);
+        on_generated(&generated);
+    }
+}
+
+/// Extends `system` with the Appendix-B declarations of every container sort
+/// that is discovered only through Phase-3 inference rather than appearing in
+/// the textual declarations: the element sort of a `List`/`Set`/`Bag`
+/// enumeration literal (`[1, 2]`, `{1, 2}`, `{1: 2}`) is not written down
+/// anywhere — it is entirely a product of its elements' inferred sorts (see
+/// [collect_system_sorts_in_expr]'s doc comment) — so [build_system_defined_specification]'s
+/// syntactic scan misses it whenever the same container sort does not also
+/// occur, spelled out, elsewhere in the specification.
+///
+/// `ctx` must be the context [crate::check_equations] populated: every
+/// container sort reachable from a successfully typed equation's per-node
+/// sorts is a candidate. Which of those `system` already covers is not
+/// recorded anywhere (containers are structural, not named, so `system`
+/// carries no direct list of them), so the syntactic scan is replayed here to
+/// reconstruct that set before diffing against it.
+///
+/// Returns a new specification; `system` itself is left untouched, so calling
+/// this repeatedly (as [crate::DataSpecification::lower_data_specification]
+/// may be) keeps producing the same result from the same inputs.
+pub(crate) fn extend_system_with_inferred_sorts(
+    ctx: &TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    encoding: NumberEncoding,
+) -> UntypedDataSpecification {
+    let mut result = system.clone();
+
+    // Reconstruct the set of container sorts `system` already covers.
+    let mut seen: HashSet<SortExpression> = HashSet::new();
+    let mut covered = Vec::new();
+    collect_system_sorts_in_spec(spec, &mut covered, true);
+    expand_container_sorts(covered, &mut seen, encoding, |_| {});
+
+    // Every container sort that shows up as the inferred sort of some
+    // expression node in a well-typed equation, not already covered above.
+    let mut worklist = Vec::new();
+    for typing in ctx.equation_typing.values().filter_map(|typing| typing.as_ref().ok()) {
+        for &id in &typing.sorts {
+            if matches!(ctx.sorts.get(id), ResolvedSort::Generic { .. })
+                && let Some(sort) = resolved_sort_to_syntax(ctx, spec, system, id)
+            {
+                worklist.push(sort);
+            }
+        }
     }
 
+    // The freshly generated content still carries the raw `Binary`/`Unary`/
+    // `List` nodes the templates are written with (mirroring what
+    // `DataSpecification::from_untyped` does for the syntactically-collected
+    // part); already-lowered content passes through unchanged since lowering
+    // is idempotent.
+    expand_container_sorts(worklist, &mut seen, encoding, |generated| result.merge(generated));
+    lower_data_expressions(&mut result);
     result
+}
+
+/// Converts an inferred sort back into the `merc_syntax` sort-expression form
+/// the Appendix-B templates are written in — the mirror of
+/// `mcrl2_lowering::lower_sort`, but targeting the syntax tree rather than the
+/// aterm schema, since [standard_sort] substitutes into syntax-tree templates.
+/// Returns `None` for [ResolvedSort::Unit] (never a data sort) or a
+/// [ResolvedSort::Def] whose declaration cannot be named (out of range of both
+/// `spec` and `system`, which does not happen for a sort that inference
+/// actually produced).
+fn resolved_sort_to_syntax(
+    ctx: &TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    id: ResolvedSortId,
+) -> Option<SortExpression> {
+    match ctx.sorts.get(id) {
+        ResolvedSort::Unit => None,
+        ResolvedSort::Primitive(sort) => Some(SortExpressionKind::Simple(*sort).into()),
+        ResolvedSort::Generic { op, subsort } => {
+            let sub = resolved_sort_to_syntax(ctx, spec, system, *subsort)?;
+            Some(SortExpressionKind::Complex(*op, Box::new(sub)).into())
+        }
+        ResolvedSort::Function { domain, range } => {
+            let domain = domain
+                .iter()
+                .map(|&sort| resolved_sort_to_syntax(ctx, spec, system, sort))
+                .collect::<Option<Vec<_>>>()?;
+            let range = resolved_sort_to_syntax(ctx, spec, system, *range)?;
+            Some(
+                SortExpressionKind::FlattenedFunction {
+                    domain,
+                    range: Box::new(range),
+                }
+                .into(),
+            )
+        }
+        ResolvedSort::Def(def) => {
+            let name = ctx.sort_name(spec, system, *def)?;
+            Some(SortExpressionKind::Resolved(name.to_string(), *def).into())
+        }
+    }
 }
 
 /// Any user `cons`/`map` declaration whose name collides with a system-defined
@@ -88,6 +204,7 @@ pub(crate) fn check_no_system_function_redeclaration(
         if reserved.contains(decl.identifier.as_str()) {
             return Err(WellTypedError::SystemFunctionRedeclared {
                 name: decl.identifier.clone(),
+                span: decl.span.clone(),
             });
         }
     }
@@ -95,6 +212,7 @@ pub(crate) fn check_no_system_function_redeclaration(
         if reserved.contains(decl.identifier.as_str()) {
             return Err(WellTypedError::SystemFunctionRedeclared {
                 name: decl.identifier.clone(),
+                span: decl.span.clone(),
             });
         }
     }
