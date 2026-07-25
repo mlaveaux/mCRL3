@@ -81,7 +81,7 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
             if let Some(condition) = &mut eqn.condition {
                 hoist_binder_sorts_in_place(&mut hoister, condition);
             }
-            
+
             hoist_binder_sorts_in_place(&mut hoister, &mut eqn.lhs);
             hoist_binder_sorts_in_place(&mut hoister, &mut eqn.rhs);
         }

@@ -31,6 +31,7 @@ use crate::check_equations;
 use crate::check_no_system_function_redeclaration;
 use crate::check_system_specification;
 use crate::desugar_structured_sorts;
+use crate::extend_system_with_inferred_sorts;
 use crate::hoist_anonymous_structs;
 use crate::is_well_typed;
 use crate::lower_data_expressions;
@@ -94,15 +95,17 @@ impl DataSpecification {
         let sorts = resolve_sort_ids(&mut spec)?;
         debug!("typecheck: resolved {} sort name(s)", sorts.len());
 
-        check_aliases(&spec).map_err(|err| {
+        check_aliases(&spec).map_err(|(err, span)| {
             let name = |id: &DefId| sorts.get_by_index(**id).expect("The sort should be declared").clone();
             match err {
                 AliasError::Circular { cycle } => WellTypedError::AliasCycle {
                     sorts: cycle.iter().map(name).collect(),
+                    span,
                 },
-                AliasError::ThroughFunctionSort { sort } => {
-                    WellTypedError::RecursiveAliasThroughFunctionSort { sort: name(&sort) }
-                }
+                AliasError::ThroughFunctionSort { sort } => WellTypedError::RecursiveAliasThroughFunctionSort {
+                    sort: name(&sort),
+                    span,
+                },
             }
         })?;
 
@@ -166,7 +169,7 @@ impl DataSpecification {
         {
             panic!("the generated system-defined specification is malformed: {error}");
         }
-        
+
         debug!(
             "typecheck: built the system-defined specification with {} sort, {} map and {} equation declaration(s)",
             system.sort_declarations.len(),
@@ -299,19 +302,17 @@ impl DataSpecification {
     /// and `merc_explore`.
     ///
     /// Includes the user sort declarations, aliases, constructors, mappings,
-    /// and equations (those whose expression tree is fully supported by
-    /// Phase-4 lowering), followed by all system (Appendix-B) declarations and
-    /// the system equations, which are resolved structurally — empty-container
-    /// and `Number` literals are resolved against their context, so only
-    /// equations that still need full inference (binders, set/bag
-    /// enumerations) are skipped.
+    /// and equations. Call this once after [`Self::from_untyped`] when the
+    /// lowered typed specification is needed.
     ///
-    /// Call this once after [`Self::from_untyped`] when the typed specification
-    /// is needed; it may be called more than once, reading the resolved
-    /// declaration sorts already interned in the [`TypeCheckContext`], so it
-    /// borrows `self` immutably and its result is identical each time.
+    /// Before lowering, the system-defined specification is extended with the
+    /// Appendix-B declarations of any container sort that Phase-3 inference
+    /// discovered only through an enumeration literal (`[1, 2]`, `{1, 2}`,
+    /// `{1: 2}`) rather than a textual declaration — see
+    /// [`extend_system_with_inferred_sorts`].
     pub fn lower_data_specification(&self) -> Mcrl2DataSpecification {
-        lower_data_specification(&self.context, &self.spec, &self.system, self.encoding)
+        let system = extend_system_with_inferred_sorts(&self.context, &self.spec, &self.system, self.encoding);
+        lower_data_specification(&self.context, &self.spec, &system, self.encoding)
     }
 }
 
@@ -454,8 +455,7 @@ mod tests {
     #[test]
     fn test_mcrl2_data_specification_system_constructors_present() {
         // `Bool` always pulls in its system constructors; at least `true`/`false` must appear.
-        let spec =
-            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
+        let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
         let mcrl2 = spec.lower_data_specification();
         assert!(
             mcrl2.constructors().iter().any(|c| c.name() == "true"),
@@ -467,8 +467,7 @@ mod tests {
     fn test_mcrl2_data_specification_system_equations_present() {
         // System Bool equations (e.g. `!true = false`) must appear now that
         // `lower_data_specification` includes structurally-lowerable system equations.
-        let spec =
-            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
+        let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
         let mcrl2 = spec.lower_data_specification();
         // `!true = false` should be among the system Bool equations.
         let found = mcrl2
@@ -503,5 +502,78 @@ mod tests {
             .iter()
             .any(|e| e.lhs().to_string() == "#([])" && e.rhs().to_string() == "@c0");
         assert!(length_empty, "system list equation `#[] = @c0` must be present");
+    }
+
+    #[test]
+    fn test_mcrl2_data_specification_enumeration_literal_container_equations_present() {
+        // `List(Nat)` never occurs as a textual sort here — only as the
+        // element sort of the list-enumeration literal `[1, 2, 3]`, which
+        // `collect_system_sorts_in_spec`'s syntactic scan cannot see (its own
+        // doc comment notes enumeration literals are not syntactically
+        // apparent). Its Appendix-B equations must still be instantiated from
+        // the inferred sort during lowering.
+        let spec =
+            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool; eqn f = 1 in [2, 3];").unwrap())
+                .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        let in_empty = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "in(d, [])" && e.rhs().to_string() == "false");
+        assert!(
+            in_empty,
+            "system list equation `in(d, []) = false` for List(Nat) must be present: {:#?}",
+            mcrl2.equations().iter().map(|e| e.to_string()).collect::<Vec<_>>()
+        );
+
+        // The `|>` (cons) constructor for `List(Nat)` must also be declared,
+        // not just its equations.
+        assert!(
+            mcrl2.constructors().iter().any(|c| c.name() == "|>"),
+            "the List(Nat) cons constructor must be present"
+        );
+    }
+
+    #[test]
+    fn test_mcrl2_data_specification_set_enumeration_literal_container_equations_present() {
+        // As above, but for a set-enumeration literal (`FSet(Nat)`, never
+        // declared textually).
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("map n: Nat; eqn n = #{1, 2, 3};").unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        let in_empty = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "in(d, {})" && e.rhs().to_string() == "false");
+        assert!(
+            in_empty,
+            "system fset equation `in(d, {{}}) = false` for FSet(Nat) must be present: {:#?}",
+            mcrl2.equations().iter().map(|e| e.to_string()).collect::<Vec<_>>()
+        );
+        assert!(
+            mcrl2.constructors().iter().any(|c| c.name() == "@fset_insert"),
+            "the FSet(Nat) @fset_insert constructor must be present"
+        );
+    }
+
+    #[test]
+    fn test_mcrl2_data_specification_bag_enumeration_literal_container_equations_present() {
+        // As above, but for a bag-enumeration literal (`FBag(Nat)`, never
+        // declared textually).
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("map n: Nat; eqn n = #{1: 2, 3: 4};").unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        assert!(
+            mcrl2.mappings().iter().any(|m| m.name() == "@fbag_cinsert"),
+            "the FBag(Nat) @fbag_cinsert mapping must be present: {:#?}",
+            mcrl2.mappings().iter().map(|m| m.name().to_string()).collect::<Vec<_>>()
+        );
     }
 }

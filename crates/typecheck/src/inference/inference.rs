@@ -18,6 +18,7 @@ use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_utilities::TagIndex;
 
+use crate::DisplaySortContext;
 use crate::InferSort;
 use crate::InferSortId;
 use crate::POLYMORPHIC_SIGNATURE;
@@ -25,10 +26,10 @@ use crate::ResolvedSort;
 use crate::ResolvedSortId;
 use crate::Signature;
 use crate::SortInterner;
-use crate::DisplaySortContext;
 use crate::TypeCheckContext;
 use crate::Unifier;
 use crate::is_lowered;
+use crate::is_numeric_family;
 use crate::is_supported_binder_sort;
 use crate::number_generality;
 use crate::query_sort_of_equation_var;
@@ -367,7 +368,10 @@ fn infer_equation(
                         );
                     }
                     for (&sort, text) in sorts.iter().zip(&expr_texts) {
-                        trace!("inference:   '{text}': {}", DisplaySortContext::new(ctx, spec, system, sort));
+                        trace!(
+                            "inference:   '{text}': {}",
+                            DisplaySortContext::new(ctx, spec, system, sort)
+                        );
                     }
                 }
                 Ok(EquationTyping { sorts, names })
@@ -548,12 +552,6 @@ enum Constraint {
     Comprehension(Comprehension),
     Numeric(Numeric),
     Join(Join),
-}
-
-/// Names resolved as arithmetic promotions ([Numeric]) rather than general
-/// overload disjunction, when the name has no user-declared overload.
-fn is_numeric_family(name: &str) -> bool {
-    matches!(name, "+" | "-" | "*" | "/" | "div" | "mod" | "exp" | "max" | "min")
 }
 
 /// Why constraint generation stopped early.
@@ -1016,7 +1014,6 @@ impl<'a> ConstraintGenerator<'a> {
             _ => domain.push(self.template_node(sort, variables)),
         }
     }
-
 }
 
 /// A candidate solution: the measure ranks it against other leaves, and the

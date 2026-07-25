@@ -48,6 +48,7 @@ pub(crate) fn resolve_sort_ids(spec: &mut UntypedDataSpecification) -> Result<In
         if !sorts.insert(sort.identifier.clone()).1 {
             return Err(WellTypedError::DuplicateSortDeclaration {
                 sort: sort.identifier.clone(),
+                span: sort.span.clone(),
             });
         }
     }
@@ -108,7 +109,7 @@ where
         for var in &mut equation.variables {
             var.sort = f(&var.sort)?;
         }
-        
+
         for eqn in &mut equation.equations {
             if let Some(condition) = &mut eqn.condition {
                 apply_sorts_in_data_expr(condition, &mut f)?;
@@ -159,7 +160,10 @@ fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Resu
                 return Ok(Some(SortExpressionKind::Resolved(name.clone(), DefId::new(*id)).into()));
             }
 
-            return Err(WellTypedError::UndefinedSort { sort: name.clone() });
+            return Err(WellTypedError::UndefinedSort {
+                sort: name.clone(),
+                span: expr.span.clone(),
+            });
         }
 
         Ok(None)
@@ -203,7 +207,7 @@ mod tests {
         .unwrap();
 
         match DataSpecification::from_untyped(spec) {
-            Err(WellTypedError::DuplicateSortDeclaration { sort }) if sort == "D" => {}
+            Err(WellTypedError::DuplicateSortDeclaration { sort, .. }) if sort == "D" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
@@ -246,7 +250,7 @@ mod tests {
     fn test_undeclared_binder_sort_is_rejected() {
         let spec = UntypedDataSpecification::parse("map s: Set(Nat); eqn s = { n: Undeclared | true };").unwrap();
         match DataSpecification::from_untyped(spec) {
-            Err(WellTypedError::UndefinedSort { sort }) if sort == "Undeclared" => {}
+            Err(WellTypedError::UndefinedSort { sort, .. }) if sort == "Undeclared" => {}
             Err(other) => panic!("unexpected error {other:?}"),
             _ => panic!("expected from_untyped to fail"),
         }

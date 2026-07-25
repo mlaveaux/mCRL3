@@ -160,6 +160,16 @@ impl<K: Eq + Hash, V> QueryCache<K, V> {
         }
     }
 
+    /// Iterates the values of every entry that has finished computing. Used
+    /// for read-only sweeps over the whole cache after the pipeline has run,
+    /// rather than looking up one key at a time.
+    pub(crate) fn values(&self) -> impl Iterator<Item = &V> {
+        self.entries.values().filter_map(|entry| match entry {
+            QueryEntry::Done(value) => Some(value),
+            QueryEntry::InProgress => None,
+        })
+    }
+
     /// Stores the computed value for a key previously locked by
     /// [QueryCache::get_or_lock] and returns a reference to it.
     pub(crate) fn unlock(&mut self, key: K, value: V) -> &V {
