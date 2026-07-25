@@ -517,7 +517,7 @@ impl Lowering<'_> {
                 Some(numeric_coerce(term, *from_sort, *to_sort, self.encoding))
             }
             (ResolvedSort::Generic { op, subsort }, ResolvedSort::Generic { .. }) => {
-                let element = lower_sort(self.ctx, self.spec, self.system,*subsort);
+                let element = lower_sort(self.ctx, self.spec, self.system, *subsort);
                 Some(container_coerce(term, *op, element))
             }
             _ => None,
@@ -527,11 +527,11 @@ impl Lowering<'_> {
     fn lower_id(&self, id: ExprId, name: &str, sort: ResolvedSortId) -> Option<DataExpression> {
         match self.names.get(&id)? {
             NameTarget::Variable => {
-                Some(DataVariable::with_sort(name, lower_sort(self.ctx, self.spec, self.system,sort).copy()).into())
+                Some(DataVariable::with_sort(name, lower_sort(self.ctx, self.spec, self.system, sort).copy()).into())
             }
-            NameTarget::Op { .. } | NameTarget::Builtin => {
-                Some(DataFunctionSymbol::with_sort(name, lower_sort(self.ctx, self.spec, self.system,sort).copy()).into())
-            }
+            NameTarget::Op { .. } | NameTarget::Builtin => Some(
+                DataFunctionSymbol::with_sort(name, lower_sort(self.ctx, self.spec, self.system, sort).copy()).into(),
+            ),
         }
     }
 
@@ -587,7 +587,7 @@ impl Lowering<'_> {
         else {
             unreachable!("empty container always infers to a Generic sort")
         };
-        let element = lower_sort(self.ctx, self.spec, self.system,*element_id);
+        let element = lower_sort(self.ctx, self.spec, self.system, *element_id);
         let container: DataSortExpression = SortCons::new(container_kind(op), element).into();
         let name = match op {
             ComplexSort::List => "[]",
@@ -607,7 +607,7 @@ impl Lowering<'_> {
             unreachable!("Set literal always infers to FSet(S)")
         };
         let element_id = *element_id;
-        let element = lower_sort(self.ctx, self.spec, self.system,element_id);
+        let element = lower_sort(self.ctx, self.spec, self.system, element_id);
         let fset: DataSortExpression = SortCons::new(ContainerSortKind::FSet, element.clone()).into();
         let fset_insert = function_symbol("@fset_insert", &[element.clone(), fset.clone()], fset.clone());
 
@@ -637,7 +637,7 @@ impl Lowering<'_> {
         };
         let element_id = *element_id;
         let nat_id = self.ctx.sorts.nat_sort();
-        let element = lower_sort(self.ctx, self.spec, self.system,element_id);
+        let element = lower_sort(self.ctx, self.spec, self.system, element_id);
         let fbag: DataSortExpression = SortCons::new(ContainerSortKind::FBag, element.clone()).into();
         let fbag_cinsert = function_symbol(
             "@fbag_cinsert",
@@ -707,7 +707,7 @@ impl Lowering<'_> {
         };
         let var = DataVariable::with_sort(
             variable.identifier.as_str(),
-            lower_sort(self.ctx, self.spec, self.system,element_id).copy(),
+            lower_sort(self.ctx, self.spec, self.system, element_id).copy(),
         );
         let body = self.lower(predicate)?;
         Some(DataAbstraction::new(binder_type, &[var], body).into())
@@ -720,7 +720,7 @@ impl Lowering<'_> {
             let assignment_term = self.lower(&assignment.expr)?;
             let var = DataVariable::with_sort(
                 assignment.identifier.as_str(),
-                lower_sort(self.ctx, self.spec, self.system,assignment_sort).copy(),
+                lower_sort(self.ctx, self.spec, self.system, assignment_sort).copy(),
             );
             whr_decls.push(DataWhrDecl::new(var, assignment_term));
         }
@@ -1339,7 +1339,16 @@ pub(crate) fn lower_data_specification(
                 .expect("equation typings are all resolved during from_untyped")
                 .as_ref()
                 .expect("a well-typed specification has no equation inference errors");
-            let lowered = lower_equation(ctx, spec, system, typing, eqn.condition.as_ref(), &eqn.lhs, &eqn.rhs, encoding);
+            let lowered = lower_equation(
+                ctx,
+                spec,
+                system,
+                typing,
+                eqn.condition.as_ref(),
+                &eqn.lhs,
+                &eqn.rhs,
+                encoding,
+            );
             // Phase-3 inference already accepted this equation (it has a
             // `typing`), so a `None` here means `Lowering` is missing a
             // construct Phase-3 supports — an internal bug, not a legitimate

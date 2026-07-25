@@ -1,3 +1,4 @@
+mod builtins;
 mod data_specification;
 mod inference;
 mod ir;
@@ -8,6 +9,7 @@ mod signature;
 // The internal passes are flattened to the crate root for convenience; their
 // exact module is not part of the interface. Only the items below marked `pub`
 // are exposed outside the crate.
+pub(crate) use builtins::*;
 pub(crate) use data_specification::*;
 pub(crate) use inference::*;
 #[allow(unused_imports)]

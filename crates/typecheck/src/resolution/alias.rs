@@ -6,6 +6,7 @@ use merc_syntax::DefId;
 use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::try_visit_sort_expr_with;
 
@@ -36,7 +37,7 @@ pub(crate) enum AliasError {
 ///   container is allowed.
 ///
 /// Requires that all sort names in the specification have been resolved.
-pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), AliasError> {
+pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), (AliasError, Span)> {
     let mut alias_map: HashMap<DefId, &SortExpression> = HashMap::new();
     for sort_decl in &spec.sort_declarations {
         if let Some(alias) = &sort_decl.expr {
@@ -49,10 +50,11 @@ pub(crate) fn check_aliases(spec: &UntypedDataSpecification) -> Result<(), Alias
         if let Some(alias) = &sort_decl.expr {
             let lhs = sort_decl.id.expect("Name must have been resolved");
             let mut visited = Vec::new();
-            check_function_sort_loop(lhs, alias, &mut visited, false, &alias_map)?;
+            check_function_sort_loop(lhs, alias, &mut visited, false, &alias_map)
+                .map_err(|err| (err, sort_decl.span.clone()))?;
             debug_assert!(visited.is_empty());
 
-            check_circularity(lhs, alias, &mut visited, &alias_map)?;
+            check_circularity(lhs, alias, &mut visited, &alias_map).map_err(|err| (err, sort_decl.span.clone()))?;
             debug_assert!(visited.is_empty());
         }
     }
@@ -152,7 +154,7 @@ mod tests {
             )
             .unwrap(),
         ) {
-            Err(WellTypedError::AliasCycle { sorts })
+            Err(WellTypedError::AliasCycle { sorts, .. })
                 if sorts == vec!["S".to_string(), "T".to_string(), "U".to_string()] => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
@@ -162,7 +164,7 @@ mod tests {
     #[test]
     fn test_alias_self_loop_through_container() {
         match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = List(S);").unwrap()) {
-            Err(WellTypedError::AliasCycle { sorts }) if sorts == vec!["S".to_string()] => {}
+            Err(WellTypedError::AliasCycle { sorts, .. }) if sorts == vec!["S".to_string()] => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
@@ -171,7 +173,7 @@ mod tests {
     #[test]
     fn test_alias_cycle_through_function_sort() {
         match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = List(S -> Bool);").unwrap()) {
-            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
@@ -197,7 +199,7 @@ mod tests {
     fn test_recursive_struct_through_function_sort() {
         match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = struct f(S -> Bool);").unwrap())
         {
-            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
@@ -206,7 +208,7 @@ mod tests {
     #[test]
     fn test_recursive_struct_through_set() {
         match DataSpecification::from_untyped(UntypedDataSpecification::parse("sort S = struct f(Set(S));").unwrap()) {
-            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
@@ -225,7 +227,7 @@ mod tests {
         match DataSpecification::from_untyped(
             UntypedDataSpecification::parse("sort S = struct f(Bool -> Set(S));").unwrap(),
         ) {
-            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort }) if sort == "S" => {}
+            Err(WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. }) if sort == "S" => {}
             Err(other) => panic!("Unexpected error {:?}", other),
             _ => panic!("Expected from_untyped to fail"),
         }
