@@ -64,6 +64,52 @@ impl TypeCheckContext {
 }
 
 impl TypeCheckContext {
+    /// Returns the memoized value for `key` in the cache selected by `cache`,
+    /// computing and storing it via `compute` on a miss. Re-entering `key`
+    /// from within `compute` (a query depending on itself) fails with
+    /// [CyclicQuery] instead of recursing unboundedly.
+    ///
+    /// `cache` projects `self` down to the relevant [QueryCache] and is
+    /// re-applied on each access rather than borrowed once, so that `compute`
+    /// can use `self` freely in between — including, recursively, other
+    /// queries on `self`. Holding the projected `&mut QueryCache` across that
+    /// call would alias `self` and not compile.
+    pub(crate) fn get_or_compute<K, V>(
+        &mut self,
+        cache: impl Fn(&mut Self) -> &mut QueryCache<K, V>,
+        key: K,
+        compute: impl FnOnce(&mut Self) -> V,
+    ) -> Result<V, CyclicQuery>
+    where
+        K: Eq + Hash + Clone,
+        V: Clone,
+    {
+        match cache(self).entries.entry(key.clone()) {
+            Entry::Occupied(entry) => {
+                return match entry.get() {
+                    QueryEntry::Done(value) => Ok(value.clone()),
+                    QueryEntry::InProgress => Err(CyclicQuery),
+                };
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(QueryEntry::InProgress);
+            }
+        }
+
+        let value = compute(self);
+        match cache(self).entries.entry(key) {
+            Entry::Occupied(mut entry) => {
+                debug_assert!(
+                    matches!(entry.get(), QueryEntry::InProgress),
+                    "the key was locked above and nothing else unlocks it"
+                );
+                entry.insert(QueryEntry::Done(value.clone()));
+            }
+            Entry::Vacant(_) => unreachable!("the key was locked above"),
+        }
+        Ok(value)
+    }
+
     /// The declared name of the sort that [DefId] `def` resolves to, whether a
     /// user sort (looked up in `spec`) or a system-internal one such as
     /// `@NatPair` (looked up in `system`), or `None` when it is out of range of
@@ -107,17 +153,18 @@ impl Default for TypeCheckContext {
 #[error("cyclic query dependency")]
 pub(crate) struct CyclicQuery;
 
-/// A memoization table for a single query.
+/// A memoization table for a single query, populated through
+/// [TypeCheckContext::get_or_compute].
 ///
-/// A query first calls [QueryCache::get_or_lock]; a `Some` result is a cache
-/// hit and a `None` result locks the key, obliging the caller to compute the
-/// value and store it with [QueryCache::unlock]. Re-entering a locked key
-/// means the query depends on itself and fails with [CyclicQuery].
+/// A query is looked up by key; a miss locks the key (marking it
+/// `InProgress`) before computing its value, so a query that transitively
+/// depends on itself re-enters a locked key and fails with [CyclicQuery]
+/// instead of recursing unboundedly.
 ///
-/// A locked key must always be unlocked, so fallible queries must store their
-/// failure as part of the value (`V = Result<T, E>`) rather than returning
-/// early; otherwise the key stays locked and later lookups misreport the
-/// failure as a [CyclicQuery].
+/// A locked key must always resolve to [QueryEntry::Done], so fallible
+/// queries must store their failure as part of the value (`V = Result<T, E>`)
+/// rather than returning early; otherwise the key stays locked and later
+/// lookups misreport the failure as a [CyclicQuery].
 pub(crate) struct QueryCache<K, V> {
     entries: HashMap<K, QueryEntry<V>>,
 }
@@ -131,22 +178,6 @@ impl<K: Eq + Hash, V> QueryCache<K, V> {
     pub(crate) fn new() -> Self {
         QueryCache {
             entries: HashMap::new(),
-        }
-    }
-
-    /// Returns the cached value for `key`, or locks the key when it has not
-    /// been computed yet. After a `Ok(None)` the caller must call
-    /// [QueryCache::unlock] with the computed value.
-    pub(crate) fn get_or_lock(&mut self, key: K) -> Result<Option<&V>, CyclicQuery> {
-        match self.entries.entry(key) {
-            Entry::Occupied(entry) => match entry.into_mut() {
-                QueryEntry::Done(value) => Ok(Some(value)),
-                QueryEntry::InProgress => Err(CyclicQuery),
-            },
-            Entry::Vacant(entry) => {
-                entry.insert(QueryEntry::InProgress);
-                Ok(None)
-            }
         }
     }
 
@@ -169,25 +200,6 @@ impl<K: Eq + Hash, V> QueryCache<K, V> {
             QueryEntry::InProgress => None,
         })
     }
-
-    /// Stores the computed value for a key previously locked by
-    /// [QueryCache::get_or_lock] and returns a reference to it.
-    pub(crate) fn unlock(&mut self, key: K, value: V) -> &V {
-        match self.entries.entry(key) {
-            Entry::Occupied(mut entry) => {
-                assert!(
-                    matches!(entry.get(), QueryEntry::InProgress),
-                    "unlock called on a key that was already computed"
-                );
-                entry.insert(QueryEntry::Done(value));
-                match entry.into_mut() {
-                    QueryEntry::Done(value) => value,
-                    QueryEntry::InProgress => unreachable!("the entry was just set to Done"),
-                }
-            }
-            Entry::Vacant(_) => panic!("unlock called on a key that was never locked"),
-        }
-    }
 }
 
 impl<K: Eq + Hash, V> Default for QueryCache<K, V> {
@@ -198,30 +210,60 @@ impl<K: Eq + Hash, V> Default for QueryCache<K, V> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
+    use merc_syntax::DefId;
+
     use crate::CyclicQuery;
-    use crate::QueryCache;
+    use crate::ResolvedSortId;
+    use crate::TypeCheckContext;
 
     #[test]
-    fn test_query_cache_miss_then_hit() {
-        let mut cache: QueryCache<u32, String> = QueryCache::new();
+    fn test_get_or_compute_memoizes() {
+        let mut ctx = TypeCheckContext::new();
+        let key = DefId::new(1);
+        let calls = Cell::new(0);
 
-        assert_eq!(cache.get_or_lock(1), Ok(None));
-        assert_eq!(cache.unlock(1, "one".to_string()), "one");
-        assert_eq!(cache.get_or_lock(1), Ok(Some(&"one".to_string())));
+        let compute = |_: &mut TypeCheckContext| {
+            calls.set(calls.get() + 1);
+            ResolvedSortId::new(7)
+        };
+        let first = ctx
+            .get_or_compute(|ctx| &mut ctx.sort_of_def, key, compute)
+            .expect("no cyclic dependency");
+        let second = ctx
+            .get_or_compute(|ctx| &mut ctx.sort_of_def, key, compute)
+            .expect("no cyclic dependency");
+
+        assert_eq!(first, ResolvedSortId::new(7));
+        assert_eq!(second, ResolvedSortId::new(7));
+        assert_eq!(
+            calls.get(),
+            1,
+            "the second lookup must hit the cache instead of recomputing"
+        );
     }
 
     #[test]
-    fn test_query_cache_detects_cycle() {
-        let mut cache: QueryCache<u32, String> = QueryCache::new();
+    fn test_get_or_compute_detects_cycle() {
+        let mut ctx = TypeCheckContext::new();
+        let key = DefId::new(1);
+        let mut inner_result = None;
 
-        assert_eq!(cache.get_or_lock(1), Ok(None));
-        assert_eq!(cache.get_or_lock(1), Err(CyclicQuery));
-    }
+        ctx.get_or_compute(
+            |ctx| &mut ctx.sort_of_def,
+            key,
+            |ctx| {
+                inner_result = Some(ctx.get_or_compute(|ctx| &mut ctx.sort_of_def, key, |_| ResolvedSortId::new(0)));
+                ResolvedSortId::new(1)
+            },
+        )
+        .expect("the outer query itself does not depend on itself");
 
-    #[test]
-    #[should_panic(expected = "never locked")]
-    fn test_query_cache_unlock_without_lock_panics() {
-        let mut cache: QueryCache<u32, String> = QueryCache::new();
-        cache.unlock(1, "one".to_string());
+        assert_eq!(
+            inner_result,
+            Some(Err(CyclicQuery)),
+            "re-entering the same key from within its own computation is a cycle"
+        );
     }
 }

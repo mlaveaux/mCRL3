@@ -21,17 +21,12 @@ pub(crate) fn query_sort_of_constructor(
     spec: &UntypedDataSpecification,
     id: ConstructorId,
 ) -> ResolvedSortId {
-    match ctx
-        .sort_of_constructor
-        .get_or_lock(id)
-        .expect("constructor sort has no cyclic dependency")
-    {
-        Some(&sort) => sort,
-        None => {
-            let sort = resolve_sort(ctx, spec, &spec.constructor_declarations[id].sort);
-            *ctx.sort_of_constructor.unlock(id, sort)
-        }
-    }
+    ctx.get_or_compute(
+        |ctx| &mut ctx.sort_of_constructor,
+        id,
+        |ctx| resolve_sort(ctx, spec, &spec.constructor_declarations[id].sort),
+    )
+    .expect("constructor sort has no cyclic dependency")
 }
 
 /// Returns the resolved sort of the map with the given [MapId], memoized on
@@ -45,17 +40,12 @@ pub(crate) fn query_sort_of_map(
     spec: &UntypedDataSpecification,
     id: MapId,
 ) -> ResolvedSortId {
-    match ctx
-        .sort_of_map
-        .get_or_lock(id)
-        .expect("map sort has no cyclic dependency")
-    {
-        Some(&sort) => sort,
-        None => {
-            let sort = resolve_sort(ctx, spec, &spec.map_declarations[id].sort);
-            *ctx.sort_of_map.unlock(id, sort)
-        }
-    }
+    ctx.get_or_compute(
+        |ctx| &mut ctx.sort_of_map,
+        id,
+        |ctx| resolve_sort(ctx, spec, &spec.map_declarations[id].sort),
+    )
+    .expect("map sort has no cyclic dependency")
 }
 
 /// Returns the resolved sort of the `var_id`-th variable in the equation
@@ -71,21 +61,18 @@ pub(crate) fn query_sort_of_equation_var(
     eqn_spec_id: EqnSpecId,
     var_id: EqnVarId,
 ) -> ResolvedSortId {
-    match ctx
-        .sort_of_equation_var
-        .get_or_lock((eqn_spec_id, var_id))
-        .expect("equation variable sort has no cyclic dependency")
-    {
-        Some(&sort) => sort,
-        None => {
-            let sort = resolve_sort(
+    ctx.get_or_compute(
+        |ctx| &mut ctx.sort_of_equation_var,
+        (eqn_spec_id, var_id),
+        |ctx| {
+            resolve_sort(
                 ctx,
                 spec,
                 &spec.equation_declarations[eqn_spec_id].variables[var_id].sort,
-            );
-            *ctx.sort_of_equation_var.unlock((eqn_spec_id, var_id), sort)
-        }
-    }
+            )
+        },
+    )
+    .expect("equation variable sort has no cyclic dependency")
 }
 
 ///
@@ -164,20 +151,15 @@ pub(crate) fn query_sort_of_def(
         "DefId {def:?} does not originate from name resolution of this specification"
     );
 
-    match ctx
-        .sort_of_def
-        .get_or_lock(def)
-        .expect("check_aliases rejected cyclic aliases")
-    {
-        Some(id) => *id,
-        None => {
-            let id = match &spec.sort_declarations[*def].expr {
-                None => ctx.sorts.def(def),
-                Some(expr) => resolve_sort(ctx, spec, expr),
-            };
-            *ctx.sort_of_def.unlock(def, id)
-        }
-    }
+    ctx.get_or_compute(
+        |ctx| &mut ctx.sort_of_def,
+        def,
+        |ctx| match &spec.sort_declarations[*def].expr {
+            None => ctx.sorts.def(def),
+            Some(expr) => resolve_sort(ctx, spec, expr),
+        },
+    )
+    .expect("check_aliases rejected cyclic aliases")
 }
 
 #[cfg(test)]
@@ -290,7 +272,7 @@ mod tests {
         let mut ctx = TypeCheckContext::new();
         let first = query_sort_of_def(&mut ctx, spec.data_specification(), def);
         assert_eq!(first, mapping(&spec, 0));
-        assert_eq!(ctx.sort_of_def.get_or_lock(def), Ok(Some(&first)));
+        assert_eq!(ctx.sort_of_def.get(&def), Some(&first));
         assert_eq!(query_sort_of_def(&mut ctx, spec.data_specification(), def), first);
     }
 }

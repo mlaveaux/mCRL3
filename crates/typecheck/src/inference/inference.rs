@@ -147,17 +147,12 @@ pub(crate) fn query_equation_typing(
         "equation typing key {key:?} must index an equation of the specification"
     );
 
-    match ctx
-        .equation_typing
-        .get_or_lock(key)
-        .expect("equation typing does not depend on other equations")
-    {
-        Some(result) => result.clone(),
-        None => {
-            let result = infer_equation(ctx, spec, system, eqn_spec_id, equation_id).map(Rc::new);
-            ctx.equation_typing.unlock(key, result).clone()
-        }
-    }
+    ctx.get_or_compute(
+        |ctx| &mut ctx.equation_typing,
+        key,
+        |ctx| infer_equation(ctx, spec, system, eqn_spec_id, equation_id).map(Rc::new),
+    )
+    .expect("equation typing does not depend on other equations")
 }
 
 /// Infers and validates the sort of every user equation, populating the
