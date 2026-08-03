@@ -14,21 +14,22 @@
 //! `perturbation`/`distance`/`formula` is Milestone C and not yet
 //! implemented, so specs relying on them are exercised only up to lowering.
 
+use merc_stark::IrProgram;
+use merc_stark::StarkSpecification;
 use merc_stark::UntypedStarkSpecification;
 use merc_stark::eval::RecordingObserver;
 use merc_stark::eval::Simulation;
-use merc_stark::lower;
 use test_case::test_case;
 
 #[test_case(include_str!("../../../examples/stark/random_walk.stark") ; "random_walk.stark")]
 #[test_case(include_str!("../../../examples/stark/multiscler.stark") ; "multiscler.stark")]
 #[test_case(include_str!("../../../examples/stark/polistil_race.stark") ; "polistil_race.stark")]
 fn runs_fifty_steps_without_erroring(source: &str) {
-    let spec = UntypedStarkSpecification::parse(source)
-        .unwrap_or_else(|e| panic!("failed to parse: {e}"))
-        .check()
-        .unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
-    let program = lower(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)));
+    let spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("failed to parse: {e}"));
+
+    let spec =
+        StarkSpecification::from_untyped(spec).unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
+    let program = IrProgram::from_spec(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)));
 
     let mut simulation = Simulation::new(&program, 0).unwrap_or_else(|e| panic!("failed to initialise: {e}"));
     let mut observer = RecordingObserver::default();
@@ -42,11 +43,10 @@ fn runs_fifty_steps_without_erroring(source: &str) {
 #[test]
 fn same_seed_reproduces_the_same_trajectory() {
     let source = include_str!("../../../examples/stark/random_walk.stark");
-    let spec = UntypedStarkSpecification::parse(source)
-        .expect("should parse")
-        .check()
-        .expect("should check");
-    let program = lower(&spec).expect("should lower");
+    let spec = UntypedStarkSpecification::parse(source).expect("should parse");
+
+    let spec = StarkSpecification::from_untyped(spec).expect("should check");
+    let program = IrProgram::from_spec(&spec).expect("should lower");
 
     let mut a = Simulation::new(&program, 42).expect("should initialise");
     let mut observer_a = RecordingObserver::default();

@@ -23,8 +23,8 @@
  *
  * The original's context/perturbation sequence (`p_cont_seq`) is a chain of
  * zero-delay atomic perturbations composed
- * with `SequentialPerturbation`, plus one step of `NonePerturbation` (a
- * no-op) and one single-iteration repeat of `p5` (apply once, same as `p5`
+ * in sequence, plus one no-op step and one single-iteration repeat of `p5`
+ * (apply once, same as `p5`
  * alone) — ported directly via this grammar's `;` sequencing and `nil`
  * primary.
  *

@@ -1,4 +1,8 @@
 #![doc = include_str!("../README.md")]
+// The crate documents its private items (`cargo doc --document-private-items`),
+// so the design-rationale module docs may point at the private helpers and
+// fields they describe.
+#![allow(rustdoc::private_intra_doc_links)]
 
 mod ast;
 mod consume;
@@ -14,13 +18,11 @@ mod typecheck;
 mod types;
 pub mod value;
 
-pub use ast::*;
-pub use consume::*;
-pub use diagnostics::*;
-pub use lower::lower;
-pub use parse::*;
-pub use precedence::*;
-pub use resolve::*;
-pub use specification::*;
-pub use typecheck::*;
-pub use types::*;
+pub(crate) use parse::*;
+
+pub use ast::DefId;
+pub use ast::UntypedStarkSpecification;
+pub use diagnostics::Diagnostics;
+pub use ir::IrProgram;
+pub use resolve::DefKind;
+pub use specification::StarkSpecification;

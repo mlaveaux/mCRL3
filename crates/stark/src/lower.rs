@@ -1,41 +1,3 @@
-//! Lowers a checked [StarkSpecification] to an [IrProgram]: expression,
-//! function, global, variable and penalty lowering, controller and
-//! environment lowering, and perturbation, distance and formula lowering.
-//!
-//! [lower]'s `Result` return type is kept even though every construct in the
-//! grammar now lowers successfully (nothing in this pass currently produces
-//! an `Err`): it's the seam a future not-yet-implemented construct would
-//! reuse (`DiagnosticKind::NotYetSupported` exists for exactly that), not a
-//! sign that failure is possible today.
-//!
-//! Perturbations, distances and ROBTL formulas lower the same way
-//! expressions do: each top-level `perturbation`/
-//! `distance`/`formula name = ..;` declaration's `Reference(DefRef)` to
-//! another declaration of the same kind is resolved to that declaration's
-//! root `*Id` at lowering time (`def_perturbations`/`def_distances`/
-//! `def_formulas`, mirroring `def_functions`) — no name lookups survive into
-//! the IR here either. `resolve.rs` declares each of these *after* its own
-//! body resolves (like functions, constants, and everything else that can be
-//! referenced by name), so a reference can only ever name something already
-//! lowered — the same no-forward-references property that makes
-//! `def_functions`' "callee already lowered" invariant sound applies here
-//! unchanged.
-//!
-//! One deliberate deviation from the plan's stated order ("Globals,
-//! Variables, Functions"): a variable's initializer may call a function
-//! declared earlier in the source (`resolve.rs` resolves functions *before*
-//! variables for exactly this reason), so this pass lowers functions
-//! *before* variables — a function's [FunctionId] and return type must exist
-//! before anything that calls it can be lowered. Constants and parameters
-//! can never call a function (they resolve before functions do), so globals
-//! keep their place first.
-//!
-//! Because `spec` only exists if resolution and type checking both
-//! succeeded, every `DefRef::id`/`StateRef::id`/`Binding` is `Some` and every
-//! `DefId` is typed — violations are asserted (`.expect`/`debug_assert!`)
-//! rather than diagnosed, mirroring `resolve.rs`'s and `typecheck.rs`'s own
-//! contracts.
-
 use std::collections::HashMap;
 
 use log::debug;
@@ -102,7 +64,7 @@ use crate::value::Value;
 /// The `Result` exists for a not-yet-implemented-construct error class (see
 /// this module's doc comment) — currently always `Ok`, since every construct
 /// the grammar supports lowers.
-pub fn lower(spec: &StarkSpecification) -> Result<IrProgram, Diagnostics> {
+pub(crate) fn lower(spec: &StarkSpecification) -> Result<IrProgram, Diagnostics> {
     let mut lowerer = Lowerer::new(spec);
 
     lowerer.allocate_variable_slots();
@@ -119,8 +81,8 @@ pub fn lower(spec: &StarkSpecification) -> Result<IrProgram, Diagnostics> {
 
     debug!(
         "lowered {} expression(s), {} statement(s), {} command(s), {} slot(s), {} global(s), \
-         {} variable(s), {} function(s), {} component(s)/{} state(s), {} penalty/-ies, \
-         {} perturbation(s), {} distance(s), {} formula(s); {} diagnostic(s)",
+        {} variable(s), {} function(s), {} component(s)/{} state(s), {} penalty/-ies, \
+        {} perturbation(s), {} distance(s), {} formula(s); {} diagnostic(s)",
         lowerer.exprs.len(),
         lowerer.stmts.len(),
         lowerer.commands.len(),
@@ -169,13 +131,29 @@ pub fn lower(spec: &StarkSpecification) -> Result<IrProgram, Diagnostics> {
     lowerer.diagnostics.into_result(program)
 }
 
-struct Lowerer<'a> {
+/// [lower]'s `Result` return type is kept even though every construct in the
+/// grammar now lowers successfully
+///
+/// One deliberate deviation from the plan's stated order ("Globals,
+/// Variables, Functions"): a variable's initializer may call a function
+/// declared earlier in the source (`resolve.rs` resolves functions *before*
+/// variables for exactly this reason), so this pass lowers functions
+/// *before* variables — a function's [FunctionId] and return type must exist
+/// before anything that calls it can be lowered. Constants and parameters
+/// can never call a function (they resolve before functions do), so globals
+/// keep their place first.
+///
+/// Because `spec` only exists if resolution and type checking both
+/// succeeded, every `DefRef::id`/`StateRef::id`/`Binding` is `Some` and every
+/// `DefId` is typed — violations are asserted (`.expect`/`debug_assert!`)
+/// rather than diagnosed, mirroring `resolve.rs`'s and `typecheck.rs`'s own
+/// contracts.
+pub(crate) struct Lowerer<'a> {
     spec: &'a StarkSpecification,
     symbols: &'a SymbolTable,
     types: &'a TypeTable,
     /// Every `type` element's `DefId`, pre-mapped to the [CustomValue] it
-    /// folds to — built once so `lower_reference` doesn't have to re-walk
-    /// `spec.ast().types` for every reference.
+    /// folds to.
     custom_values: HashMap<DefId, CustomValue>,
 
     exprs: Vec<ExprNode>,
@@ -1474,15 +1452,18 @@ mod tests {
     use test_log::test;
 
     use super::*;
+
+    use crate::StarkSpecification;
     use crate::ast::UntypedStarkSpecification;
     use crate::ir::ExprNode;
+    use crate::ir::IrProgram;
     use crate::ir::StmtNode;
 
     fn lower_source(src: &str) -> IrProgram {
-        let spec = UntypedStarkSpecification::parse(src)
-            .unwrap_or_else(|e| panic!("failed to parse: {e}"))
-            .check()
-            .unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(src)));
+        let spec = UntypedStarkSpecification::parse(src).unwrap_or_else(|e| panic!("failed to parse: {e}"));
+
+        let spec =
+            StarkSpecification::from_untyped(spec).unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(src)));
         lower(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(src)))
     }
 

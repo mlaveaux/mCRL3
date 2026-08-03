@@ -20,34 +20,21 @@ pub(crate) struct Store {
 }
 
 impl Store {
-    /// Builds a store sized to `program` and runs startup initialisation:
-    /// every [crate::ir::GlobalInit] (`const`/`param`) in declaration order
-    /// (already a valid order — no forward references), then every
-    /// variable's `initial_value`.
-    ///
-    /// `rng` is threaded through even though `typecheck.rs` disallows
-    /// sampling directly in a global/variable initializer (`random_allowed:
-    /// false` there) — a *function call* reached from one is still allowed
-    /// to sample internally (`random_allowed: true` for function bodies), so
-    /// [eval] needs an `Rng` regardless of whether this particular call
-    /// tree happens to use it.
-    /// Every slot starts as `Integer(0)` rather than a dedicated "unset"
-    /// marker. `Value::Error` used to serve as that marker, which conflated
-    /// "not written yet" with "an operation failed" (see `value.rs`); with
-    /// errors moved to `Result`, no marker is needed, because no slot is ever
-    /// read before it is written: globals and variables are initialised here
-    /// in dependency order, and lowering guarantees a function's argument and
-    /// `let` slots are written at the call/binding before its body can load
-    /// them (the language forbids recursion, so no function is ever live on
-    /// the stack twice and every binding can have its own static slot).
+    /// Builds a store sized to `program` and runs startup initialisation: every
+    /// [crate::ir::GlobalInit] (`const`/`param`) in declaration order, then
+    /// every variable's `initial_value`.
     pub(crate) fn new<R: Rng + ?Sized>(program: &IrProgram, rng: &mut R) -> Result<Store, EvalError> {
         let mut store = Store {
+            // Just use any default value, should always be overwritten by the
+            // initialisation below.
             slots: vec![Value::Integer(0); program.n_slots() as usize],
         };
+
         for global in program.globals() {
             let value = eval(program, &mut store, rng, global.value)?;
             store.set(global.slot, value);
         }
+
         for variable in program.variables() {
             let value = eval(program, &mut store, rng, variable.initial_value)?;
             store.set(variable.slot, value);
@@ -63,8 +50,7 @@ impl Store {
         self.slots[slot.value() as usize] = value;
     }
 
-    /// The `[0, n_variables)` prefix that a simulation checkpoints — exactly
-    /// what an evolution sequence samples per step.
+    /// The `[0, n_variables)` prefix that a simulation checkpoints.
     pub(crate) fn state_prefix(&self, program: &IrProgram) -> &[Value] {
         &self.slots[0..program.n_variables() as usize]
     }
@@ -75,16 +61,16 @@ mod tests {
     use rand::SeedableRng;
     use test_log::test;
 
-    use super::*;
+    use crate::IrProgram;
     use crate::UntypedStarkSpecification;
-    use crate::lower;
+    use crate::eval::store::Store;
+    use crate::value::Value;
 
     fn lower_source(source: &str) -> IrProgram {
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        lower(&spec).expect("should lower")
+        let spec = UntypedStarkSpecification::parse(source).expect("should parse");
+
+        let typed_spec = crate::StarkSpecification::from_untyped(spec).expect("should check");
+        IrProgram::from_spec(&typed_spec).expect("should lower")
     }
 
     #[test]

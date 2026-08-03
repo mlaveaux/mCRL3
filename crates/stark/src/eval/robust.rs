@@ -50,14 +50,10 @@ use super::store::Store;
 /// 50 bootstrap replicas at a quantile of 1.96 (a 95% normal interval).
 #[derive(Clone, Copy, Debug)]
 pub struct AnalysisOptions {
-    /// Samples per step in the reference evolution sequence — how finely the
-    /// state distribution is approximated. Larger is more accurate and
-    /// linearly more expensive.
+    /// Samples per step in the reference evolution sequence.
     pub sample_size: usize,
     /// How many perturbed samples are drawn per reference sample. The
-    /// perturbed sequence therefore holds `sample_size * scale` samples, and each
-    /// reference sample is compared against the `scale` perturbed samples
-    /// descended from it.
+    /// perturbed sequence therefore holds `sample_size * scale` samples.
     pub scale: usize,
     /// Bootstrap replicas (`m`). Below `2` the confidence interval collapses
     /// to the point estimate, which makes the three-valued semantics behave
@@ -88,11 +84,7 @@ impl Default for AnalysisOptions {
 /// and reads better next to the doc comment explaining that file.
 pub struct Analysis<'a, R: Rng> {
     pub(crate) program: &'a IrProgram,
-    /// A store used only for program-level constants. Its `[0, n_variables)`
-    /// prefix is never stepped, so reading a *variable* through it would be
-    /// meaningless — but no interval bound, threshold or weight can refer to
-    /// one, since those are all evaluated outside any state in the original
-    /// too.
+    /// A store used only for program-level constants.
     pub(crate) globals: Store,
     pub(crate) rng: R,
     pub(crate) options: AnalysisOptions,
@@ -108,7 +100,11 @@ impl<'a> Analysis<'a, StdRng> {
 impl<'a, R: Rng> Analysis<'a, R> {
     /// Builds an analysis from an already-constructed RNG — the seam a test
     /// uses to inject a deterministic generator.
-    pub fn with_rng(program: &'a IrProgram, mut rng: R, options: AnalysisOptions) -> Result<Analysis<'a, R>, EvalError> {
+    pub fn with_rng(
+        program: &'a IrProgram,
+        mut rng: R,
+        options: AnalysisOptions,
+    ) -> Result<Analysis<'a, R>, EvalError> {
         let globals = Store::new(program, &mut rng)?;
         Ok(Analysis {
             program,
@@ -163,16 +159,15 @@ mod tests {
     use test_log::test;
 
     use super::*;
+    use crate::StarkSpecification;
     use crate::UntypedStarkSpecification;
     use crate::eval::TruthValue;
-    use crate::lower;
 
     fn build(source: &str) -> IrProgram {
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        lower(&spec).expect("should lower")
+        let spec = UntypedStarkSpecification::parse(source).expect("should parse");
+
+        let spec = StarkSpecification::from_untyped(spec).expect("should check");
+        IrProgram::from_spec(&spec).expect("should lower")
     }
 
     /// A deterministic system whose single variable holds still, with a

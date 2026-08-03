@@ -1,19 +1,3 @@
-//! Diagnostics collected during name resolution and type checking.
-//!
-//! Collecting rather than failing fast: instead of stopping at the first
-//! problem, `resolve.rs` and `typecheck.rs` record every diagnostic they find
-//! into one [Diagnostics] and only fail at the end, so a single
-//! `UntypedStarkSpecification` check reports everything wrong with it in one
-//! pass.
-//!
-//! Every diagnostic is a concrete [DiagnosticKind] variant rather than a
-//! pre-formatted string, so the message is written once (in the `#[error]`
-//! attribute) and callers can still match on *what* went wrong — which the
-//! tests do, instead of asserting on message substrings. Each variant carries
-//! the data the message interpolates, and the few that reference a second
-//! location (a duplicate's original declaration) carry that [Span] too, so
-//! [Diagnostic::render] can point at both.
-
 use std::error::Error;
 use std::fmt;
 
@@ -41,7 +25,6 @@ impl fmt::Display for Severity {
 /// nothing else in the crate formats a diagnostic message.
 #[derive(Clone, Debug, ThisError)]
 pub enum DiagnosticKind {
-    // -- Name resolution (`resolve.rs`) ---------------------------------
     /// Two top-level declarations share a name. STARK has a single flat
     /// namespace, so this covers a constant clashing with a function just as
     /// much as two constants clashing.
@@ -78,9 +61,7 @@ pub enum DiagnosticKind {
     TypeElementSharesTypeName { name: String },
 
     /// A state variable was read from an expression evaluated once at load
-    /// time, before any variable store exists: a `const`/`param` value, or a
-    /// variable's own range or initializer. `via` names the function through
-    /// which the variable is reached, when the read is not direct.
+    /// time, before any variable store exists.
     #[error("`{context}` cannot read state variable `{name}`{}", .via.as_ref().map(|f| format!(" (via function `{f}`)")).unwrap_or_default())]
     StateVariableInStaticExpression {
         name: String,
@@ -88,7 +69,6 @@ pub enum DiagnosticKind {
         via: Option<String>,
     },
 
-    // -- Type checking (`typecheck.rs`) ---------------------------------
     /// A `Ty::Named` annotation that names no declared `type`.
     #[error("unknown type `{name}`")]
     UnknownType { name: String },
@@ -101,14 +81,12 @@ pub enum DiagnosticKind {
     #[error("expected a numerical type, found {found}")]
     NotNumerical { found: StarkType },
 
-    /// Two types that have to meet at a join point (ternary branches, the
-    /// two sides of a comparison, a function's several `return`s) have no
-    /// common supertype.
+    /// Two types that have to meet at a join point have no common supertype.
+    /// For example ternary operands must match.
     #[error("cannot merge {left} with {right}")]
     IncompatibleTypes { left: StarkType, right: StarkType },
 
-    /// `R`/`N[..]`/`U[..]` used somewhere randomness is not permitted — a
-    /// constant's value, a variable's range bound, an interval bound.
+    /// `R`/`N[..]`/`U[..]` used somewhere randomness is not permitted.
     #[error("random expressions are not allowed here")]
     RandomNotAllowed,
 
@@ -119,19 +97,16 @@ pub enum DiagnosticKind {
         found: usize,
     },
 
-    // -- Lowering (`lower.rs`) -------------------------------------------
     /// A construct that resolves and type-checks but has no IR
-    /// representation yet (see `plan.md`). Reported rather than panicked on,
-    /// so a partially-supported spec fails gracefully instead of crashing
-    /// lowering.
+    /// representation yet.
     #[error("{construct} is not yet supported by lowering")]
     NotYetSupported { construct: &'static str },
 }
 
 impl DiagnosticKind {
-    /// A second source location worth showing alongside the primary one,
-    /// with the label to introduce it by. `None` for the majority of kinds,
-    /// which are fully explained by where they point.
+    /// A second source location worth showing alongside the primary one, with
+    /// the label to introduce it by. For example to render a duplicated
+    /// definition.
     pub fn related(&self) -> Option<(&Span, &'static str)> {
         match self {
             DiagnosticKind::DuplicateDefinition { first, .. }
@@ -143,6 +118,20 @@ impl DiagnosticKind {
 }
 
 /// A single diagnostic anchored to a source [Span].
+///
+/// Collecting rather than failing fast: instead of stopping at the first
+/// problem, `resolve.rs` and `typecheck.rs` record every diagnostic they find
+/// into one [Diagnostics] and only fail at the end, so a single
+/// `UntypedStarkSpecification` check reports everything wrong with it in one
+/// pass.
+///
+/// Every diagnostic is a concrete [DiagnosticKind] variant rather than a
+/// pre-formatted string, so the message is written once (in the `#[error]`
+/// attribute) and callers can still match on *what* went wrong — which the
+/// tests do, instead of asserting on message substrings. Each variant carries
+/// the data the message interpolates, and the few that reference a second
+/// location (a duplicate's original declaration) carry that [Span] too, so
+/// [Diagnostic::render] can point at both.
 #[derive(Clone, Debug, ThisError)]
 #[error("{kind}")]
 pub struct Diagnostic {
@@ -161,23 +150,9 @@ impl Diagnostic {
         }
     }
 
-    /// Renders this diagnostic against its `source` text, in the same
-    /// `-->`/`|`/`^^^` style parser errors use (see [Span::render]), followed
-    /// by a second annotated snippet when [DiagnosticKind::related] gives
-    /// one:
-    ///
-    /// ```text
-    /// error: duplicate definition of `a`
-    ///  --> 2:7
-    ///   |
-    /// 2 | const a = 2;
-    ///   |       ^
-    /// note: first defined here
-    ///  --> 1:7
-    ///   |
-    /// 1 | const a = 1;
-    ///   |       ^
-    /// ```
+    /// Renders this diagnostic against its `source` text, in the same style as
+    /// [Span::render], followed by a second annotated snippet when
+    /// [DiagnosticKind::related] gives one.
     pub fn render(&self, source: &str) -> String {
         let mut rendered = format!("{}: {}\n{}", self.severity, self.kind, self.span.render(source));
         if let Some((span, label)) = self.kind.related() {
@@ -228,9 +203,7 @@ impl Diagnostics {
         self.items.extend(other.items);
     }
 
-    /// `Ok(value)` if nothing errored, otherwise `Err(self)` — the "return
-    /// `null` only after collecting every error" pattern from
-    /// `SpecificationLoader.load`, but via `Result` instead of a sentinel.
+    /// `Ok(value)` if nothing errored, otherwise `Err(self)`.
     pub fn into_result<T>(self, value: T) -> Result<T, Diagnostics> {
         if self.has_errors() { Err(self) } else { Ok(value) }
     }

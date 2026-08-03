@@ -43,7 +43,9 @@ pub enum EvalErrorKind {
     Unreachable(&'static str),
     /// A distance was computed between two sample sets whose sizes aren't a
     /// multiple of one another, for example a zero scale.
-    #[error("cannot compare sample sets of size {reference} and {perturbed}: the latter must be a multiple of the former")]
+    #[error(
+        "cannot compare sample sets of size {reference} and {perturbed}: the latter must be a multiple of the former"
+    )]
     IncompatibleSampleSizes { reference: usize, perturbed: usize },
     /// A robustness analysis was asked for with a zero sample size, so there
     /// is no distribution to compute a distance over.
@@ -134,7 +136,7 @@ pub enum Value {
 
 impl Value {
     /// This type of a value.
-    /// 
+    ///
     /// The `symbols` resolves a [CustomValue]'s `type_id` back to the type's
     /// declared name.
     pub fn type_of(&self, symbols: &SymbolTable) -> StarkType {
@@ -208,9 +210,10 @@ impl Value {
     /// behaviour.
     pub fn division(self, other: Value) -> Result<Value, EvalErrorKind> {
         match (self, other) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                a.checked_div(b).map(Value::Integer).ok_or(EvalErrorKind::DivisionByZero)
-            }
+            (Value::Integer(a), Value::Integer(b)) => a
+                .checked_div(b)
+                .map(Value::Integer)
+                .ok_or(EvalErrorKind::DivisionByZero),
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 / b)),
             (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a / b as f64)),
             (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a / b)),
@@ -221,9 +224,10 @@ impl Value {
     /// Same zero/overflow guard as [Value::division].
     pub fn modulo(self, other: Value) -> Result<Value, EvalErrorKind> {
         match (self, other) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                a.checked_rem(b).map(Value::Integer).ok_or(EvalErrorKind::DivisionByZero)
-            }
+            (Value::Integer(a), Value::Integer(b)) => a
+                .checked_rem(b)
+                .map(Value::Integer)
+                .ok_or(EvalErrorKind::DivisionByZero),
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(a as f64 % b)),
             (Value::Real(a), Value::Integer(b)) => Ok(Value::Real(a % b as f64)),
             (Value::Real(a), Value::Real(b)) => Ok(Value::Real(a % b)),
@@ -234,9 +238,10 @@ impl Value {
     /// Truncating integer division.
     pub fn int_div(self, other: Value) -> Result<Value, EvalErrorKind> {
         match (self, other) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                a.checked_div(b).map(Value::Integer).ok_or(EvalErrorKind::DivisionByZero)
-            }
+            (Value::Integer(a), Value::Integer(b)) => a
+                .checked_div(b)
+                .map(Value::Integer)
+                .ok_or(EvalErrorKind::DivisionByZero),
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real((a as f64 / b).trunc())),
             (Value::Real(a), Value::Integer(b)) => Ok(Value::Real((a / b as f64).trunc())),
             (Value::Real(a), Value::Real(b)) => Ok(Value::Real((a / b).trunc())),
@@ -308,7 +313,12 @@ impl Value {
 
     /// The binary counterpart of [Value::apply_unary], used for every
     /// `MathBinaryFunction`.
-    pub fn apply_binary(self, other: Value, op: &'static str, f: impl Fn(f64, f64) -> f64) -> Result<Value, EvalErrorKind> {
+    pub fn apply_binary(
+        self,
+        other: Value,
+        op: &'static str,
+        f: impl Fn(f64, f64) -> f64,
+    ) -> Result<Value, EvalErrorKind> {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => Ok(Value::Real(f(a as f64, b as f64))),
             (Value::Integer(a), Value::Real(b)) => Ok(Value::Real(f(a as f64, b))),

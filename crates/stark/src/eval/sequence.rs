@@ -1,19 +1,3 @@
-//! Evolution sequences and sample sets — the stochastic counterpart of
-//! [super::sim]'s single trajectory, and what every distance and ROBTL
-//! formula is actually evaluated over.
-//!
-//! Because the language is stochastic, "the state at time `t`" is not one
-//! state but a *distribution*, approximated by `size` independently sampled
-//! [SystemState]s — a *sample set*. An [EvolutionSequence] is the sequence of
-//! those sample sets, generated lazily: [EvolutionSequence::generate_up_to]
-//! extends it on demand.
-//!
-//! Two sequences (a reference one and a perturbed one) are compared by
-//! lifting a *penalty function* — a `real`-valued expression over a state —
-//! to distributions. The lifting is the Wasserstein distance between the two
-//! sampled distributions of penalty values, computed from the sorted arrays
-//! by [wasserstein].
-
 use rand::Rng;
 
 use crate::ir::IrProgram;
@@ -35,6 +19,22 @@ use super::system::SystemState;
 /// being rewritten by. The original models this as a subclass; keeping it as
 /// an `Option` field instead means there is only one generation path (see
 /// [EvolutionSequence::generate_next]).
+/// 
+/// Evolution sequences and sample sets — the stochastic counterpart of
+/// [super::sim]'s single trajectory, and what every distance and ROBTL
+/// formula is actually evaluated over.
+///
+/// Because the language is stochastic, "the state at time `t`" is not one
+/// state but a *distribution*, approximated by `size` independently sampled
+/// [SystemState]s — a *sample set*. An [EvolutionSequence] is the sequence of
+/// those sample sets, generated lazily: [EvolutionSequence::generate_up_to]
+/// extends it on demand.
+///
+/// Two sequences (a reference one and a perturbed one) are compared by
+/// lifting a *penalty function* — a `real`-valued expression over a state —
+/// to distributions. The lifting is the Wasserstein distance between the two
+/// sampled distributions of penalty values, computed from the sorted arrays
+/// by [wasserstein].
 #[derive(Clone, Debug)]
 pub struct EvolutionSequence {
     /// `steps[t]` is the sample set at time `t`; always non-empty (`steps[0]`
@@ -221,11 +221,7 @@ impl EvolutionSequence {
 /// [EvolutionSequence::perturbed]): the `i`-th reference sample is paired
 /// with the `k` perturbed samples that descend from it, and the ground
 /// distance is averaged over all `perturbed.len()` pairs.
-pub(crate) fn wasserstein(
-    ground: fn(f64, f64) -> f64,
-    reference: &[f64],
-    perturbed: &[f64],
-) -> Result<f64, EvalError> {
+pub(crate) fn wasserstein(ground: fn(f64, f64) -> f64, reference: &[f64], perturbed: &[f64]) -> Result<f64, EvalError> {
     if reference.is_empty() || !perturbed.len().is_multiple_of(reference.len()) {
         return Err(EvalErrorKind::IncompatibleSampleSizes {
             reference: reference.len(),
@@ -263,15 +259,17 @@ mod tests {
     use test_log::test;
 
     use super::*;
+    use crate::StarkSpecification;
     use crate::UntypedStarkSpecification;
-    use crate::lower;
 
     fn build(source: &str) -> IrProgram {
         let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
+            .expect("should parse");
+
+        let typed_spec = StarkSpecification::from_untyped(spec)
             .expect("should check");
-        lower(&spec).expect("should lower")
+
+        IrProgram::from_spec(&typed_spec).expect("should lower")
     }
 
     const COUNTER: &str = r"

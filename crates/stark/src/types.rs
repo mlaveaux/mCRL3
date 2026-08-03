@@ -15,8 +15,8 @@ pub enum StarkType {
 }
 
 impl StarkType {
-    /// Wraps `inner` as a random value of that type. 
-    /// 
+    /// Wraps `inner` as a random value of that type.
+    ///
     /// Flattens `random(Random(t))` to `Random(t)` rather than nesting,
     /// matching the original.
     pub fn random(inner: StarkType) -> StarkType {
@@ -66,15 +66,10 @@ impl StarkType {
         matches!(self.deterministic(), StarkType::Custom(_))
     }
 
-    /// Whether a value of type `actual` may be used where `self` (the
-    /// expected type) is required. Ignores randomness on both sides (a
-    /// `Random(int)` fits wherever a plain `int` is expected, since it is
-    /// resolved to a concrete value before use) — the original
-    /// A `random[..]` type delegates straight through to its
-    /// content type for the same reason.
-    ///
-    /// Integer widens to real but not vice versa: `real x = 1;` is fine,
-    /// `int x = 1.0;` is not.
+    /// Whether a value of type `actual` may be used where `self` is required.
+    /// Ignores randomness on both sides, treating `Random(t)` as `t`. Integer
+    /// widens to real but not vice versa: `real x = 1;` is fine, `int x = 1.0;`
+    /// is not.
     pub fn is_compatible_with(&self, actual: &StarkType) -> bool {
         match self.deterministic() {
             StarkType::Integer => actual.is_integer(),
@@ -86,11 +81,9 @@ impl StarkType {
         }
     }
 
-    /// Whether `self` and `other` can be combined in a symmetric position —
-    /// both branches of a ternary, both sides of a relation, elements of a
-    /// `U[...]` — without a type error. Either side already being `Error`
-    /// is always accepted, so one mistake doesn't cascade into a second
-    /// diagnostic at the same spot.
+    /// Whether `self` and `other` can be combined in a symmetric position.
+    /// Either side already being `Error` is always accepted, so one mistake
+    /// doesn't cascade into a second diagnostic at the same spot.
     pub fn can_be_merged_with(&self, other: &StarkType) -> bool {
         if self.is_error() || other.is_error() {
             return true;
@@ -105,10 +98,10 @@ impl StarkType {
         ) || matches!((self.deterministic(), other.deterministic()), (StarkType::Custom(a), StarkType::Custom(b)) if a == b)
     }
 
-    /// Combines `self` and `other` into their common type (`int` (+) `real`
-    /// -> `real`; identical types merge to themselves), propagating a
-    /// `Random` wrapper if either side carries one. Returns `Error` if the
-    /// two types have nothing in common.
+    /// Combines `self` and `other` into their common type, propagating a
+    /// `Random` wrapper if either side carries one.
+    ///
+    /// Returns `Error` if the two types have nothing in common.
     pub fn merge(&self, other: &StarkType) -> StarkType {
         if self.is_error() || other.is_error() {
             return StarkType::Error;
@@ -126,6 +119,7 @@ impl StarkType {
         if base.is_error() {
             return StarkType::Error;
         }
+
         if self.is_random() || other.is_random() {
             StarkType::random(base)
         } else {

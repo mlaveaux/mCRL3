@@ -3,6 +3,8 @@
 //! Each file is exercised end-to-end: parse into an [UntypedStarkSpecification],
 //! then [UntypedStarkSpecification::check] (name resolution + type checking).
 
+use merc_stark::IrProgram;
+use merc_stark::StarkSpecification;
 use merc_stark::UntypedStarkSpecification;
 use test_case::test_case;
 
@@ -35,13 +37,9 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/stark/ventilator.stark") ; "ventilator.stark")]
 fn checks_example_specification(source: &str) {
     let spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("failed to parse: {e}"));
-
-    if let Err(diagnostics) = spec.check() {
-        panic!("failed to check:\n{}", diagnostics.render(source));
-    }
-    
-    let spec = spec.check().unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
-    let program = lower(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)));
+    let spec =
+        StarkSpecification::from_untyped(spec).unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
+    let program = IrProgram::from_spec(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)));
 
     program
         .validate()

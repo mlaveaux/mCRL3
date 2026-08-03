@@ -1,15 +1,3 @@
-//! Turns the `pest` parse tree produced by `parse.rs` into the [crate::ast]
-//! tree, one `merc_pest_consume` consumer per grammar rule.
-//!
-//! Only the *structural* declarations are consumed here; every expression
-//! language (plain expressions and the perturbation / distance / ROBTL
-//! sub-languages) reaches this module as a flat token stream that is handed
-//! to the Pratt parsers in `precedence.rs` instead.
-//!
-//! Nothing is resolved or typed at this stage: every `DefRef`/`StateRef`
-//! carries a `None` id and every expression a `None` type, both filled in
-//! later by `resolve.rs` and `typecheck.rs`.
-
 #![allow(clippy::result_large_err)]
 
 use merc_pest_consume::Error;
@@ -51,18 +39,8 @@ use crate::precedence::parse_robtl_formula;
 pub(crate) type ParseResult<T> = std::result::Result<T, Error<Rule>>;
 pub(crate) type ParseNode<'i> = merc_pest_consume::Node<'i, Rule, ()>;
 
-// ---------------------------------------------------------------------------
-// Dispatch helpers for silent alternation groups
-// ---------------------------------------------------------------------------
-
 /// Routes one variant node of the silent `FunctionStatement` rule to its
 /// consumer.
-///
-/// The grammar's `FunctionStatement`, `ControllerCommand` and
-/// `EnvironmentCommand` rules are silent, so their concrete variant nodes
-/// appear directly as children of whatever contains them rather than under a
-/// node of their own — hence the three hand-written dispatchers here instead
-/// of a generated consumer per rule.
 fn function_statement(node: ParseNode) -> ParseResult<FunctionStatement> {
     match node.as_rule() {
         Rule::FunctionReturn => StarkParser::FunctionReturn(node),
@@ -74,7 +52,7 @@ fn function_statement(node: ParseNode) -> ParseResult<FunctionStatement> {
 }
 
 /// Routes one variant node of the silent `ControllerCommand` rule to its
-/// consumer — see [function_statement] for why these dispatchers exist.
+/// consumer.
 fn controller_command(node: ParseNode) -> ParseResult<ControllerCommand> {
     match node.as_rule() {
         Rule::ControllerStep => StarkParser::ControllerStep(node),
@@ -88,7 +66,7 @@ fn controller_command(node: ParseNode) -> ParseResult<ControllerCommand> {
 }
 
 /// Routes one variant node of the silent `EnvironmentCommand` rule to its
-/// consumer — see [function_statement] for why these dispatchers exist.
+/// consumer.
 fn environment_command(node: ParseNode) -> ParseResult<EnvironmentCommand> {
     match node.as_rule() {
         Rule::EnvironmentAssignment => StarkParser::EnvironmentAssignment(node),
@@ -124,6 +102,8 @@ fn assignment_update(node: ParseNode) -> ParseResult<Update> {
 
 #[merc_pest_consume::parser]
 impl StarkParser {
+    /// Turns the `pest` parse tree produced by `parse.rs` into the [crate::ast]
+    /// tree, one `merc_pest_consume` consumer per grammar rule.
     pub fn UntypedStarkSpecification(input: ParseNode) -> ParseResult<UntypedStarkSpecification> {
         let mut spec = UntypedStarkSpecification::new();
 

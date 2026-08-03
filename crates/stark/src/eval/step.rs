@@ -250,15 +250,15 @@ mod tests {
 
     use super::*;
     use crate::UntypedStarkSpecification;
-    use crate::lower;
     use crate::value::EvalErrorKind;
 
     fn build(source: &str) -> IrProgram {
         let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
+            .expect("should parse");
+
+        let typed_spec = crate::StarkSpecification::from_untyped(spec)
             .expect("should check");
-        lower(&spec).expect("should lower")
+        IrProgram::from_spec(&typed_spec).expect("should lower")
     }
 
     #[test]
@@ -284,11 +284,8 @@ mod tests {
 
     #[test]
     fn a_failing_guard_aborts_the_step_instead_of_reading_as_false() {
-        // The regression this whole `Result` change exists for. Originally
-        // the guard `1 / zero > 0` evaluated to the absorbing error value,
-        // which read as `false`, so the assignment silently didn't happen and
-        // the run continued with `x` unchanged — an arithmetic failure
-        // indistinguishable from a guard that was legitimately not satisfied.
+        // Originally the guard `1 / zero > 0` evaluated to the absorbing error
+        // value, resulting in false.
         let program = build(
             r"
             global variables {
@@ -304,7 +301,8 @@ mod tests {
         let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let mut cursors = Vec::new();
 
-        let error = macro_step(&program, &mut store, &mut rng, &mut cursors).expect_err("the `1 / zero` guard divides by zero");
+        let error =
+            macro_step(&program, &mut store, &mut rng, &mut cursors).expect_err("the `1 / zero` guard divides by zero");
         assert_eq!(error.kind, EvalErrorKind::DivisionByZero);
         // The failure is anchored to the offending `1 / zero`, not reported
         // as a bare class of error.

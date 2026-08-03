@@ -27,7 +27,7 @@
  * instead of just braking when the lane is unsafe to stay in.
  *
  * `reckless_driver`'s perturbation is simplified relative to the original's
- * `AtomicPerturbation`, which recomputes `other_move`/`other_speed`/
+ * atomic perturbation, which recomputes `other_move`/`other_speed`/
  * `other_x`/`other_y`/`other_lane`/`dist`/`my_position`/`safety_gap` all at
  * once from one shared random draw: as with every other perturbation ported
  * this session (e.g. `abz2025_single_lane_two_cars.stark`'s

@@ -30,7 +30,7 @@ use super::store::Store;
 /// the expression does.
 ///
 /// This is a thin wrapper over [eval_inner] that pins the offending source
-/// location: on failure it attaches `id`'s [crate::ir::Span] to the error
+/// location: on failure it attaches `id`'s [Span](merc_utilities::Span) to the error
 /// unless a more specific inner one was already recorded (see
 /// [EvalError::or_span]). Because every recursive sub-evaluation goes through
 /// this wrapper too, the span that survives is the innermost failing
@@ -61,8 +61,12 @@ fn eval_inner<R: Rng + ?Sized>(
         // The `Value` operations produce a bare [EvalErrorKind] (they have no
         // [crate::ir::Span] to give); `EvalError::from` lifts it, and the
         // outer `eval` wrapper then anchors it to this node's span.
-        ExprNode::Negate(inner) => eval(program, store, rng, inner)?.apply_unary("-", |x| -x).map_err(EvalError::from),
-        ExprNode::Widen(inner) => eval(program, store, rng, inner)?.apply_unary("+", |x| x).map_err(EvalError::from),
+        ExprNode::Negate(inner) => eval(program, store, rng, inner)?
+            .apply_unary("-", |x| -x)
+            .map_err(EvalError::from),
+        ExprNode::Widen(inner) => eval(program, store, rng, inner)?
+            .apply_unary("+", |x| x)
+            .map_err(EvalError::from),
         ExprNode::Binary(op, left, right) => {
             let left = eval(program, store, rng, left)?;
             let right = eval(program, store, rng, right)?;
@@ -275,16 +279,14 @@ mod tests {
     use test_log::test;
 
     use super::*;
+    use crate::StarkSpecification;
     use crate::UntypedStarkSpecification;
-    use crate::lower;
 
     fn eval_expression(source: &str) -> Value {
         let full_source = format!("const result = {source};");
-        let spec = UntypedStarkSpecification::parse(&full_source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        let program = lower(&spec).expect("should lower");
+        let untyped = UntypedStarkSpecification::parse(&full_source).expect("should parse");
+        let spec = StarkSpecification::from_untyped(untyped).expect("should check");
+        let program = IrProgram::from_spec(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
         let store = Store::new(&program, &mut rng).expect("should initialise");
         store.load(program.globals()[0].slot)
@@ -315,11 +317,9 @@ mod tests {
         // rule buys, and what makes the message read as "division by zero at
         // <the division>".
         let source = "const result = 4 + 1 / 0;";
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        let program = lower(&spec).expect("should lower");
+        let untyped = UntypedStarkSpecification::parse(source).expect("should parse");
+        let spec = StarkSpecification::from_untyped(untyped).expect("should check");
+        let program = IrProgram::from_spec(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
 
         let error = Store::new(&program, &mut rng).expect_err("initialisation divides by zero");
@@ -360,11 +360,9 @@ mod tests {
               int result = add(3, 4);
             }
         ";
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        let program = lower(&spec).expect("should lower");
+        let untyped = UntypedStarkSpecification::parse(source).expect("should parse");
+        let spec = StarkSpecification::from_untyped(untyped).expect("should check");
+        let program = IrProgram::from_spec(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
         let store = Store::new(&program, &mut rng).expect("should initialise");
         let result_slot = program.variables()[0].slot;
@@ -382,11 +380,9 @@ mod tests {
               int result = with_let(1);
             }
         ";
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        let program = lower(&spec).expect("should lower");
+        let untyped = UntypedStarkSpecification::parse(source).expect("should parse");
+        let spec = StarkSpecification::from_untyped(untyped).expect("should check");
+        let program = IrProgram::from_spec(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
         let store = Store::new(&program, &mut rng).expect("should initialise");
         assert_eq!(store.load(program.variables()[0].slot), Value::Integer(3));

@@ -135,14 +135,14 @@ mod tests {
 
     use super::*;
     use crate::UntypedStarkSpecification;
-    use crate::lower;
 
     fn build(source: &str) -> IrProgram {
         let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
+            .expect("should parse");
+
+        let typed_spec = crate::StarkSpecification::from_untyped(spec)
             .expect("should check");
-        lower(&spec).expect("should lower")
+        IrProgram::from_spec(&typed_spec).expect("should lower")
     }
 
     #[test]

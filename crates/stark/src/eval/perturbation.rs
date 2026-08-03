@@ -42,10 +42,7 @@ pub(crate) enum PerturbationState {
     /// `a ^ n`: `body`, repeated `replica` times. `body` is kept *pristine*
     /// (never stepped), because each repetition is seeded from the original
     /// body rather than from the previous repetition's remainder.
-    Iterative {
-        replica: i64,
-        body: Box<PerturbationState>,
-    },
+    Iterative { replica: i64, body: Box<PerturbationState> },
 }
 
 impl PerturbationState {
@@ -199,16 +196,14 @@ mod tests {
     use test_log::test;
 
     use super::*;
+    use crate::StarkSpecification;
     use crate::UntypedStarkSpecification;
-    use crate::lower;
 
     /// Builds the program's single perturbation declaration's initial state.
     fn build(source: &str) -> (IrProgram, PerturbationState) {
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        let program = lower(&spec).expect("should lower");
+        let untyped = UntypedStarkSpecification::parse(source).expect("should parse");
+        let spec = StarkSpecification::from_untyped(untyped).expect("should check");
+        let program = IrProgram::from_spec(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
         let mut globals = Store::new(&program, &mut rng).expect("should initialise");
         let root = program.perturbation_decls().last().expect("a perturbation").root;
@@ -273,7 +268,9 @@ mod tests {
 
     #[test]
     fn a_reference_behaves_like_the_declaration_it_names() {
-        let (_, referenced) = build(&format!("{PREAMBLE} perturbation base = [x <- 1]@2; perturbation p = base;"));
+        let (_, referenced) = build(&format!(
+            "{PREAMBLE} perturbation base = [x <- 1]@2; perturbation p = base;"
+        ));
         let (_, direct) = build(&format!("{PREAMBLE} perturbation p = [x <- 1]@2;"));
         assert_eq!(firing_ticks(referenced, 6), firing_ticks(direct, 6));
     }
@@ -287,11 +284,9 @@ mod tests {
             }
             perturbation swap = [x <- y, y <- x]@0;
         ";
-        let spec = UntypedStarkSpecification::parse(source)
-            .expect("should parse")
-            .check()
-            .expect("should check");
-        let program = lower(&spec).expect("should lower");
+        let untyped = UntypedStarkSpecification::parse(source).expect("should parse");
+        let spec = StarkSpecification::from_untyped(untyped).expect("should check");
+        let program = IrProgram::from_spec(&spec).expect("should lower");
         let mut rng = StdRng::seed_from_u64(0);
         let mut store = Store::new(&program, &mut rng).expect("should initialise");
         let root = program.perturbation_decls()[0].root;

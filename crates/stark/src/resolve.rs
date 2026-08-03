@@ -155,9 +155,7 @@ pub struct SymbolTable {
     pub states: Vec<StateEntry>,
     pub locals: Vec<LocalEntry>,
     /// Top-level names, for lookups that don't go through an already-resolved
-    /// [DefRef] — e.g. `typecheck.rs` validating a `Ty::Named` type
-    /// annotation against a declared `type` (a check that has nothing to do
-    /// with binding an expression reference, so it isn't performed here).
+    /// [DefRef].
     pub names: HashMap<String, DefId>,
 }
 
@@ -180,10 +178,7 @@ impl SymbolTable {
 }
 
 /// Resolves every name in `spec` in place, returning the resulting
-/// [SymbolTable] together with every diagnostic found along the way. Always
-/// returns a table — even a spec with unresolved names produces one, with
-/// those references left as `None` — so `typecheck.rs` can still make
-/// progress on everything that *did* resolve.
+/// [SymbolTable] together with every diagnostic found along the way.
 pub fn resolve(spec: &mut UntypedStarkSpecification) -> (SymbolTable, Diagnostics) {
     let mut resolver = Resolver {
         table: SymbolTable::default(),
@@ -507,7 +502,7 @@ impl Resolver {
     /// value at runtime with no diagnostic.
     ///
     /// Runs as a post-pass so every function is resolved and its
-    /// [Self::function_reads_variable] entry is known.
+    /// [Self::functions_reading_variables] entry is known.
     fn check_static_expressions(&mut self, spec: &UntypedStarkSpecification) {
         // A function body may legitimately read a variable — it is called
         // from controllers and environment blocks, where the store exists.

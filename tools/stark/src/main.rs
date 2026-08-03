@@ -369,7 +369,11 @@ fn print_trajectory(program: &IrProgram, trajectory: &[Vec<Value>], full: bool, 
 
     // The step column is only meaningful when more than one state is shown;
     // for the final state alone it would be a column of one.
-    let step_width = if full { rows.len().to_string().len().max("step".len()) } else { 0 };
+    let step_width = if full {
+        rows.len().to_string().len().max("step".len())
+    } else {
+        0
+    };
     let step_column = |label: &str| -> String {
         if full {
             format!("{label:>step_width$}  ")

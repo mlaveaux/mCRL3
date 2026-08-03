@@ -41,6 +41,9 @@ use std::fmt;
 use merc_utilities::Span;
 use merc_utilities::TagIndex;
 
+use crate::StarkSpecification;
+use crate::diagnostics::Diagnostics;
+use crate::lower::lower;
 use crate::types::StarkType;
 use crate::value::Value;
 
@@ -203,7 +206,7 @@ pub enum ExprNode {
     /// production can currently produce (`ExpressionKind::Iterator`, which
     /// needs an aggregate/lambda context — see `plan.md`),
     /// so reaching one at run time means lowering has a bug; `eval` reports it
-    /// as [crate::value::EvalError::Unreachable] rather than inventing a
+    /// as [crate::value::EvalErrorKind::Unreachable] rather than inventing a
     /// value. Before errors became a `Result`, this was a `Literal` holding
     /// the old absorbing `Value::Error`.
     Unreachable(&'static str),
@@ -587,7 +590,7 @@ pub struct FormulaDecl {
 // ---------------------------------------------------------------------------
 
 /// The result of lowering: one flat arena, plus the tables that index into
-/// it. See the module doc comment for what is (and isn't) populated yet.
+/// it.
 #[derive(Clone, Debug, Default)]
 pub struct IrProgram {
     pub(crate) exprs: Vec<ExprNode>,
@@ -606,8 +609,7 @@ pub struct IrProgram {
 
     pub(crate) states: Vec<StateIr>,
     pub(crate) components: Vec<ComponentIr>,
-    /// The environment block, if the specification has one. `None` if it is
-    /// absent, or present but empty — both mean "nothing runs".
+    /// The environment block, if the specification has one.
     pub(crate) environment: Option<CommandRef>,
 
     pub(crate) perturbations: Vec<PerturbationIr>,
@@ -619,6 +621,15 @@ pub struct IrProgram {
 }
 
 impl IrProgram {
+    /// Lowers `spec` to an [IrProgram].
+    ///
+    /// The `Result` exists for a not-yet-implemented-construct error class (see
+    /// this module's doc comment) — currently always `Ok`, since every construct
+    /// the grammar supports lowers.
+    pub fn from_spec(spec: &StarkSpecification) -> Result<IrProgram, Diagnostics> {
+        lower(spec)
+    }
+
     pub fn expr(&self, id: ExprRef) -> &ExprNode {
         &self.exprs[id.value() as usize]
     }
@@ -664,23 +675,19 @@ impl IrProgram {
         &self.slots[id.value() as usize]
     }
 
-    /// The number of `[0, n_variables)` slots — the simulation state prefix.
-    /// Equal to `self.variables.len()`, since every variable gets exactly one
-    /// slot and slot allocation lays this range out first: variables occupy
-    /// `[0, n_variables)`, `const`/`param` occupy
-    /// `[n_variables, n_globals)`, and function arguments and `let` bindings
-    /// occupy `[n_globals, n_slots)`.
+    /// The number of `[0, n_variables)` slots.
     pub fn n_variables(&self) -> u32 {
         self.variables.len() as u32
     }
 
-    /// The number of `[0, n_globals)` slots — variables plus `const`/`param`
-    /// globals. Equal to `n_variables() + self.globals.len()`.
+    /// The number of `[0, n_globals)` slots, both variables and global
+    /// variables.
     pub fn n_globals(&self) -> u32 {
         self.n_variables() + self.globals.len() as u32
     }
 
-    /// The total number of slots the evaluator's store must hold.
+    /// The total number of slots the evaluator's store must hold. Function arguments and `let` bindings
+    /// occupy `[n_globals, n_slots)`
     pub fn n_slots(&self) -> u32 {
         self.slots.len() as u32
     }
@@ -752,12 +759,7 @@ impl IrProgram {
         &self.formula_decls
     }
 
-    /// Independently re-checks the arena's internal consistency: every
-    /// `ExprRef`/`StmtRef`/`CommandRef`/`SlotId`/`FunctionId`/`IrStateId`/
-    /// `PenaltyId`/`PerturbationId`/`DistanceId`/`FormulaId` reachable from a
-    /// top-level entry (globals, variables, functions, penalties, components,
-    /// the environment, perturbation/distance/formula declarations) is in
-    /// bounds, and every list slice lies within `expr_lists`.
+    /// Independently re-checks the arena's internal consistency.
     pub fn validate(&self) -> Result<(), String> {
         let check_expr = |id: ExprRef| -> Result<(), String> {
             if (id.value() as usize) < self.exprs.len() {
@@ -769,6 +771,7 @@ impl IrProgram {
                 ))
             }
         };
+
         let check_slot = |id: SlotId| -> Result<(), String> {
             if (id.value() as usize) < self.slots.len() {
                 Ok(())
@@ -776,6 +779,7 @@ impl IrProgram {
                 Err(format!("{id:?} out of bounds for {} slot(s)", self.slots.len()))
             }
         };
+
         let check_stmt = |id: StmtRef| -> Result<(), String> {
             if (id.value() as usize) < self.stmts.len() {
                 Ok(())
@@ -783,6 +787,7 @@ impl IrProgram {
                 Err(format!("{id:?} out of bounds for {} statement(s)", self.stmts.len()))
             }
         };
+
         let check_command = |id: CommandRef| -> Result<(), String> {
             if (id.value() as usize) < self.commands.len() {
                 Ok(())
@@ -790,6 +795,7 @@ impl IrProgram {
                 Err(format!("{id:?} out of bounds for {} command(s)", self.commands.len()))
             }
         };
+
         let check_state = |id: IrStateId| -> Result<(), String> {
             if (id.value() as usize) < self.states.len() {
                 Ok(())
@@ -797,6 +803,7 @@ impl IrProgram {
                 Err(format!("{id:?} out of bounds for {} state(s)", self.states.len()))
             }
         };
+
         let check_penalty = |id: PenaltyId| -> Result<(), String> {
             if (id.value() as usize) < self.penalties.len() {
                 Ok(())
@@ -807,6 +814,7 @@ impl IrProgram {
                 ))
             }
         };
+
         let check_perturbation = |id: PerturbationId| -> Result<(), String> {
             if (id.value() as usize) < self.perturbations.len() {
                 Ok(())
@@ -817,6 +825,7 @@ impl IrProgram {
                 ))
             }
         };
+
         let check_distance = |id: DistanceId| -> Result<(), String> {
             if (id.value() as usize) < self.distances.len() {
                 Ok(())
@@ -827,6 +836,7 @@ impl IrProgram {
                 ))
             }
         };
+
         let check_formula = |id: FormulaId| -> Result<(), String> {
             if (id.value() as usize) < self.formulas.len() {
                 Ok(())
@@ -964,6 +974,7 @@ impl IrProgram {
                 check_expr(max)?;
             }
         }
+
         for global in &self.globals {
             check_slot(global.slot)?;
             let slot = global.slot.value() as usize;
@@ -976,6 +987,7 @@ impl IrProgram {
             }
             check_expr(global.value)?;
         }
+
         for function in &self.functions {
             for &argument in &function.arguments {
                 check_slot(argument)?;
@@ -989,6 +1001,7 @@ impl IrProgram {
             }
             check_stmt(function.body)?;
         }
+
         for penalty in &self.penalties {
             check_expr(penalty.value)?;
         }

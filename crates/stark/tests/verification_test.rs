@@ -9,11 +9,11 @@
 //! reproduces the same answer, and a `nil` perturbation is at distance zero
 //! from the unperturbed system, which must hold at any sample size.
 
+use merc_stark::StarkSpecification;
 use merc_stark::UntypedStarkSpecification;
 use merc_stark::eval::Analysis;
 use merc_stark::eval::AnalysisOptions;
 use merc_stark::ir::IrProgram;
-use merc_stark::lower;
 
 /// Deliberately tiny: `\G[400,1000]` in the spec below drives the evolution
 /// sequence out to a thousand steps, and every sample is a full trajectory.
@@ -27,11 +27,11 @@ fn options() -> AnalysisOptions {
 }
 
 fn build(source: &str) -> IrProgram {
-    let spec = UntypedStarkSpecification::parse(source)
-        .unwrap_or_else(|e| panic!("failed to parse: {e}"))
-        .check()
-        .unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
-    lower(&spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)))
+    let spec = UntypedStarkSpecification::parse(source).unwrap_or_else(|e| panic!("failed to parse: {e}"));
+
+    let typed_spec =
+        StarkSpecification::from_untyped(spec).unwrap_or_else(|d| panic!("failed to check:\n{}", d.render(source)));
+    IrProgram::from_spec(&typed_spec).unwrap_or_else(|d| panic!("failed to lower:\n{}", d.render(source)))
 }
 
 /// A biochemical model with one penalty, one perturbation, and a `\G`

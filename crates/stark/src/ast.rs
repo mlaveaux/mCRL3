@@ -1,24 +1,8 @@
-//! Abstract syntax tree for the STARK specification language.
-//!
-//! This mirrors the structure of the original STARK ANTLR grammar
-//! grammar. The tree is produced by `consume.rs`
-//! (structural declarations) together with the Pratt parsers in `precedence.rs`
-//! (expressions and the perturbation / distance / ROBTL sub-languages).
-//!
-//! Declarations carry an `id: Option<DefId>` (or `Option<StateId>` for
-//! controller states) that is `None` after parsing and filled in by name
-//! resolution (`resolve.rs`). Every place a declared name is *referenced*
-//! (rather than declared) uses [DefRef], [StateRef] or, inside expressions,
-//! [Binding] — all `None`/absent until resolution runs.
-
 pub use merc_utilities::Span;
 pub use merc_utilities::Spanned;
 use merc_utilities::TagIndex;
 
-/// A unique tag for top-level declarations: constants, parameters, variables,
-/// functions, penalties, components, custom types, perturbations, distances
-/// and formulas all share this single namespace, mirroring the original
-/// STARK `SymbolTable`'s single `symbols` map.
+/// A unique tag for top-level declarations.
 pub struct DefTag;
 /// The index type assigned to a top-level declaration during name resolution.
 pub type DefId = TagIndex<usize, DefTag>;
@@ -35,16 +19,10 @@ pub struct LocalTag;
 pub type LocalId = TagIndex<usize, LocalTag>;
 
 /// An expression node together with the source span it was parsed from.
-///
-/// Mirrors rustc's `Expr`/`ExprKind` split: [Expression] is the spanned node
-/// that appears everywhere in the tree, and [ExpressionKind] is the bare
-/// variant data. Sub-expressions recurse through `Box<Expression>` (not
-/// `Box<ExpressionKind>`), so every level of nesting carries its own span.
 pub type Expression = Spanned<ExpressionKind>;
 
-/// A reference to a top-level declaration (variable, constant, parameter,
-/// function, penalty, distance, perturbation, formula or component),
-/// resolved to a [DefId] by name resolution. `id` is `None` until then.
+/// A reference to a top-level declaration, resolved to a [DefId] by name
+/// resolution. `id` is `None` before that step.
 #[derive(Clone, Debug)]
 pub struct DefRef {
     pub id: Option<DefId>,
@@ -407,10 +385,6 @@ pub enum RobtlFormula {
     },
 }
 
-// ---------------------------------------------------------------------------
-// Expressions
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug)]
 pub enum ExpressionKind {
     // Literals
@@ -418,9 +392,7 @@ pub enum ExpressionKind {
     True,
     Integer(i64),
     Real(f64),
-    /// A name reference: a constant/parameter/variable, a local binding
-    /// (function argument, `let` binding, `it`), or (before resolution)
-    /// unresolved. `binding` is filled in by `resolve.rs`.
+    /// A name reference.
     Reference {
         name: String,
         binding: Option<Binding>,
@@ -531,10 +503,6 @@ pub enum MathFunction {
     Min,
     Pow,
 }
-
-// ---------------------------------------------------------------------------
-// Shared leaf types
-// ---------------------------------------------------------------------------
 
 /// A `range [min, max]` bound on a variable declaration.
 #[derive(Clone, Debug)]

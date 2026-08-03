@@ -16,8 +16,9 @@
  * repeating perturbation starts) is dropped — folding it into the atomic
  * perturbation's own `@time` would only shift the start by one tick and
  * doesn't change the perturbation strategy under test.
- * `getIteratedCombinedPerturbation` (three "faster" applications sequenced
- * with three "slower" ones, that pair repeated 20 times) maps directly to
+ * The original's combined perturbation (three "faster" applications
+ * sequenced with three "slower" ones, that pair repeated 20 times) maps
+ * directly to
  * this grammar's `;` (sequence) and `^` (iteration) perturbation operators.
  */
 
