@@ -41,11 +41,16 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
         
+      # Nightly is only needed for the coverage instrumentation, everything
+      # that treats warnings as errors is run with the stable toolchain.
       - name: Install nightly rust
         uses: dtolnay/rust-toolchain@nightly
 
+      - name: Install stable rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install LLVM Tools for Rust
-        run: rustup component add llvm-tools-preview
+        run: rustup component add --toolchain nightly llvm-tools-preview
   
       - name: Install grcov
         run: cargo install grcov
@@ -80,11 +85,13 @@ jobs:
         env:
           RUSTC_WRAPPER: sccache
 
+      # Documentation is built with stable since RUSTDOCFLAGS denies warnings,
+      # and we do not want new nightly (deprecation) lints to break the build.
       - name: Build Documentation
         run: |
-          cargo doc --no-deps
-          cargo doc --no-deps --manifest-path tools/mcrl2/Cargo.toml
-          cargo doc --no-deps --manifest-path tools/gui/Cargo.toml
+          cargo +stable doc --no-deps
+          cargo +stable doc --no-deps --manifest-path tools/mcrl2/Cargo.toml
+          cargo +stable doc --no-deps --manifest-path tools/gui/Cargo.toml
           cp -r target/coverage/html target/doc/coverage/
           echo "<meta http-equiv=\"refresh\" content=\"0; url=merc_aterm\">" > target/doc/index.html
         env:
