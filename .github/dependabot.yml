@@ -8,6 +8,22 @@ updates:
       crate-dependencies:
         patterns:
           - "*"
+  - package-ecosystem: "cargo" # The tools/gui workspace is separate from the root workspace.
+    directory: "/tools/gui"
+    schedule:
+      interval: "monthly"
+    groups:
+      crate-dependencies:
+        patterns:
+          - "*"
+  - package-ecosystem: "cargo" # The tools/mcrl2 workspace is separate from the root workspace.
+    directory: "/tools/mcrl2"
+    schedule:
+      interval: "monthly"
+    groups:
+      crate-dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
