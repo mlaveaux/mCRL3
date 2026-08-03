@@ -16,22 +16,23 @@ A specification travels through a fixed pipeline, one type per stage, so a
 stage can never be skipped by accident:
 
 ```text
-&str -> UntypedStarkSpecification -> StarkSpecification -> ir::IrProgram -> [ evaluate ]
-        parse                        check                 lower
+&str -> UntypedStarkSpecification -> StarkSpecification -> IrProgram -> [ evaluate ]
+        parse                        from_untyped          from_spec
 ```
 
 [`UntypedStarkSpecification::parse`] yields a faithful syntax tree whose
 references are unresolved and whose expressions have no types yet.
-[`UntypedStarkSpecification::check`] runs name resolution followed by type
-checking, and either reports *every* problem at once through [`Diagnostics`] or
-produces a [`StarkSpecification`]. Only `check` can produce that type, so
-anything holding one knows resolution and type checking already succeeded and
-never has to re-derive or re-validate it. [`lower`] then flattens it into an
-[`ir::IrProgram`], the arena the evaluator walks.
+[`StarkSpecification::from_untyped`] runs name resolution followed by type
+checking, and either reports *every* problem at once through a `Diagnostics` or
+produces a [`StarkSpecification`]. Only that constructor can produce the type,
+so anything holding one knows resolution and type checking already succeeded
+and never has to re-derive or re-validate it. [`IrProgram::from_spec`] then
+flattens it into an [`IrProgram`], the arena the evaluator walks.
 
 ```rust
 use merc_stark::UntypedStarkSpecification;
-use merc_stark::lower;
+use merc_stark::StarkSpecification;
+use merc_stark::IrProgram;
 use merc_stark::eval::RecordingObserver;
 use merc_stark::eval::Simulation;
 
@@ -47,12 +48,10 @@ let source = r#"
     }
 "#;
 
-let specification = UntypedStarkSpecification::parse(source)
-    .expect("should parse")
-    .check()
+let untyped = UntypedStarkSpecification::parse(source).expect("should parse");
+let specification = StarkSpecification::from_untyped(untyped)
     .unwrap_or_else(|diagnostics| panic!("{}", diagnostics.render(source)));
-
-let program = lower(&specification)
+let program = IrProgram::from_spec(&specification)
     .unwrap_or_else(|diagnostics| panic!("{}", diagnostics.render(source)));
 
 // Run one trajectory of twenty macro-steps, recording every state.
