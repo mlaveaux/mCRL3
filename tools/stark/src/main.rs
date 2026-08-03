@@ -19,7 +19,6 @@ use merc_stark::eval::Simulation;
 use merc_stark::eval::TruthValue;
 use merc_stark::ir::IrProgram;
 use merc_stark::ir::SlotId;
-use merc_stark::lower;
 use merc_stark::value::Value;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
@@ -268,7 +267,7 @@ fn check_specification(source: &str, path: &Path, timing: &Timing) -> Result<Sta
     trace!("AST: {:#?}", untyped);
 
     timing
-        .measure("resolving and type checking", || untyped.check())
+        .measure("resolving and type checking", || StarkSpecification::from_untyped(untyped))
         .map_err(|diagnostics| render_diagnostics(&diagnostics, source, path))
 }
 
@@ -281,7 +280,7 @@ fn lower_specification(
     timing: &Timing,
 ) -> Result<IrProgram, MercError> {
     timing
-        .measure("lowering", || lower(spec))
+        .measure("lowering", || IrProgram::from_spec(spec))
         .map_err(|diagnostics| render_diagnostics(&diagnostics, source, path))
 }
 
