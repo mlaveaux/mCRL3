@@ -377,10 +377,17 @@ impl State {
             let partitioned = MatchGoal::partition(new_match_goals);
 
             // Get the greatest common prefix and shorten the positions
-            let mut positions_per_partition = vec![];
+            let mut obligations_per_partition = vec![];
             let mut gcp_length_per_partition = vec![];
-            for (p, pos) in partitioned {
-                positions_per_partition.push(pos);
+            for p in partitioned {
+                let mut obligation_positions = vec![];
+                for goal in &p {
+                    for obligation in &goal.obligations {
+                        obligation_positions.push(obligation.position.clone());
+                    }
+                }
+                obligations_per_partition.push(obligation_positions);
+
                 let gcp = MatchGoal::greatest_common_prefix(&p);
                 let gcp_length = gcp.len();
                 gcp_length_per_partition.push(gcp_length);
@@ -396,12 +403,17 @@ impl State {
                 let mut pos = self.label.clone();
                 pos.push(i);
 
-                // Check if the fresh goals are related to one of the existing partitions
+                // Obligation positions, not announcement positions: the latter are
+                // empty for root-anchored goals and an empty position is a prefix
+                // of every position, so every fresh subtree would be merged and
+                // construction would not terminate in practice.
+                // TODO: this can cost Sabre laziness relative to matching on
+                // announcement positions.
                 let mut partition_key = None;
-                'outer: for (i, part_pos) in positions_per_partition.iter().enumerate() {
-                    for p in part_pos {
-                        if MatchGoal::pos_comparable(p, &pos) {
-                            partition_key = Some(i);
+                'outer: for (k, obligation_positions) in obligations_per_partition.iter().enumerate() {
+                    for obligation_position in obligation_positions {
+                        if MatchGoal::pos_comparable(&pos, obligation_position) {
+                            partition_key = Some(k);
                             break 'outer;
                         }
                     }
@@ -410,6 +422,10 @@ impl State {
                 if let Some(key) = partition_key {
                     // If the fresh goals fall in an existing partition
                     let gcp_length = gcp_length_per_partition[key];
+                    debug_assert!(
+                        gcp_length <= pos.len(),
+                        "greatest common prefix cannot be deeper than the fresh position"
+                    );
                     let pos = DataPosition::new(&pos.indices()[gcp_length..]);
 
                     // Add the fresh goals to the partition
