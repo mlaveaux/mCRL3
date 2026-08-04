@@ -75,13 +75,10 @@ impl MatchGoal {
         goals
     }
 
-    /// Returns a Vec where each element is a partition containing the goals and
-    /// the positions. This partitioning can be done in multiple ways, but
-    /// currently match goals are equivalent when their match announcements have
-    /// a comparable position.
-    pub fn partition(goals: Vec<MatchGoal>) -> Vec<(Vec<MatchGoal>, Vec<DataPosition>)> {
-        let mut partitions = vec![];
-
+    /// Returns a Vec of partitions of match goals. This partitioning can be
+    /// done in multiple ways, but currently match goals are equivalent when
+    /// their match announcements have a comparable position.
+    pub fn partition(goals: Vec<MatchGoal>) -> Vec<Vec<MatchGoal>> {
         trace!("=== partition(match_goals = [ ===");
         for mg in &goals {
             trace!("\t {mg:?}");
@@ -89,15 +86,8 @@ impl MatchGoal {
         trace!("]");
 
         // If one of the goals has a root position all goals are related.
-        partitions = if goals.iter().any(|g| g.announcement.position.is_empty()) {
-            let mut all_positions = Vec::new();
-            for g in &goals {
-                if !all_positions.contains(&g.announcement.position) {
-                    all_positions.push(g.announcement.position.clone())
-                }
-            }
-            partitions.push((goals, all_positions));
-            partitions
+        let partitions = if goals.iter().any(|g| g.announcement.position.is_empty()) {
+            vec![goals]
         } else {
             // Create a mapping from positions to goals, goals are represented with an index
             // on function parameter goals
@@ -116,11 +106,11 @@ impl MatchGoal {
             all_positions.sort_unstable();
 
             // Compute the partitions, finished when all positions are processed
+            let mut partitions = vec![];
             let mut p_index = 0; // position index
             while p_index < all_positions.len() {
                 // Start the partition with a position
                 let p = &all_positions[p_index];
-                let mut pos_in_partition = vec![p.clone()];
                 let mut goals_in_partition = vec![];
 
                 // put the goals with position p in the partition
@@ -135,7 +125,6 @@ impl MatchGoal {
                 // Moreover, all positions in the partition are related to p. p is the highest in the partition.
                 p_index += 1;
                 while p_index < all_positions.len() && MatchGoal::pos_comparable(p, &all_positions[p_index]) {
-                    pos_in_partition.push(all_positions[p_index].clone());
                     // Put the goals with position all_positions[p_index] in the partition
                     let g = position_to_goals.get(&all_positions[p_index]).unwrap();
                     for i in g {
@@ -144,18 +133,14 @@ impl MatchGoal {
                     p_index += 1;
                 }
 
-                partitions.push((goals_in_partition, pos_in_partition));
+                partitions.push(goals_in_partition);
             }
 
             partitions
         };
 
-        for (goals, pos) in &partitions {
-            trace!("pos {{");
-            for mg in pos {
-                trace!("\t {mg}");
-            }
-            trace!("}} -> {{");
+        for goals in &partitions {
+            trace!("{{");
             for mg in goals {
                 trace!("\t {mg:?}");
             }
