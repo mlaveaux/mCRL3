@@ -20,6 +20,7 @@ pub use rewrite_specification::Condition;
 pub use rewrite_specification::RewriteSpecification;
 pub use rewrite_specification::Rule;
 pub use sabre_rewriter::RewriteEngine;
+pub use sabre_rewriter::RewritingStatistics;
 pub use sabre_rewriter::SabreRewriter;
 pub use set_automaton::SetAutomaton;
 pub use set_automaton::is_supported_rule;

@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "merc-vpg"
+path = "src/main.rs"
+# Avoid a rustdoc output filename collision with the `merc_vpg` library crate.
+doc = false
+
 [features]
 # If we enable measurements also the oxidd measurements are enabled.
 merc_metrics = ["oxidd/statistics"]
