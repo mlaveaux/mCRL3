@@ -39,13 +39,26 @@ pub(crate) struct TypeCheckContext {
 
     /// The signature of the specification.
     pub(crate) signature: Option<Rc<Signature>>,
-    /// The resolved signature of the system-defined specification.
+    /// The resolved signature of the *basic-sort* part of the system-defined
+    /// specification; containers are deliberately excluded, see
+    /// `resolve_system_signature`.
     pub(crate) system_signature: Option<Rc<Signature>>,
+    /// The signature a system equation's body is checked against, indexed by
+    /// its enclosing block's `EqnSpecId`. Scoped per
+    /// [`crate::SystemEquationGroup`] rather than pooled, see that type.
+    pub(crate) system_equation_signature_by_group: Vec<Rc<Signature>>,
+    /// The system-internal sort name table, needed to resolve a `Reference`
+    /// sort (e.g. `@NatPair`) while checking a system equation.
+    pub(crate) system_sort_ids: Option<Rc<HashMap<String, ResolvedSortId>>>,
 
     /// The memoized results of `query_equation_typing`, keyed by the id of the
     /// enclosing equation specification block and the equation's own id
     /// within it.
     pub(crate) equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Rc<EquationTyping>, InferenceError>>,
+    /// The system-equation counterpart of `equation_typing`. Separate because
+    /// `assign_declaration_ids` numbers each specification's ids independently
+    /// from zero, so the keys would otherwise collide.
+    pub(crate) system_equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Rc<EquationTyping>, InferenceError>>,
 }
 
 impl TypeCheckContext {
@@ -58,7 +71,10 @@ impl TypeCheckContext {
             sort_of_equation_var: QueryCache::new(),
             signature: None,
             system_signature: None,
+            system_equation_signature_by_group: Vec::new(),
+            system_sort_ids: None,
             equation_typing: QueryCache::new(),
+            system_equation_typing: QueryCache::new(),
         }
     }
 }
