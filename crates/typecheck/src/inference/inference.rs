@@ -9,6 +9,7 @@ use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
 use merc_syntax::DataExprKind;
 use merc_syntax::EqnSpecId;
+use merc_syntax::EqnVarId;
 use merc_syntax::EquationId;
 use merc_syntax::IdDecl;
 use merc_syntax::Sort;
@@ -18,10 +19,12 @@ use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_utilities::TagIndex;
 
+use crate::BUILTIN_SCHEME_SIGNATURE;
 use crate::DisplaySortContext;
 use crate::InferSort;
 use crate::InferSortId;
 use crate::POLYMORPHIC_SIGNATURE;
+use crate::PolymorphicSignature;
 use crate::ResolvedSort;
 use crate::ResolvedSortId;
 use crate::Signature;
@@ -34,6 +37,7 @@ use crate::is_supported_binder_sort;
 use crate::number_generality;
 use crate::query_sort_of_equation_var;
 use crate::resolve_sort;
+use crate::resolve_system_sort;
 
 /// A unique type for expression nodes within a single equation.
 pub(crate) struct ExprTag;
@@ -125,6 +129,21 @@ impl InferenceError {
     }
 }
 
+/// Which specification's equations are being checked. Both roles share the
+/// same [ConstraintGenerator] and [Solver]; only where a name and a
+/// binder/equation-variable sort resolve from differs.
+#[derive(Clone, Copy)]
+enum EquationRole {
+    /// Names resolve against `ctx.signature`, then `ctx.system_signature`,
+    /// then the full polymorphic scheme table; sorts via `resolve_sort`.
+    User,
+    /// Names resolve against `ctx.system_equation_signature_by_group`, then
+    /// `ctx.system_signature`, then only the builtin comparison/`if` schemes —
+    /// the full table's container overloads would duplicate the primary
+    /// signature's and misreport ambiguity. Sorts via `resolve_system_sort`.
+    System,
+}
+
 /// Returns the typing of one user equation, keyed by the id of its enclosing
 /// equation specification block and its own id within that block (assigned by
 /// [assign_declaration_ids](crate::assign_declaration_ids)). Memoized on
@@ -150,24 +169,15 @@ pub(crate) fn query_equation_typing(
     ctx.get_or_compute(
         |ctx| &mut ctx.equation_typing,
         key,
-        |ctx| infer_equation(ctx, spec, system, eqn_spec_id, equation_id).map(Rc::new),
+        |ctx| infer_equation(ctx, spec, system, EquationRole::User, eqn_spec_id, equation_id).map(Rc::new),
     )
     .expect("equation typing does not depend on other equations")
 }
 
 /// Infers and validates the sort of every user equation, populating the
 /// `equation_typing` cache (read back during lowering); the first equation
-/// that fails inference is returned as the error. Phase-3
-/// (constraint-based) inference does not run over the system-defined
-/// equations — they are checked separately and more cheaply, by
-/// `check_system_specification`'s structural well-formedness pass (debug
-/// builds only) and by `lower_system_equations`'s own per-equation sort
-/// propagation during lowering. Neither of those currently covers every
-/// construct Phase-3 does (see `lower_system_equations`'s doc comment), so a
-/// system equation using an unsupported construct is silently dropped from
-/// the lowered output rather than rejected — this is a known gap, not an
-/// intentional trust boundary, and needs a real fix (extend structural
-/// lowering, or run Phase-3 over the system spec too).
+/// that fails inference is returned as the error. The system-defined
+/// equations are checked the same way, by [check_system_equations].
 pub(crate) fn check_equations(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
@@ -185,6 +195,82 @@ pub(crate) fn check_equations(
     Ok(())
 }
 
+/// The system-equation counterpart of [query_equation_typing], memoized on
+/// [TypeCheckContext::system_equation_typing].
+pub(crate) fn query_system_equation_typing(
+    ctx: &mut TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    key: (EqnSpecId, EquationId),
+) -> Result<Rc<EquationTyping>, InferenceError> {
+    let (eqn_spec_id, equation_id) = key;
+
+    debug_assert!(
+        system
+            .equation_declarations
+            .get(*eqn_spec_id)
+            .is_some_and(|eqn_spec| *equation_id < eqn_spec.equations.len()),
+        "equation typing key {key:?} must index an equation of the system specification"
+    );
+
+    ctx.get_or_compute(
+        |ctx| &mut ctx.system_equation_typing,
+        key,
+        |ctx| infer_equation(ctx, spec, system, EquationRole::System, eqn_spec_id, equation_id).map(Rc::new),
+    )
+    .expect("equation typing does not depend on other equations")
+}
+
+/// Infers and validates the sort of every system-defined equation, the same
+/// way [check_equations] does for user equations, populating
+/// `ctx.system_equation_typing`. Requires `resolve_system_signature_full` to
+/// have run, so every binder/equation-variable sort resolves infallibly.
+pub(crate) fn check_system_equations(
+    ctx: &mut TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+) -> Result<(), InferenceError> {
+    for eqn_spec in &system.equation_declarations {
+        let eqn_spec_id = eqn_spec
+            .id
+            .expect("assign_declaration_ids ran on system before check_system_equations");
+        for equation in &eqn_spec.equations {
+            let equation_id = equation
+                .id
+                .expect("assign_declaration_ids ran on system before check_system_equations");
+            query_system_equation_typing(ctx, spec, system, (eqn_spec_id, equation_id))?;
+        }
+    }
+    Ok(())
+}
+
+/// Resolves the declared sort of one equation-block variable. The `System`
+/// role is unmemoized: nothing reads a system equation variable's sort back
+/// out later, unlike `DataSpecification::sort_of_equation_var` on the user side.
+fn resolve_equation_variable_sort(
+    ctx: &mut TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    role: EquationRole,
+    eqn_spec_id: EqnSpecId,
+    var: &IdDecl<EqnVarId>,
+) -> ResolvedSortId {
+    match role {
+        EquationRole::User => {
+            let var_id = var.id.expect("assign_declaration_ids ran before check_equations");
+            query_sort_of_equation_var(ctx, spec, eqn_spec_id, var_id)
+        }
+        EquationRole::System => {
+            let sort_ids = Rc::clone(
+                ctx.system_sort_ids
+                    .as_ref()
+                    .expect("resolve_system_signature_full ran before inference"),
+            );
+            resolve_system_sort(ctx, spec, &sort_ids, &var.sort)
+                .expect("resolve_system_signature_full already proved every system-equation sort resolves")
+        }
+    }
+}
+
 /// Infers the sorts of a single equation: generates constraints over the
 /// condition, left-hand side and right-hand side, solves them by ranked
 /// backtracking, and extracts the sorts of the best solution.
@@ -196,10 +282,17 @@ fn infer_equation(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
+    role: EquationRole,
     eqn_spec_id: EqnSpecId,
     equation_id: EquationId,
 ) -> Result<EquationTyping, InferenceError> {
-    let eqn_spec = &spec.equation_declarations[eqn_spec_id];
+    // `spec`/`system` are always the true user/system pair; `resolve_system_sort`
+    // resolves a `Resolved` sort's `DefId` against the *user* spec regardless of
+    // which spec holds the equation.
+    let eqn_spec = match role {
+        EquationRole::User => &spec.equation_declarations[eqn_spec_id],
+        EquationRole::System => &system.equation_declarations[eqn_spec_id],
+    };
     let equation = &eqn_spec.equations[equation_id];
     let equation_text = || format!("{} = {}", equation.lhs, equation.rhs);
     debug!("inference: typing equation '{}'", equation_text());
@@ -210,8 +303,7 @@ fn infer_equation(
     // declared sorts are concrete, so all uses of a variable share one node.
     let mut variables = HashMap::new();
     for var in &eqn_spec.variables {
-        let var_id = var.id.expect("assign_declaration_ids ran before check_equations");
-        let sort = query_sort_of_equation_var(ctx, spec, eqn_spec_id, var_id);
+        let sort = resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var);
         let node = unifier.resolved_node(sort);
         variables.insert(var.identifier.as_str(), node);
     }
@@ -220,18 +312,42 @@ fn infer_equation(
     // because the generator needs the context mutably: resolving a
     // comprehension's binder sort interns sorts and fills the sort-of-def
     // cache mid-walk.
-    let signature = Rc::clone(ctx.signature.as_ref().expect("build_signature ran before inference"));
+    let (signature, polymorphic): (Rc<Signature>, &'static PolymorphicSignature) = match role {
+        EquationRole::User => (
+            Rc::clone(ctx.signature.as_ref().expect("build_signature ran before inference")),
+            &POLYMORPHIC_SIGNATURE,
+        ),
+        EquationRole::System => (
+            Rc::clone(
+                ctx.system_equation_signature_by_group
+                    .get(*eqn_spec_id)
+                    .expect("resolve_system_signature_full ran before inference"),
+            ),
+            &BUILTIN_SCHEME_SIGNATURE,
+        ),
+    };
     let system_signature = Rc::clone(
         ctx.system_signature
             .as_ref()
             .expect("resolve_system_signature ran before inference"),
     );
+    let sort_ids = match role {
+        EquationRole::User => None,
+        EquationRole::System => Some(Rc::clone(
+            ctx.system_sort_ids
+                .as_ref()
+                .expect("resolve_system_signature_full ran before inference"),
+        )),
+    };
 
     let mut generator = ConstraintGenerator {
         ctx: &mut *ctx,
         spec,
+        role,
+        sort_ids,
         signature,
         system_signature,
+        polymorphic,
         variables,
         unifier: &mut unifier,
         expr_sorts: Vec::new(),
@@ -349,13 +465,7 @@ fn infer_equation(
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
                     for var in &eqn_spec.variables {
-                        let var_id = var.id.expect("assign_declaration_ids ran before check_equations");
-                        // The cache was populated in the variables-binding loop above.
-                        let sort = ctx
-                            .sort_of_equation_var
-                            .get(&(eqn_spec_id, var_id))
-                            .copied()
-                            .expect("equation variable sort was resolved above");
+                        let sort = resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var);
                         trace!(
                             "inference:   variable {}: {}",
                             var.identifier,
@@ -567,9 +677,15 @@ struct ConstraintGenerator<'a> {
     /// Mutable so a comprehension's binder sort can be resolved (interned)
     /// mid-walk; the signatures below are `Rc` clones out of this same context.
     ctx: &'a mut TypeCheckContext,
+    /// Always the true user spec, regardless of `role`.
     spec: &'a UntypedDataSpecification,
+    role: EquationRole,
+    /// The system-internal sort name table, present only for the `System` role.
+    sort_ids: Option<Rc<HashMap<String, ResolvedSortId>>>,
     signature: Rc<Signature>,
+    /// Always the basic-sort system signature, regardless of `role`.
     system_signature: Rc<Signature>,
+    polymorphic: &'static PolymorphicSignature,
     variables: HashMap<&'a str, InferSortId>,
     unifier: &'a mut Unifier,
     /// The sort node of every expression, indexed by [ExprId].
@@ -864,7 +980,14 @@ impl<'a> ConstraintGenerator<'a> {
         if !is_supported_binder_sort(sort) {
             return Err(GenFailure::InvalidBinderSort(sort.to_string(), span.clone()));
         }
-        Ok(resolve_sort(self.ctx, self.spec, sort))
+        Ok(match self.role {
+            EquationRole::User => resolve_sort(self.ctx, self.spec, sort),
+            EquationRole::System => {
+                let sort_ids = Rc::clone(self.sort_ids.as_ref().expect("the System role always carries sort_ids"));
+                resolve_system_sort(self.ctx, self.spec, &sort_ids, sort)
+                    .expect("resolve_system_signature_full already proved every system-equation sort resolves")
+            }
+        })
     }
 
     /// Resolves the candidates of a name: the equation variables shadow
@@ -900,7 +1023,7 @@ impl<'a> ConstraintGenerator<'a> {
         if disjuncts.is_empty()
             && is_numeric_family(name)
             && self.system_signature.mappings.contains_key(name)
-            && !POLYMORPHIC_SIGNATURE.ops.contains_key(name)
+            && !self.polymorphic.ops.contains_key(name)
         {
             // No user overload shadows the name, and it has no container
             // meaning either (`+`/`-`/`*` are also Set/Bag union, difference
@@ -923,7 +1046,7 @@ impl<'a> ConstraintGenerator<'a> {
         // template overload is instantiated with fresh variables per occurrence,
         // mirroring mCRL2's polymorphic symbol table; Phase-4 lowering recovers
         // the concrete operation from the name and the inferred sort.
-        for overload in POLYMORPHIC_SIGNATURE.ops.get(name).into_iter().flatten() {
+        for overload in self.polymorphic.ops.get(name).into_iter().flatten() {
             let instance = self.template_instance(overload);
             disjuncts.push((NameTarget::Builtin, instance));
         }

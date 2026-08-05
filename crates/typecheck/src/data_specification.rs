@@ -1,4 +1,7 @@
+use std::collections::HashSet;
 use std::convert::Infallible;
+use std::ops::Range;
+use std::rc::Rc;
 
 use log::debug;
 
@@ -29,16 +32,20 @@ use crate::build_system_defined_specification;
 use crate::check_aliases;
 use crate::check_equations;
 use crate::check_no_system_function_redeclaration;
+use crate::check_system_equations;
 use crate::check_system_specification;
 use crate::desugar_structured_sorts;
 use crate::extend_system_with_inferred_sorts;
+use crate::filter_signature;
 use crate::hoist_anonymous_structs;
 use crate::is_well_typed;
 use crate::lower_data_expressions;
 use crate::lower_data_specification;
+use crate::merge_signatures;
 use crate::normalize_sorts;
 use crate::resolve_sort_ids;
 use crate::resolve_system_signature;
+use crate::resolve_system_signature_full;
 use crate::structured_sort_equations;
 
 /// A type checked and well-typed data specification.
@@ -151,27 +158,40 @@ impl DataSpecification {
         check_no_system_function_redeclaration(&spec, &basics)?;
         debug!("typecheck: no user declaration redeclares a system function");
 
-        let mut system = build_system_defined_specification(&spec, basics.clone(), encoding);
+        let (mut system, mut groups) = build_system_defined_specification(&spec, basics.clone(), encoding);
 
         // The defining equations of each structured sort (Appendix B.10) join
-        // the system-defined part.
+        // the system-defined part, appended after every group above so those
+        // ranges still index correctly into `system.equation_declarations`.
+        // Each struct's range and symbol names are recorded so its equations
+        // can later be checked against a signature scoped to that struct alone
+        // — pooling them would make a name shared with an unrelated struct
+        // ambiguous, see `filter_signature`.
+        let mut struct_ranges: Vec<(Range<usize>, HashSet<String>, HashSet<String>)> = Vec::new();
         for constructors in &structs {
+            let start = system.equation_declarations.len();
             system.merge(&structured_sort_equations(constructors).map_err(WellTypedError::Custom)?);
+            let end = system.equation_declarations.len();
+            let constructor_names: HashSet<String> = constructors.iter().map(|c| c.name.clone()).collect();
+            let mapping_names: HashSet<String> = constructors
+                .iter()
+                .flat_map(|c| {
+                    c.projection
+                        .clone()
+                        .into_iter()
+                        .chain(c.args.iter().filter_map(|(name, _)| name.clone()))
+                })
+                .collect();
+            struct_ranges.push((start..end, constructor_names, mapping_names));
         }
 
         // The system equations parse with the same operator nodes, so they are
         // lowered like the user equations.
         lower_data_expressions(&mut system);
 
-        // Perform some basic sanity checks on the system-defined specification.
-        if cfg!(debug_assertions)
-            && let Err(error) = check_system_specification(&spec, &system)
-        {
-            panic!("the generated system-defined specification is malformed: {error}");
-        }
-
         debug!(
-            "typecheck: built the system-defined specification with {} sort, {} map and {} equation declaration(s)",
+            "typecheck: built the base system-defined specification with {} sort, {} map and {} equation \
+             declaration(s)",
             system.sort_declarations.len(),
             system.map_declarations.len(),
             system.equation_declarations.len()
@@ -185,8 +205,56 @@ impl DataSpecification {
 
         // Inference over every user equation; an equation binding
         // a variable through an invalid sort (a bare product) is rejected here.
+        // Must run before the extension below, which reads back the
+        // `ctx.equation_typing` this populates.
         check_equations(&mut context, &spec, &system)?;
         debug!("typecheck: inference finished; the specification is well-typed");
+
+        // Must happen before the sanity check below and before `self.system` is
+        // stored, so every equation this specification ever lowers is covered by
+        // both.
+        let (mut system, new_groups) = extend_system_with_inferred_sorts(&context, &spec, &system, encoding);
+        groups.extend(new_groups);
+
+        // Unconditional in every build (not a debug_assert!): silently trusting
+        // a malformed generated spec in release would leave a rewrite spec
+        // quietly missing rules.
+        check_system_specification(&spec, &system)?;
+        debug!(
+            "typecheck: final system-defined specification has {} sort, {} map and {} equation declaration(s)",
+            system.sort_declarations.len(),
+            system.map_declarations.len(),
+            system.equation_declarations.len()
+        );
+
+        assign_declaration_ids(&mut system);
+
+        // A container group needs no user signature: a container template never
+        // calls a struct-desugared symbol, and the comparison operators it does
+        // use are polymorphic schemes.
+        resolve_system_signature_full(&mut context, &spec, &system, &groups)?;
+
+        for (range, constructor_names, mapping_names) in &struct_ranges {
+            let struct_signature = filter_signature(
+                context.signature.as_deref().expect("build_signature ran earlier"),
+                constructor_names,
+                mapping_names,
+            );
+            let signature = Rc::new(merge_signatures(
+                &struct_signature,
+                context
+                    .system_signature
+                    .as_deref()
+                    .expect("resolve_system_signature ran earlier"),
+            ));
+            for slot in &mut context.system_equation_signature_by_group[range.clone()] {
+                *slot = Rc::clone(&signature);
+            }
+        }
+        debug!("typecheck: resolved the system-equation signatures");
+
+        check_system_equations(&mut context, &spec, &system)?;
+        debug!("typecheck: system-equation inference finished; the system specification is well-typed");
 
         Ok(Self {
             spec,
@@ -217,7 +285,7 @@ impl DataSpecification {
     /// sorts that occur in the specification, plus the defining equations of
     /// the desugared structured sorts (Appendix B.10). This is generated
     /// content with unresolved sorts but lowered equation expressions, verified
-    /// in debug builds by `check_system_specification`; function-update
+    /// unconditionally by `check_system_specification`; function-update
     /// operators are generated for every declared arity, single- and
     /// multi-argument alike.
     pub fn system_defined_specification(&self) -> &UntypedDataSpecification {
@@ -305,14 +373,10 @@ impl DataSpecification {
     /// and equations. Call this once after [`Self::from_untyped`] when the
     /// lowered typed specification is needed.
     ///
-    /// Before lowering, the system-defined specification is extended with the
-    /// Appendix-B declarations of any container sort that Phase-3 inference
-    /// discovered only through an enumeration literal (`[1, 2]`, `{1, 2}`,
-    /// `{1: 2}`) rather than a textual declaration — see
-    /// [`extend_system_with_inferred_sorts`].
+    /// `self.system` is already extended and checked by `from_untyped_with`, so
+    /// this is a pure read-only replay.
     pub fn lower_data_specification(&self) -> Mcrl2DataSpecification {
-        let system = extend_system_with_inferred_sorts(&self.context, &self.spec, &self.system, self.encoding);
-        lower_data_specification(&self.context, &self.spec, &system, self.encoding)
+        lower_data_specification(&self.context, &self.spec, &self.system, self.encoding)
     }
 }
 
@@ -579,6 +643,171 @@ mod tests {
                 .iter()
                 .map(|m| m.name().to_string())
                 .collect::<Vec<_>>()
+        );
+    }
+
+    /// Formats every lowered equation as `lhs = rhs`, for assertion messages.
+    fn equation_strings(mcrl2: &merc_data::Mcrl2DataSpecification) -> Vec<String> {
+        mcrl2
+            .equations()
+            .iter()
+            .map(|e| format!("{} = {}", e.lhs(), e.rhs()))
+            .collect()
+    }
+
+    // The tests below guard that a system equation using a binder, a bare
+    // higher-order name value, or a struct-desugared symbol reaches the lowered
+    // output rather than being dropped.
+
+    #[test]
+    fn test_set_extensionality_equation_survives_lowering() {
+        // `set.mcrl2`'s `@set(f, s) == @set(g, t) = forall c:S. ...`.
+        let spec =
+            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Set(Nat) -> Bool;").unwrap())
+                .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+        let found = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string().contains("==") && e.rhs().to_string().contains("Forall"));
+        assert!(
+            found,
+            "the Set extensionality equation (a forall in its rhs) must survive lowering: {:#?}",
+            equation_strings(&mcrl2)
+        );
+    }
+
+    #[test]
+    fn test_bag_extensionality_equation_survives_lowering() {
+        // `bag.mcrl2`'s counterpart of the Set extensionality equation.
+        let spec =
+            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bag(Nat) -> Bool;").unwrap())
+                .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+        let found = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string().contains("==") && e.rhs().to_string().contains("Forall"));
+        assert!(
+            found,
+            "the Bag extensionality equation (a forall in its rhs) must survive lowering: {:#?}",
+            equation_strings(&mcrl2)
+        );
+    }
+
+    #[test]
+    fn test_bare_higher_order_value_equation_survives_lowering() {
+        // `set.mcrl2`'s `@setfset(s) = @set(@false_, s)`, where `@false_` is used
+        // point-free (`S -> Bool`, never applied).
+        let spec =
+            DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Set(Nat) -> Bool;").unwrap())
+                .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+        let found = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "@setfset(s)" && e.rhs().to_string() == "@set(@false_, s)");
+        assert!(
+            found,
+            "the '@setfset(s) = @set(@false_, s)' equation must survive lowering: {:#?}",
+            equation_strings(&mcrl2)
+        );
+    }
+
+    #[test]
+    fn test_struct_recogniser_and_projection_equations_survive_lowering() {
+        // A struct's recogniser/projection equations reference symbols (`is_c1`,
+        // `pr1`, `c1`) declared on the user spec by struct desugaring, not on
+        // the system spec.
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort D = struct c1(pr1: Nat, pr2: Bool)?is_c1 | c2?is_c2; map f: D -> Bool;",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        let recogniser = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "is_c1(c1(x0_0, x0_1))" && e.rhs().to_string() == "true");
+        assert!(
+            recogniser,
+            "the recogniser equation 'is_c1(c1(x0_0, x0_1)) = true' must survive lowering: {:#?}",
+            equation_strings(&mcrl2)
+        );
+
+        let projection = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "pr1(c1(x0_0, x0_1))" && e.rhs().to_string() == "x0_0");
+        assert!(
+            projection,
+            "the projection equation 'pr1(c1(x0_0, x0_1)) = x0_0' must survive lowering: {:#?}",
+            equation_strings(&mcrl2)
+        );
+    }
+
+    #[test]
+    fn test_multiple_element_sorts_of_the_same_container_do_not_collide() {
+        // `Bag(Nat)` and `Bag(D)` each carry their own copy of `bag.mcrl2`'s
+        // `@zero_ == @one_ = false;`, which pins down no instantiation and would
+        // be ambiguous against one pooled signature — see `SystemEquationGroup`.
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse("sort D = struct d1; map f: Bag(Nat) -> Bool; g: Bag(D) -> Bool;").unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        assert_eq!(
+            mcrl2.mappings().iter().filter(|m| m.name() == "@zero_").count(),
+            2,
+            "both Bag(Nat) and Bag(D) should declare their own @zero_: {:#?}",
+            mcrl2
+                .mappings()
+                .iter()
+                .map(|m| m.name().to_string())
+                .collect::<Vec<_>>()
+        );
+
+        let zero_eq_one_false_count = mcrl2
+            .equations()
+            .iter()
+            .filter(|e| e.lhs().to_string() == "==(@zero_, @one_)" && e.rhs().to_string() == "false")
+            .count();
+        assert_eq!(
+            zero_eq_one_false_count,
+            2,
+            "'@zero_ == @one_ = false' should survive once per instantiation: {:#?}",
+            equation_strings(&mcrl2)
+        );
+    }
+
+    #[test]
+    fn test_struct_constant_and_unrelated_projection_sharing_a_name_do_not_collide() {
+        // `a` is both struct A's nullary constant and an unrelated struct's
+        // projection — a constructor-vs-mapping overload of one name, which
+        // would make A's own `a == a = true` ambiguous if the two were pooled.
+        let spec = DataSpecification::from_untyped(
+            UntypedDataSpecification::parse(
+                "sort A = struct a?is_a; \
+                 sort APos = struct ca(a: A)?is_ca | cpos(p: Pos)?is_cpos; \
+                 map f: A -> Bool;",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mcrl2 = spec.lower_data_specification();
+
+        let reflexivity = mcrl2
+            .equations()
+            .iter()
+            .any(|e| e.lhs().to_string() == "==(a, a)" && e.rhs().to_string() == "true");
+        assert!(
+            reflexivity,
+            "struct A's own 'a == a = true' equation must survive, unambiguously: {:#?}",
+            equation_strings(&mcrl2)
         );
     }
 }

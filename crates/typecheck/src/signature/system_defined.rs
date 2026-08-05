@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::ops::ControlFlow;
+use std::ops::Range;
 
 use merc_syntax::ComplexSort;
 use merc_syntax::DataExpr;
@@ -19,6 +21,78 @@ use crate::WellTypedError;
 use crate::is_supported_binder_sort;
 use crate::lower_data_expressions;
 use crate::standard_sort;
+
+/// One element-sort-scoped group of generated Appendix-B content, and the
+/// range of `equation_declarations` indices it occupies.
+///
+/// Two instantiations of the same container template (`Bag(Nat)`, `Bag(D)`)
+/// each carry a copy of its equations, and some of those (`@zero_ == @one_` in
+/// `bag.mcrl2`) mention no argument pinning down which copy they belong to, so
+/// one pooled signature would make them genuinely ambiguous.
+pub(crate) struct SystemEquationGroup {
+    pub(crate) declarations: UntypedDataSpecification,
+    pub(crate) equation_range: Range<usize>,
+}
+
+/// The grouping key of a concrete container sort: its element one level down,
+/// so a template and its transitive dependencies share a key
+/// (`Bag(Nat)`/`FSet(Nat)`/`Set(Nat)` all key on `Nat`).
+///
+/// Deliberately not recursive: recursing would key `FSet(Set(Nat))` on `Nat`,
+/// the same as an unrelated `Set(Nat)`, reintroducing the ambiguity
+/// [SystemEquationGroup] exists to prevent.
+fn container_group_key(sort: &SortExpression) -> SortExpression {
+    match &sort.node {
+        SortExpressionKind::Complex(_, subsort) => (**subsort).clone(),
+        _ => sort.clone(),
+    }
+}
+
+/// Drains `worklist` to a fixpoint like [expand_container_sorts], but keeps
+/// each popped sort's generated batch separate, then partitions the batches by
+/// [container_group_key] and merges each partition into `result` as its own
+/// [SystemEquationGroup]. The shared `seen` keeps grouping from changing *what*
+/// is generated, only how it is partitioned. Partitions are kept in a
+/// `BTreeMap`, not a `HashMap`, so the group (and so equation) order in
+/// `result` is deterministic across runs; callers must also pass `worklist`
+/// in a deterministic order for the same reason.
+fn group_and_merge(
+    result: &mut UntypedDataSpecification,
+    mut worklist: Vec<SortExpression>,
+    seen: &HashSet<SortExpression>,
+    encoding: NumberEncoding,
+) -> Vec<SystemEquationGroup> {
+    let mut seen = seen.clone();
+    let mut generated_by_sort: Vec<(SortExpression, UntypedDataSpecification)> = Vec::new();
+    while let Some(sort) = worklist.pop() {
+        if !seen.insert(sort.clone()) {
+            continue;
+        }
+        let generated = standard_sort(&sort, encoding);
+        collect_system_sorts_in_spec(&generated, &mut worklist, false);
+        generated_by_sort.push((sort, generated));
+    }
+
+    let mut by_key: BTreeMap<SortExpression, UntypedDataSpecification> = BTreeMap::new();
+    for (sort, generated) in &generated_by_sort {
+        by_key.entry(container_group_key(sort)).or_default().merge(generated);
+    }
+
+    let mut groups = Vec::with_capacity(by_key.len());
+    for (_, mut declarations) in by_key {
+        lower_data_expressions(&mut declarations);
+
+        let start = result.equation_declarations.len();
+        result.merge(&declarations);
+        let end = result.equation_declarations.len();
+
+        groups.push(SystemEquationGroup {
+            declarations,
+            equation_range: start..end,
+        });
+    }
+    groups
+}
 
 /// Builds the system-defined part of a specification: the Appendix-B
 /// definitions (constructors, mappings and equations) for every basic sort,
@@ -40,21 +114,23 @@ use crate::standard_sort;
 ///
 /// `basics` is the [basic_sort_data_specification], passed in because the
 /// caller also needs it separately for the system signature.
+///
+/// Returns the merged specification alongside the [SystemEquationGroup]s its
+/// content was generated in.
 pub(crate) fn build_system_defined_specification(
     spec: &UntypedDataSpecification,
     basics: UntypedDataSpecification,
     encoding: NumberEncoding,
-) -> UntypedDataSpecification {
+) -> (UntypedDataSpecification, Vec<SystemEquationGroup>) {
     let mut result = basics;
 
     let mut worklist = Vec::new();
     // Seed from the user specification, including its function sorts.
     collect_system_sorts_in_spec(spec, &mut worklist, true);
 
-    let mut seen: HashSet<SortExpression> = HashSet::new();
-    expand_container_sorts(worklist, &mut seen, encoding, |generated| result.merge(generated));
+    let groups = group_and_merge(&mut result, worklist, &HashSet::new(), encoding);
 
-    result
+    (result, groups)
 }
 
 /// Drains `worklist` to a fixpoint: for every sort popped that has not already
@@ -100,15 +176,16 @@ fn expand_container_sorts(
 /// carries no direct list of them), so the syntactic scan is replayed here to
 /// reconstruct that set before diffing against it.
 ///
-/// Returns a new specification; `system` itself is left untouched, so calling
-/// this repeatedly (as [crate::DataSpecification::lower_data_specification]
-/// may be) keeps producing the same result from the same inputs.
+/// Returns a new specification plus the [SystemEquationGroup]s of the newly
+/// added content; `system` itself is left untouched, so calling this repeatedly (as
+/// [crate::DataSpecification::lower_data_specification] may be) keeps
+/// producing the same result from the same inputs.
 pub(crate) fn extend_system_with_inferred_sorts(
     ctx: &TypeCheckContext,
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
     encoding: NumberEncoding,
-) -> UntypedDataSpecification {
+) -> (UntypedDataSpecification, Vec<SystemEquationGroup>) {
     let mut result = system.clone();
 
     // Reconstruct the set of container sorts `system` already covers.
@@ -129,15 +206,20 @@ pub(crate) fn extend_system_with_inferred_sorts(
             }
         }
     }
+    // `equation_typing` is a HashMap, so its iteration order (hence the push
+    // order above) varies between runs; sort so `group_and_merge` below sees
+    // a fixed order and the generated equations end up in the same order
+    // every time.
+    worklist.sort();
 
     // The freshly generated content still carries the raw `Binary`/`Unary`/
     // `List` nodes the templates are written with (mirroring what
     // `DataSpecification::from_untyped` does for the syntactically-collected
     // part); already-lowered content passes through unchanged since lowering
     // is idempotent.
-    expand_container_sorts(worklist, &mut seen, encoding, |generated| result.merge(generated));
+    let groups = group_and_merge(&mut result, worklist, &seen, encoding);
     lower_data_expressions(&mut result);
-    result
+    (result, groups)
 }
 
 /// Converts an inferred sort back into the `merc_syntax` sort-expression form
@@ -366,6 +448,7 @@ mod tests {
             basics,
             NumberEncoding::Binary,
         )
+        .0
     }
 
     #[test]
