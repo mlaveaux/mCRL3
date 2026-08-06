@@ -18,6 +18,8 @@ use merc_utilities::Timing;
 use crate::explore_srf::parity_game_from_pbes;
 use crate::explore_srf::parity_game_from_pbes_parallel;
 use crate::explore_symbolic_srf::explore_pbes_symbolic;
+use crate::graph_symmetry::GapConfig;
+use crate::graph_symmetry::graph_symmetries;
 use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
 use merc_explore::CachingStrategy;
@@ -35,6 +37,7 @@ mod explore_srf_test;
 mod explore_symbolic_srf;
 mod explore_symbolic_srf_test;
 mod export;
+mod graph_symmetry;
 mod permutation;
 mod symmetry;
 
@@ -89,6 +92,8 @@ fn init_ldd_manager(cli: &Cli) -> oxidd::ldd::LDDManagerRef {
 enum Commands {
     /// Analyze symmetries of a PBES
     Symmetry(SymmetryArgs),
+    /// Compute symmetries of a PBES via the Symmetry Detection Graph and GAP.
+    GraphSymmetry(GraphSymmetryArgs),
     /// Exports the control flow graphs of a PBES in JSON format.
     Export(ExportArgs),
     /// Explore a PBES explicitly into a parity game.
@@ -131,6 +136,36 @@ struct SymmetryArgs {
     /// Print the SRF representation of the PBES.
     #[arg(long, default_value_t = false)]
     print_srf: bool,
+}
+
+#[derive(clap::Args, Debug)]
+struct GraphSymmetryArgs {
+    /// The input PBES file.
+    filename: String,
+
+    /// Explicitly choose the format of the input PBES file.
+    #[arg(long, short('i'), value_enum)]
+    format: Option<PbesFormat>,
+
+    /// Path or name of the GAP executable.
+    #[arg(long, default_value = "gap")]
+    gap_path: String,
+
+    /// Write the generated GAP script to this file (for debugging).
+    #[arg(long)]
+    dump_gap_script: Option<String>,
+
+    /// Write the graph6 structural skeleton to this file (colours not included).
+    #[arg(long)]
+    graph6: Option<String>,
+
+    /// Write the SDG as a Graphviz DOT file to this path.
+    #[arg(long)]
+    dot: Option<String>,
+
+    /// Print symmetries in mapping notation instead of cycle notation.
+    #[arg(long, default_value_t = false)]
+    mapping_notation: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -251,6 +286,7 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
     if let Some(command) = &cli.commands {
         match command {
             Commands::Symmetry(args) => handle_symmetry(args)?,
+            Commands::GraphSymmetry(args) => handle_graph_symmetry(args)?,
             Commands::Export(args) => handle_export(args)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args)?,
             Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing)?,
@@ -327,6 +363,52 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
         Player::Odd
     };
     println!("{}", winner.solution());
+
+    Ok(())
+}
+
+fn handle_graph_symmetry(args: &GraphSymmetryArgs) -> Result<(), MercError> {
+    use crate::graph_symmetry::graph6_string;
+    use crate::graph_symmetry::write_dot;
+
+    let pbes = read_pbes(&args.filename, args.format.clone())?;
+
+    let config = GapConfig {
+        executable: args.gap_path.clone(),
+        dump_script: args.dump_gap_script.as_deref().map(std::path::Path::new).map(|p| p.to_path_buf()),
+    };
+
+    if let Some(graph6_path) = &args.graph6 {
+        let sdg = crate::graph_symmetry::build_sdg(&pbes)?;
+        let g6 = graph6_string(&sdg)?;
+        std::fs::write(graph6_path, g6)?;
+        log::info!("graph6 structural skeleton written to '{graph6_path}' (colours not included)");
+    }
+
+    if let Some(dot_path) = &args.dot {
+        let sdg = crate::graph_symmetry::build_sdg(&pbes)?;
+        let mut f = std::fs::File::create(dot_path)?;
+        write_dot(&sdg, &mut f)?;
+        log::info!("DOT file written to '{dot_path}'");
+        if let Ok(dot_bin) = which::which("dot") {
+            log::info!("Generating PDF using dot...");
+            duct::cmd!(dot_bin, "-Tpdf", dot_path, "-O").run()?;
+        }
+    }
+
+    let result = graph_symmetries(&pbes, &config)?;
+
+    for generator in &result.generators {
+        if args.mapping_notation {
+            println!("{:?}", generator);
+        } else {
+            println!("{}", generator);
+        }
+    }
+
+    if result.generators.is_empty() {
+        println!("No non-trivial symmetries found.");
+    }
 
     Ok(())
 }

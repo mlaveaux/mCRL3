@@ -16,12 +16,17 @@ use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_value;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertices;
 use mcrl2_sys::pbes::ffi::mcrl2_make_data_assignment_list;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_data_specification;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_formula;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_is_mu;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_variable;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_equations;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_propositional_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_propositional_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_srf_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_string;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_unify_parameters;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_conjunctive;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_mu;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equations_summands;
@@ -38,6 +43,7 @@ use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_equation;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_equations;
 use mcrl2_sys::pbes::ffi::mcrl2_stategraph_local_algorithm_run;
 use mcrl2_sys::pbes::ffi::pbes;
+use mcrl2_sys::pbes::ffi::pbes_equation;
 use mcrl2_sys::pbes::ffi::predicate_variable;
 use mcrl2_sys::pbes::ffi::srf_equation;
 use mcrl2_sys::pbes::ffi::srf_pbes;
@@ -115,6 +121,35 @@ impl Pbes {
             ))
         })
     }
+
+    /// Unifies the parameter vectors of all equations in-place.
+    ///
+    /// After this call every equation shares the same parameter vector (same names and sorts).
+    /// Unlike `SrfPbes::unify_parameters`, this operates directly on the PBES without
+    /// converting to standard recursive form, so formula structure is preserved.
+    pub fn unify_parameters(&mut self, ignore_ce_equations: bool, reset: bool) -> Result<(), MercError> {
+        mcrl2_pbes_unify_parameters(self.pbes.pin_mut(), ignore_ce_equations, reset);
+        Ok(())
+    }
+
+    /// Returns the equations of the PBES, in declaration order.
+    ///
+    /// Unlike [`SrfPbes::equations`], this returns the equations exactly as
+    /// they appear in the PBES: no conversion to standard recursive form, and
+    /// equations are not required to share a single unified parameter vector.
+    pub fn equations(&self) -> PbesEquations {
+        let mut ffi_equations = CxxVector::new();
+        mcrl2_pbes_equations(
+            ffi_equations.pin_mut(),
+            self.pbes.as_ref().expect("pbes UniquePtr should not be null"),
+        );
+
+        let equations = ffi_equations.iter().map(|eq| PbesEquation::new(eq)).collect();
+        PbesEquations {
+            equations,
+            _ffi_equations: ffi_equations,
+        }
+    }
 }
 
 /// Build a `data::assignment_list` from two parallel ATerm lists: a `variable_list` and a
@@ -127,6 +162,73 @@ pub fn make_data_assignment_list(variables: &ATerm, values: &ATerm) -> ATerm {
 impl fmt::Display for Pbes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", mcrl2_pbes_to_string(&self.pbes))
+    }
+}
+
+/// The equations of a [`Pbes`], in declaration order.
+///
+/// Owns the underlying FFI equation vector, so the [`PbesEquation`]s (each a
+/// pointer into it) stay valid for as long as this value is alive.
+pub struct PbesEquations {
+    equations: Vec<PbesEquation>,
+    _ffi_equations: UniquePtr<CxxVector<pbes_equation>>,
+}
+
+impl std::ops::Deref for PbesEquations {
+    type Target = [PbesEquation];
+
+    fn deref(&self) -> &[PbesEquation] {
+        &self.equations
+    }
+}
+
+/// mcrl2::pbes_system::pbes_equation
+pub struct PbesEquation {
+    equation: *const pbes_equation,
+}
+
+impl PbesEquation {
+    /// Creates a new [`PbesEquation`] from the given FFI equation pointer.
+    pub(crate) fn new(equation: *const pbes_equation) -> Self {
+        PbesEquation { equation }
+    }
+
+    /// Returns a reference to the underlying FFI equation.
+    fn as_ref(&self) -> &pbes_equation {
+        unsafe { self.equation.as_ref().expect("Pointer should be valid") }
+    }
+
+    /// Returns true when the equation has a least fixed-point (μ) symbol, false for greatest (ν).
+    pub fn is_mu(&self) -> bool {
+        mcrl2_pbes_equation_is_mu(self.as_ref())
+    }
+
+    /// Returns the bound predicate variable (name and parameters) of the equation.
+    pub fn variable(&self) -> PropositionalVariable {
+        // SAFETY: `self.equation` is a live equation pointer (kept alive by the
+        // owning `PbesEquations`), and the FFI returns the live variable term
+        // wrapped immediately by `from_ptr`.
+        PropositionalVariable::new(unsafe { ATerm::from_ptr(mcrl2_pbes_equation_variable(self.as_ref())) })
+    }
+
+    /// Returns the right-hand side predicate formula of the equation.
+    pub fn formula(&self) -> PbesExpression {
+        // SAFETY: `self.equation` is a live equation pointer (kept alive by the
+        // owning `PbesEquations`), and the FFI returns the live formula term
+        // wrapped immediately by `from_ptr`.
+        PbesExpression::new(unsafe { ATerm::from_ptr(mcrl2_pbes_equation_formula(self.as_ref())) })
+    }
+}
+
+impl fmt::Debug for PbesEquation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {:?} = {}",
+            if self.is_mu() { "mu" } else { "nu" },
+            self.variable(),
+            self.formula()
+        )
     }
 }
 
