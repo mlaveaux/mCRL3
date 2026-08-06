@@ -36,7 +36,6 @@ mod explore_srf;
 mod explore_srf_test;
 mod explore_symbolic_srf;
 mod explore_symbolic_srf_test;
-mod export;
 mod graph_symmetry;
 mod permutation;
 mod symmetry;
@@ -94,8 +93,6 @@ enum Commands {
     Symmetry(SymmetryArgs),
     /// Compute symmetries of a PBES via the Symmetry Detection Graph and GAP.
     GraphSymmetry(GraphSymmetryArgs),
-    /// Exports the control flow graphs of a PBES in JSON format.
-    Export(ExportArgs),
     /// Explore a PBES explicitly into a parity game.
     ExploreExplicit(ExploreExplicitArgs),
     /// Explore a PBES symbolically using LDD-based reachability.
@@ -166,20 +163,6 @@ struct GraphSymmetryArgs {
     /// Print symmetries in mapping notation instead of cycle notation.
     #[arg(long, default_value_t = false)]
     mapping_notation: bool,
-}
-
-#[derive(clap::Args, Debug)]
-struct ExportArgs {
-    /// The input PBES file.
-    filename: String,
-
-    /// The JSON output file. If not provided, the output will be written to stdout.
-    #[arg(long)]
-    output: Option<String>,
-
-    /// Explicitly choose the format of the input PBES file.
-    #[arg(long, short('i'), value_enum)]
-    format: Option<PbesFormat>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -287,7 +270,6 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
         match command {
             Commands::Symmetry(args) => handle_symmetry(args)?,
             Commands::GraphSymmetry(args) => handle_graph_symmetry(args)?,
-            Commands::Export(args) => handle_export(args)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args)?,
             Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing)?,
             Commands::Solve(args) => handle_solve(args)?,
@@ -456,22 +438,6 @@ fn handle_symmetry(args: &SymmetryArgs) -> Result<(), MercError> {
                 }
             }
         }
-    }
-
-    Ok(())
-}
-
-/// Handles the export command, which exports the control flow graphs of a PBES in JSON format.
-fn handle_export(args: &ExportArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format.clone())?;
-
-    if let Some(output_filename) = &args.output {
-        let mut file = std::fs::File::create(output_filename)?;
-        export::export(&mut file, &pbes)?;
-    } else {
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        export::export(&mut handle, &pbes)?;
     }
 
     Ok(())
