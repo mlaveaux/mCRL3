@@ -1,3 +1,6 @@
+use std::fs;
+use std::fs::File;
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -19,9 +22,12 @@ use crate::explore_srf::parity_game_from_pbes;
 use crate::explore_srf::parity_game_from_pbes_parallel;
 use crate::explore_symbolic_srf::explore_pbes_symbolic;
 use crate::graph_symmetry::GapConfig;
+use crate::graph_symmetry::graph6_string;
 use crate::graph_symmetry::graph_symmetries;
+use crate::graph_symmetry::write_dot;
 use crate::permutation::Permutation;
 use crate::symmetry::SymmetryAlgorithm;
+
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_vpg::PG;
@@ -350,26 +356,23 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
 }
 
 fn handle_graph_symmetry(args: &GraphSymmetryArgs) -> Result<(), MercError> {
-    use crate::graph_symmetry::graph6_string;
-    use crate::graph_symmetry::write_dot;
-
     let pbes = read_pbes(&args.filename, args.format.clone())?;
 
     let config = GapConfig {
         executable: args.gap_path.clone(),
-        dump_script: args.dump_gap_script.as_deref().map(std::path::Path::new).map(|p| p.to_path_buf()),
+        dump_script: args.dump_gap_script.as_deref().map(Path::new).map(|p| p.to_path_buf()),
     };
 
     if let Some(graph6_path) = &args.graph6 {
         let sdg = crate::graph_symmetry::build_sdg(&pbes)?;
         let g6 = graph6_string(&sdg)?;
-        std::fs::write(graph6_path, g6)?;
+        fs::write(graph6_path, g6)?;
         log::info!("graph6 structural skeleton written to '{graph6_path}' (colours not included)");
     }
 
     if let Some(dot_path) = &args.dot {
         let sdg = crate::graph_symmetry::build_sdg(&pbes)?;
-        let mut f = std::fs::File::create(dot_path)?;
+        let mut f = File::create(dot_path)?;
         write_dot(&sdg, &mut f)?;
         log::info!("DOT file written to '{dot_path}'");
         if let Ok(dot_bin) = which::which("dot") {
