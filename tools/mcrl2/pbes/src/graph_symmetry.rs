@@ -57,11 +57,9 @@ use crate::permutation::Permutation;
 /// Binary function symbols treated as commutative; listing a non-commutative one unsoundly widens the symmetry group.
 const COMMUTATIVE_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "==", "!=", "<=>", "+", "*", "max", "min"];
 
-/// Subset of [`COMMUTATIVE_FUNCTION_SYMBOLS`] that are also associative.
-/// Applications of these are flattened into a single n-ary vertex by
-/// [`SdgBuilder::visit_children`], so `a && b && c` becomes one vertex with
-/// three uncoloured child edges rather than nested binary nodes.
-const FLAT_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "+", "*", "max", "min"];
+/// Subset of [`COMMUTATIVE_FUNCTION_SYMBOLS`] that are also associative, and as
+/// such can be flattened.
+const ASSOCIATIVE_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "+", "*", "max", "min"];
 
 /// True iff `name` is a known commutative binary symbol at the given arity.
 fn is_commutative(name: &str, arity: usize) -> bool {
@@ -70,7 +68,7 @@ fn is_commutative(name: &str, arity: usize) -> bool {
 
 /// True iff `name` is associative-commutative and its chains should be flattened into one n-ary SDG vertex.
 fn is_flat_operator(name: &str, arity: usize) -> bool {
-    arity == 2 && FLAT_FUNCTION_SYMBOLS.contains(&name)
+    arity == 2 && ASSOCIATIVE_FUNCTION_SYMBOLS.contains(&name)
 }
 
 /// Collects leaves of a nested binary PBES connective chain; analogous to [`flatten_associative`] for non-`is_application` connectives.
@@ -891,13 +889,8 @@ where
 
         let label = match vc {
             VertexColour::Parameter => sdg.parameters[i].name().to_string(),
-            VertexColour::Update => {
-                if let SdgVertex::Update { parameter, .. } = &sdg.graph[node] {
-                    sdg.parameters[*parameter].name().to_string()
-                } else {
-                    unreachable!()
-                }
-            }
+            // Update nodes are unlabeled; shape + dashed edges identify them.
+            VertexColour::Update => String::new(),
             VertexColour::Pvi => {
                 if let SdgVertex::Term(aterm) = &sdg.graph[node] {
                     PbesPropositionalVariableInstantiationRef::from(aterm.copy()).name().to_string()
@@ -945,7 +938,11 @@ where
         };
 
         let fill = vc.dot_fill_colour();
-        writeln!(w, "  n{i} [label=\"{label}\", shape={shape}, fillcolor=\"{fill}\"];")?;
+        if matches!(vc, VertexColour::Update) {
+            writeln!(w, "  n{i} [label=\"\", shape=diamond, fillcolor=\"{fill}\", width=0.2, height=0.2, fixedsize=true];")?;
+        } else {
+            writeln!(w, "  n{i} [label=\"{label}\", shape={shape}, fillcolor=\"{fill}\"];")?;
+        }
     }
 
     for edge in sdg.graph.edge_indices() {
