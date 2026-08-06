@@ -52,6 +52,8 @@ use mcrl2::is_variable;
 use mcrl2::is_where_clause;
 use merc_utilities::MercError;
 
+use crate::permutation::Permutation;
+
 /// Binary function symbols treated as commutative; listing a non-commutative one unsoundly widens the symmetry group.
 const COMMUTATIVE_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "==", "!=", "<=>", "+", "*", "max", "min"];
 
@@ -365,9 +367,9 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     // Allocate the parameter vertices first, so `NodeIndex(k) == parameter
     // k`. This is what makes "restrict an automorphism to the parameter
     // vertices" trivial: GAP point `k+1` <-> parameter `k`.
-    for parameter in &parameters {
+    for (k, parameter) in parameters.iter().enumerate() {
         let term: ATerm = parameter.clone().into();
-        let index = builder.add_vertex(SdgVertex::Term(term.clone()), VertexColour::Parameter);
+        let index = builder.add_vertex(SdgVertex::Parameter(k), VertexColour::Parameter);
         builder.term_map.insert(term, index);
     }
     debug_assert_eq!(builder.graph.node_count(), parameters.len());
@@ -378,7 +380,7 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     for (e, equation) in equations.iter().enumerate() {
         let root = equation.formula();
         let root_ref: ATermRef<'_> = root.copy().into();
-        builder.visit(root_ref, e);
+        builder.visit(root_ref, e)?;
 
         // Deduplicate PVIs by ATerm identity: `Y(n) && Y(n)` yields two occurrences
         // from the traversal but they share one vertex, so one set of update vertices suffices.
@@ -511,73 +513,74 @@ impl SdgBuilder {
     /// Interns a vertex for `term` (deduplicated by term identity), marks it with `equation`, and
     /// recurses into children. Hand-rolled because `NodeIndex` must flow upward and argument
     /// positions vary per child — constraints the visitor traits cannot express.
-    fn visit(&mut self, term: ATermRef<'_>, equation: usize) -> NodeIndex {
+    fn visit(&mut self, term: ATermRef<'_>, equation: usize) -> Result<NodeIndex, MercError> {
         let key = term.protect();
         if let Some(&node) = self.term_map.get(&key) {
             trace!("visit: reused v{} for `{:?}` (eq {})", node.index(), term, equation);
             self.mark_equation(node, equation);
-            return node;
+            return Ok(node);
         }
 
-        let colour = self.colour_of(&key);
+        let colour = self.colour_of(&key)?;
         let node = self.add_vertex(SdgVertex::Term(key.clone()), colour.clone());
         trace!("visit: new   v{} {:?} for `{:?}` (eq {})", node.index(), colour, term, equation);
         self.term_map.insert(key.clone(), node);
         self.mark_equation(node, equation);
 
-        self.visit_children(&key, node, equation);
-        node
+        self.visit_children(&key, node, equation)?;
+        Ok(node)
     }
 
     /// Visits `child`, then adds edge `(parent, child, colour)`.
-    fn visit_child(&mut self, parent: NodeIndex, child: ATermRef<'_>, colour: EdgeColour, equation: usize) {
-        let child_node = self.visit(child, equation);
+    fn visit_child(&mut self, parent: NodeIndex, child: ATermRef<'_>, colour: EdgeColour, equation: usize) -> Result<(), MercError> {
+        let child_node = self.visit(child, equation)?;
         self.add_or_merge_edge(parent, child_node, colour);
+        Ok(())
     }
 
     /// Determines `C(term)`. Does not recurse; see [`Self::visit_children`]
     /// for the edges to `term`'s children.
-    fn colour_of(&self, term: &ATerm) -> VertexColour {
+    fn colour_of(&self, term: &ATerm) -> Result<VertexColour, MercError> {
         let r = term.copy();
 
         if is_pbes_and(&r) {
-            VertexColour::Connective(Connective::And)
+            Ok(VertexColour::Connective(Connective::And))
         } else if is_pbes_or(&r) {
-            VertexColour::Connective(Connective::Or)
+            Ok(VertexColour::Connective(Connective::Or))
         } else if is_pbes_not(&r) {
-            VertexColour::Connective(Connective::Not)
+            Ok(VertexColour::Connective(Connective::Not))
         } else if is_pbes_imp(&r) {
-            VertexColour::Connective(Connective::Imp)
+            Ok(VertexColour::Connective(Connective::Imp))
         } else if is_pbes_forall(&r) {
             let forall = PbesForallRef::from(r);
             let sorts = forall.variables().iter().map(|v| v.sort().protect()).collect();
-            VertexColour::Quantifier(Quantifier::Forall, sorts)
+            Ok(VertexColour::Quantifier(Quantifier::Forall, sorts))
         } else if is_pbes_exists(&r) {
             let exists = PbesExistsRef::from(r);
             let sorts = exists.variables().iter().map(|v| v.sort().protect()).collect();
-            VertexColour::Quantifier(Quantifier::Exists, sorts)
+            Ok(VertexColour::Quantifier(Quantifier::Exists, sorts))
         } else if is_pbes_propositional_variable_instantiation(&r) {
-            VertexColour::Pvi
+            Ok(VertexColour::Pvi)
         } else if is_variable(&r) {
             let variable = DataVariableRef::from(r);
             if self.scope.iter().any(|bound| bound.name() == variable.name()) {
-                VertexColour::BoundVariable(variable.sort().protect())
+                Ok(VertexColour::BoundVariable(variable.sort().protect()))
             } else {
-                VertexColour::Parameter
+                Ok(VertexColour::Parameter)
             }
         } else if is_application(&r) {
             let application = DataApplicationRef::from(r);
-            VertexColour::Function(application.data_function_symbol().name().to_string())
+            Ok(VertexColour::Function(application.data_function_symbol().name().to_string()))
         } else if is_function_symbol(&r) {
             let symbol = DataFunctionSymbolRef::from(r);
-            VertexColour::Function(symbol.name().to_string())
+            Ok(VertexColour::Function(symbol.name().to_string()))
         } else if is_machine_number(&r) {
             let number = DataMachineNumberRef::from(r);
-            VertexColour::MachineNumber(number.value())
+            Ok(VertexColour::MachineNumber(number.value()))
         } else if is_untyped_identifier(&r) {
             // Should not occur in a well-typed PBES; treat as an opaque
             // nullary "function" so it at least gets a stable colour.
-            VertexColour::Function(format!("{r:?}"))
+            Ok(VertexColour::Function(format!("{r:?}")))
         } else if is_abstraction(&r) {
             // Data-level binder: lambda, forall, exists, set/bag comprehension.
             // Colour the same as the PBES-level quantifier for forall/exists so
@@ -595,9 +598,11 @@ impl SdgBuilder {
             } else {
                 Quantifier::Comprehension
             };
-            VertexColour::Quantifier(q, sorts)
+            Ok(VertexColour::Quantifier(q, sorts))
         } else if is_where_clause(&r) {
-            todo!("where clauses are not yet supported by the symmetry detection graph construction")
+            Err(MercError::from(
+                "where clauses are not supported in the symmetry detection graph construction",
+            ))
         } else {
             unreachable!("Unknown PBES/data expression kind for term {:?}", r)
         }
@@ -606,39 +611,39 @@ impl SdgBuilder {
     /// Adds edges from `node` (the vertex for `term`) to the vertices of its
     /// immediate children, recursing via [`Self::visit`]. Mirrors
     /// Definition 2's `sub#`, generalized per the module documentation.
-    fn visit_children(&mut self, term: &ATerm, node: NodeIndex, equation: usize) {
+    fn visit_children(&mut self, term: &ATerm, node: NodeIndex, equation: usize) -> Result<(), MercError> {
         let r = term.copy();
 
         if is_pbes_and(&r) {
             let mut leaves = Vec::new();
             collect_pbes_flat(r, is_pbes_and, &mut leaves);
             for leaf in leaves {
-                self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation);
+                self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation)?;
             }
         } else if is_pbes_or(&r) {
             let mut leaves = Vec::new();
             collect_pbes_flat(r, is_pbes_or, &mut leaves);
             for leaf in leaves {
-                self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation);
+                self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation)?;
             }
         } else if is_pbes_imp(&r) {
             // Implication is NOT commutative: lhs => rhs ≠ rhs => lhs.
             // Color the edges by position to prevent spurious symmetries.
             let imp = PbesImpRef::from(r);
-            self.visit_child(node, imp.lhs().into(), EdgeColour::Argument([1].into_iter().collect()), equation);
-            self.visit_child(node, imp.rhs().into(), EdgeColour::Argument([2].into_iter().collect()), equation);
+            self.visit_child(node, imp.lhs().into(), EdgeColour::Argument([1].into_iter().collect()), equation)?;
+            self.visit_child(node, imp.rhs().into(), EdgeColour::Argument([2].into_iter().collect()), equation)?;
         } else if is_pbes_not(&r) {
             let not = PbesNotRef::from(r);
-            self.visit_child(node, not.body().into(), EdgeColour::Uncoloured, equation);
+            self.visit_child(node, not.body().into(), EdgeColour::Uncoloured, equation)?;
         } else if is_pbes_forall(&r) {
             let forall = PbesForallRef::from(r);
             let pushed = self.push_scope(forall.variables().iter());
-            self.visit_child(node, forall.body().into(), EdgeColour::Uncoloured, equation);
+            self.visit_child(node, forall.body().into(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_pbes_exists(&r) {
             let exists = PbesExistsRef::from(r);
             let pushed = self.push_scope(exists.variables().iter());
-            self.visit_child(node, exists.body().into(), EdgeColour::Uncoloured, equation);
+            self.visit_child(node, exists.body().into(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_pbes_propositional_variable_instantiation(&r) {
             // A PVI is not itself descended into: Definition 3 reaches its
@@ -663,7 +668,7 @@ impl SdgBuilder {
                     is_application(t) && DataApplicationRef::from(t.copy()).data_function_symbol().name() == name
                 });
                 for leaf in &leaves {
-                    self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation);
+                    self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation)?;
                 }
             } else {
                 let commutative = is_commutative(head.name(), arity);
@@ -672,7 +677,7 @@ impl SdgBuilder {
                 // positions for repeated arguments (see `EdgeColour::Argument`).
                 let mut by_child: BTreeMap<NodeIndex, BTreeSet<usize>> = BTreeMap::new();
                 for (position, argument) in application.data_arguments().enumerate() {
-                    let child = self.visit(argument, equation);
+                    let child = self.visit(argument, equation)?;
                     by_child.entry(child).or_default().insert(position + 1);
                 }
 
@@ -688,13 +693,16 @@ impl SdgBuilder {
         } else if is_abstraction(&r) {
             let abstraction = DataAbstractionRef::from(r);
             let pushed = self.push_scope(abstraction.variables().iter());
-            self.visit_child(node, abstraction.body().into(), EdgeColour::Uncoloured, equation);
+            self.visit_child(node, abstraction.body().into(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_where_clause(&r) {
-            todo!("where clauses are not yet supported by the symmetry detection graph construction")
+            return Err(MercError::from(
+                "where clauses are not supported in the symmetry detection graph construction",
+            ));
         } else {
             unreachable!("Unknown PBES/data expression kind for term {:?}", r)
         }
+        Ok(())
     }
 
     /// Adds the update vertices `X_{i,k}` (for `k` in `1..=n`) for a single
@@ -712,7 +720,7 @@ impl SdgBuilder {
         // The PVI vertex must already exist: it was interned while walking
         // the right-hand side (PVIs are leaves of that walk, but they are
         // still visited and given a vertex -- see `visit_children`).
-        let pvi_node = self.visit(pvi_ref, equation);
+        let pvi_node = self.visit(pvi_ref, equation)?;
 
         let arguments: Vec<ATerm> = pvi
             .arguments()
@@ -750,7 +758,7 @@ impl SdgBuilder {
             trace!("update vertex v{} X_({},{},{}) (eq {})", update_node.index(), equation, i, k, equation);
             self.mark_equation(update_node, equation);
 
-            let data_node = self.visit(arguments[k].copy(), equation);
+            let data_node = self.visit(arguments[k].copy(), equation)?;
             let par_node = NodeIndex::new(k);
 
             // Group the (at most three) targets by vertex identity, and
@@ -874,21 +882,14 @@ pub(crate) fn write_dot<W>(sdg: &Sdg, w: &mut W) -> Result<(), MercError>
 where
     W: Write,
 {
-    // digraph + dot engine gives a top-down hierarchical layout.  All
-    // non-update edges were inserted as (parent, child) so their direction
-    // is meaningful; update edges bridge parameters ↔ PVIs in both
-    // directions, so they carry constraint=false and are drawn undirected.
-    writeln!(w, "digraph sdg {{")?;
-    writeln!(w, "  graph [fontname=\"DejaVu Sans\", layout=dot, rankdir=TB, splines=curved];")?;
-    writeln!(w, "  node  [fontname=\"DejaVu Sans\", style=filled, shape=ellipse];")?;
-    writeln!(w, "  edge  [fontname=\"DejaVu Sans\"];")?;
+    writeln!(w, "graph sdg {{")?;
+    writeln!(w, "  node [style=filled];")?;
 
     for node in sdg.graph.node_indices() {
         let i = node.index();
         let vc = &sdg.colours[i];
 
         let label = match vc {
-            // Shape and fill colour identify the type; the label carries only the identifying name.
             VertexColour::Parameter => sdg.parameters[i].name().to_string(),
             VertexColour::Update => {
                 if let SdgVertex::Update { parameter, .. } = &sdg.graph[node] {
@@ -935,38 +936,16 @@ where
             _ => vc.to_string(),
         };
 
-        // Distinct shapes make vertex roles identifiable without reading the label.
-        let (shape, penwidth) = match vc {
-            VertexColour::Parameter      => ("box",           "2"),
-            VertexColour::Update         => ("diamond",       "1"),
-            VertexColour::Pvi            => ("hexagon",       "1"),
-            VertexColour::Quantifier(..) => ("parallelogram", "1"),
-            _                            => ("ellipse",       "1"),
+        let shape = match vc {
+            VertexColour::Parameter      => "box",
+            VertexColour::Update         => "diamond",
+            VertexColour::Pvi            => "hexagon",
+            VertexColour::Quantifier(..) => "parallelogram",
+            _                            => "ellipse",
         };
 
         let fill = vc.dot_fill_colour();
-
-        let eqs = sdg.equations[i]
-            .iter()
-            .map(|&e| sdg.equation_names[e].as_str())
-            .collect::<Vec<_>>()
-            .join(",");
-        let tooltip = if eqs.is_empty() {
-            label.clone()
-        } else {
-            format!("{label} [{eqs}]")
-        };
-
-        writeln!(
-            w,
-            "  n{i} [label=\"{label}\", shape={shape}, fillcolor=\"{fill}\", penwidth={penwidth}, tooltip=\"{tooltip}\"];"
-        )?;
-    }
-
-    // Pin parameter nodes to the top rank so the root of the SDG is obvious.
-    let param_ids: Vec<String> = (0..sdg.parameters.len()).map(|k| format!("n{k}")).collect();
-    if !param_ids.is_empty() {
-        writeln!(w, "  {{ rank=min; {}; }}", param_ids.join("; "))?;
+        writeln!(w, "  n{i} [label=\"{label}\", shape={shape}, fillcolor=\"{fill}\"];")?;
     }
 
     for edge in sdg.graph.edge_indices() {
@@ -974,22 +953,16 @@ where
         let colour = sdg.graph.edge_weight(edge).unwrap();
         let elabel = colour.to_string();
 
-        let mut attrs = Vec::<String>::new();
-        if !elabel.is_empty() {
-            attrs.push(format!("label=\"{elabel}\""));
-        }
         if matches!(colour, EdgeColour::Update(_)) {
-            // Update edges bridge parameters and PVIs in both directions; don't
-            // let them influence the rank assignment.
-            attrs.push("style=dashed".to_string());
-            attrs.push("dir=none".to_string());
-            attrs.push("constraint=false".to_string());
-        }
-
-        if attrs.is_empty() {
-            writeln!(w, "  n{} -> n{};", u.index(), v.index())?;
+            if elabel.is_empty() {
+                writeln!(w, "  n{} -- n{} [style=dashed];", u.index(), v.index())?;
+            } else {
+                writeln!(w, "  n{} -- n{} [style=dashed, label=\"{elabel}\"];", u.index(), v.index())?;
+            }
+        } else if elabel.is_empty() {
+            writeln!(w, "  n{} -- n{};", u.index(), v.index())?;
         } else {
-            writeln!(w, "  n{} -> n{} [{}];", u.index(), v.index(), attrs.join(", "))?;
+            writeln!(w, "  n{} -- n{} [label=\"{elabel}\"];", u.index(), v.index())?;
         }
     }
 
@@ -1149,7 +1122,7 @@ fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
 fn parse_gap_output(
     stdout: &str,
     num_parameters: usize,
-) -> Result<(u128, u128, Vec<crate::permutation::Permutation>), MercError> {
+) -> Result<(u128, u128, Vec<Permutation>), MercError> {
     // Extract lines strictly between the sentinels.
     let begin_pos = stdout.find("SDG-BEGIN").ok_or_else(|| {
         MercError::from("GAP output is missing 'SDG-BEGIN' sentinel — check for syntax errors in the generated script")
@@ -1183,9 +1156,15 @@ fn parse_gap_output(
         let images: Vec<usize> = line
             .split_whitespace()
             .map(|s| {
-                s.parse::<usize>()
-                    .map(|v| v - 1) // 1-indexed → 0-indexed
-                    .map_err(|_| MercError::from(format!("invalid image '{}' on generator line {}", s, line_no)))
+                let v = s
+                    .parse::<usize>()
+                    .map_err(|_| MercError::from(format!("invalid image '{}' on generator line {}", s, line_no)))?;
+                v.checked_sub(1).ok_or_else(|| {
+                    MercError::from(format!(
+                        "invalid image '{}' on generator line {} (expected >= 1)",
+                        s, line_no
+                    ))
+                })
             })
             .collect::<Result<_, _>>()?;
 
@@ -1202,7 +1181,7 @@ fn parse_gap_output(
         let mapping: Vec<(usize, usize)> = images.into_iter().enumerate().filter(|(from, to)| from != to).collect();
 
         if !mapping.is_empty() {
-            generators.push(crate::permutation::Permutation::from_mapping(mapping));
+            generators.push(Permutation::from_mapping(mapping));
         }
     }
 
@@ -1214,7 +1193,7 @@ pub(crate) struct GraphSymmetryResult {
     pub(crate) sdg: Sdg,
     pub(crate) automorphism_group_order: u128,
     pub(crate) symmetry_group_order: u128,
-    pub(crate) generators: Vec<crate::permutation::Permutation>,
+    pub(crate) generators: Vec<Permutation>,
 }
 
 /// Constructs the "symmetry detection graph" (SDG) of a PBES, and uses it (via
