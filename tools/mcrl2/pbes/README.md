@@ -19,6 +19,24 @@ dot -Tpdf file.dot -o file.pdf
 dot -Tsvg file.dot -o file.svg
 ```
 
+### DOT vertex legend
+
+| Shape | Fill colour | Label prefix | Meaning |
+|---|---|---|---|
+| Rectangle (bold border) | Blue | `d` | PBES parameter `d` |
+| Diamond | Grey | `d` | Update vertex `X_{i,k}` for parameter `d` |
+| Hexagon | Light blue | `X` | Propositional variable instantiation of `X` |
+| Parallelogram | Purple | `forall x:D,…` | Quantifier with its bound variable names and sorts |
+| Ellipse | Yellow | function name | Data function application |
+| Ellipse | Orange | number | Machine-number constant |
+| Ellipse | Red | `&&` / `\|\|` / `!` / `=>` | Boolean connective |
+| Ellipse | Green | `x` | Bound (quantifier-scoped) variable `x` |
+
+Edges are unlabelled for commutative and flat operators (e.g. `&&`, `||`).
+Non-commutative application edges carry a position label (1-based argument
+index). Update edges are dashed and labelled with their role(s): `pvi`, `data`,
+and/or `par`.
+
 ## Installing GAP
 
 Download and install GAP 4 from <https://www.gap-system.org/>. The `gap`
