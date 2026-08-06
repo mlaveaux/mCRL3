@@ -140,6 +140,7 @@ mod inner {
 
     use super::is_abstraction;
     use super::is_application;
+    use super::is_binding_operator;
     use super::is_data_expression;
     use super::is_function_symbol;
     use super::is_machine_number;
@@ -147,6 +148,12 @@ mod inner {
     use super::is_untyped_identifier;
     use super::is_variable;
     use super::is_where_clause;
+    use super::is_bag_comprehension_binder;
+    use super::is_exists_binder;
+    use super::is_forall_binder;
+    use super::is_lambda_binder;
+    use super::is_set_comprehension_binder;
+    use super::is_untyped_set_bag_comprehension_binder;
     use super::mcrl2_data_expression_to_string;
     use super::mcrl2_sort_expression_to_string;
 
@@ -312,6 +319,38 @@ mod inner {
         }
     }
 
+    /// Represents a binder operator constant from the mCRL2 toolset (e.g. `Lambda`, `Forall`, `Exists`).
+    #[mcrl2_term(is_binding_operator)]
+    pub struct DataBinder {
+        term: ATerm,
+    }
+
+    impl DataBinder {
+        pub fn is_lambda(&self) -> bool {
+            is_lambda_binder(&self.term.copy())
+        }
+
+        pub fn is_forall(&self) -> bool {
+            is_forall_binder(&self.term.copy())
+        }
+
+        pub fn is_exists(&self) -> bool {
+            is_exists_binder(&self.term.copy())
+        }
+
+        pub fn is_set_comprehension(&self) -> bool {
+            is_set_comprehension_binder(&self.term.copy())
+        }
+
+        pub fn is_bag_comprehension(&self) -> bool {
+            is_bag_comprehension_binder(&self.term.copy())
+        }
+
+        pub fn is_untyped_set_bag_comprehension(&self) -> bool {
+            is_untyped_set_bag_comprehension_binder(&self.term.copy())
+        }
+    }
+
     /// Represents a data::abstraction from the mCRL2 toolset.
     #[mcrl2_term(is_abstraction)]
     pub struct DataAbstraction {
@@ -319,8 +358,8 @@ mod inner {
     }
 
     impl DataAbstraction {
-        /// Returns the binding operator of the abstraction, i.e., lambda, forall, or exists.
-        pub fn binding_operator(&self) -> DataFunctionSymbolRef<'_> {
+        /// Returns the binder operator of the abstraction (e.g. `Lambda`, `Forall`, `Exists`).
+        pub fn binding_operator(&self) -> DataBinderRef<'_> {
             // SAFETY: `arg(0)` is a direct subterm of `self.term`, so it is a
             // parent term.
             unsafe { self.term.arg(0).upgrade(&self.term) }.into()
