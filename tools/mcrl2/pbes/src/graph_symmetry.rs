@@ -1,35 +1,20 @@
-/// Authors: Menno Bartels and Maurice Laveaux
-///
-/// Constructs the "symmetry detection graph" (SDG) of a PBES, and uses it
-/// (via the GAP automorphism-group computation, see [`crate::gap`]) to derive
-/// permutation symmetries of the PBES's parameters.
-///
-/// This implements the graph construction from "A Graph Construction for
-/// Symmetry Detection in Parametrised Boolean Equation Systems" (Bartels,
-/// Laveaux, Neele, Willemse). The full design rationale, the definitional
-/// gaps found while reproducing the paper's Definitions 2-3, and the reasons
-/// behind several deliberate deviations are written up in
-/// `docs/graph-symmetry-detection-plan.md` at the repository root; the
-/// highlights are repeated here as doc comments on the relevant types.
-///
-/// Unlike the (older) clique-based [`crate::symmetry`] algorithm, this module
-/// works directly on the original `Pbes`: no conversion to standard recursive
-/// form. This keeps the general recursive predicate-formula structure that
-/// Definition 2's `sub`/`sub#` are actually defined over (SRF would flatten
-/// it into disjunctive/conjunctive summands, which does not match the
-/// paper's grammar). The one precondition inherited from the paper's
-/// preliminaries ("every equation has exactly the same vector of data
-/// parameters") is established by converting to SRF and calling
-/// `unify_parameters` before building the graph: see [`build_sdg`].
+//! Authors: Menno Bartels and Maurice Laveaux
+
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::ops::ControlFlow;
+use std::fmt;
+use std::fs;
+use std::io::ErrorKind;
+use std::io::Write;
+use std::path::PathBuf;
 
 use itertools::Itertools;
 use log::debug;
+use log::info;
 use log::trace;
+use petgraph::graph6::ToGraph6;
 use petgraph::graph::NodeIndex;
 use petgraph::graph::UnGraph;
 
@@ -42,22 +27,18 @@ use mcrl2::DataFunctionSymbolRef;
 use mcrl2::DataMachineNumberRef;
 use mcrl2::DataVariable;
 use mcrl2::DataVariableRef;
+use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::Pbes;
-use mcrl2::PbesDescend;
 use mcrl2::PbesExistsRef;
 use mcrl2::PbesForallRef;
 use mcrl2::PbesImpRef;
 use mcrl2::PbesNotRef;
-use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::SortExpression;
 use mcrl2::flatten_associative;
-use mcrl2::visit_pbes_expr_with;
+use mcrl2::pbes_expression_pvi;
 use mcrl2::is_abstraction;
 use mcrl2::is_application;
-use mcrl2::is_exists_binder;
-use mcrl2::is_forall_binder;
 use mcrl2::is_function_symbol;
-use mcrl2::is_lambda_binder;
 use mcrl2::is_machine_number;
 use mcrl2::is_pbes_and;
 use mcrl2::is_pbes_exists;
@@ -71,17 +52,7 @@ use mcrl2::is_variable;
 use mcrl2::is_where_clause;
 use merc_utilities::MercError;
 
-/// Binary function symbols treated as commutative, so their argument edges
-/// are coloured uniformly ([`EdgeColour::Uncoloured`]) and argument order
-/// does not constrain automorphisms.
-///
-/// mCRL2 exposes no associativity/commutativity metadata on data function
-/// symbols (verified: there is no such annotation anywhere in its data
-/// library, nor anything reachable through the `mcrl2-sys` FFI surface), so
-/// this is a small, deliberately conservative, hand-maintained table.
-/// Omitting a genuinely commutative symbol only loses symmetries (safe);
-/// listing a non-commutative one would report symmetries that do not hold
-/// (unsound). Extend carefully.
+/// Binary function symbols treated as commutative; listing a non-commutative one unsoundly widens the symmetry group.
 const COMMUTATIVE_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "==", "!=", "<=>", "+", "*", "max", "min"];
 
 /// Subset of [`COMMUTATIVE_FUNCTION_SYMBOLS`] that are also associative.
@@ -90,25 +61,17 @@ const COMMUTATIVE_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "==", "!=", "<=>", "
 /// three uncoloured child edges rather than nested binary nodes.
 const FLAT_FUNCTION_SYMBOLS: &[&str] = &["&&", "||", "+", "*", "max", "min"];
 
-/// Returns true iff `name` is a known commutative binary function symbol.
-///
-/// Only meaningful for arity-2 applications; the caller is responsible for
-/// checking arity (an application of a "commutative" name with any other
-/// arity is treated as non-commutative, since [`COMMUTATIVE_FUNCTION_SYMBOLS`]
-/// only documents the binary-operator meaning of these names).
+/// True iff `name` is a known commutative binary symbol at the given arity.
 fn is_commutative(name: &str, arity: usize) -> bool {
     arity == 2 && COMMUTATIVE_FUNCTION_SYMBOLS.contains(&name)
 }
 
-/// Returns true iff `name` is a known associative commutative binary operator
-/// whose chains should be flattened into a single n-ary SDG vertex.
+/// True iff `name` is associative-commutative and its chains should be flattened into one n-ary SDG vertex.
 fn is_flat_operator(name: &str, arity: usize) -> bool {
     arity == 2 && FLAT_FUNCTION_SYMBOLS.contains(&name)
 }
 
-/// Recursively collects the non-`is_op` leaves of a nested binary PBES connective
-/// chain, flattening any depth. Analogous to [`flatten_associative`] but for
-/// PBES-level connectives, which are not `is_application` nodes.
+/// Collects leaves of a nested binary PBES connective chain; analogous to [`flatten_associative`] for non-`is_application` connectives.
 fn collect_pbes_flat<F>(term: ATermRef<'_>, is_op: F, out: &mut Vec<ATerm>)
 where
     F: Fn(&ATermRef<'_>) -> bool + Copy,
@@ -186,8 +149,8 @@ enum VertexColour {
     Update,
 }
 
-impl std::fmt::Display for VertexColour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for VertexColour {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             VertexColour::Parameter          => f.write_str("par"),
             VertexColour::BoundVariable(s)   => write!(f, "bvar:{s}"),
@@ -224,8 +187,8 @@ enum Connective {
     Imp,
 }
 
-impl std::fmt::Display for Connective {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Connective {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Connective::And => "&&",
             Connective::Or  => "||",
@@ -245,8 +208,8 @@ enum Quantifier {
     Comprehension,
 }
 
-impl std::fmt::Display for Quantifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Quantifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Quantifier::Forall        => "forall",
             Quantifier::Exists        => "exists",
@@ -267,8 +230,8 @@ impl std::fmt::Display for Quantifier {
 /// range *and* colour). In the common, non-colliding case this is just a
 /// singleton set, so it costs nothing and changes nothing versus the paper's
 /// literal per-position/per-role reading. See [`SdgBuilder::add_or_merge_edge`].
-impl std::fmt::Display for EdgeColour {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for EdgeColour {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EdgeColour::Uncoloured => Ok(()),
             EdgeColour::Argument(positions) => write!(f, "{}", positions.iter().format(",")),
@@ -304,8 +267,8 @@ enum UpdateRole {
     Par,
 }
 
-impl std::fmt::Display for UpdateRole {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for UpdateRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             UpdateRole::Pvi  => "pvi",
             UpdateRole::Data => "data",
@@ -426,8 +389,9 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
             builder.graph.node_count()
         );
 
+        let formula = equation.formula();
         let mut seen_pvis: HashSet<ATerm> = HashSet::new();
-        for pvi in pbes_expression_pvi(&equation.formula()) {
+        for pvi in pbes_expression_pvi(&formula.copy()) {
             let term: ATerm = pvi.clone().into();
             if seen_pvis.insert(term) {
                 builder.add_update_vertices(e, &pvi, n)?;
@@ -466,18 +430,6 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
         parameters,
         equation_names: equations.iter().map(|eq| eq.variable().name().to_string()).collect(),
     })
-}
-
-/// Returns all the PVIs occurring in the given PBES expression.
-fn pbes_expression_pvi(expr: &mcrl2::PbesExpression) -> Vec<mcrl2::PbesPropositionalVariableInstantiation> {
-    let mut result = Vec::new();
-    let _: Option<()> = visit_pbes_expr_with(&expr.copy(), (), |term, ()| {
-        if is_pbes_propositional_variable_instantiation(term) {
-            result.push(PbesPropositionalVariableInstantiationRef::from(term.copy()).protect());
-        }
-        ControlFlow::Continue(PbesDescend::Descend(()))
-    });
-    result
 }
 
 /// Builds up an [`Sdg`] incrementally by walking a PBES's right-hand sides.
@@ -540,7 +492,10 @@ impl SdgBuilder {
 
     /// Pushes `variables` onto the bound-variable scope, returning how many
     /// were pushed (for [`Self::pop_scope`]).
-    fn push_scope(&mut self, variables: impl Iterator<Item = DataVariable>) -> usize {
+    fn push_scope<I>(&mut self, variables: I) -> usize
+    where
+        I: Iterator<Item = DataVariable>,
+    {
         let mut count = 0;
         for variable in variables {
             self.scope.push(variable);
@@ -553,24 +508,9 @@ impl SdgBuilder {
         self.scope.truncate(self.scope.len() - count);
     }
 
-    /// Visits `term` (either a PBES formula or a data expression -- both are
-    /// represented by the same underlying `ATerm`, and Definition 2 treats a
-    /// Boolean-sorted term `b` uniformly with the other terms `t`), interns
-    /// a vertex for it (deduplicated by term identity, matching the
-    /// set-based `sub(E)`), and recursively visits its children. If the
-    /// vertex already existed its children are *not* re-visited: their
-    /// edges are equation-independent and were already added, so only
-    /// `C_eq` needs to be extended.
-    ///
-    /// This is a hand-rolled traversal rather than an implementation of
-    /// [`mcrl2::DataExpressionContextVisitor`]/[`mcrl2::PbesExpressionContextVisitor`]
-    /// because those traits cannot: thread a `NodeIndex` back to the caller (needed to
-    /// add the parent→child edge); thread the argument position (needed for
-    /// `C(f(..), t_i) = i`); exclude the head function symbol from being visited as a
-    /// child (Definition 2 treats `f` as a colour, not a sub-vertex); or short-circuit
-    /// on already-interned terms without re-walking a shared sub-DAG. The dispatch
-    /// below mirrors the same `is_*` predicates the traits use, so the two are
-    /// expected to stay in sync by inspection.
+    /// Interns a vertex for `term` (deduplicated by term identity), marks it with `equation`, and
+    /// recurses into children. Hand-rolled because `NodeIndex` must flow upward and argument
+    /// positions vary per child — constraints the visitor traits cannot express.
     fn visit(&mut self, term: ATermRef<'_>, equation: usize) -> NodeIndex {
         let key = term.protect();
         if let Some(&node) = self.term_map.get(&key) {
@@ -645,12 +585,12 @@ impl SdgBuilder {
             let abstraction = DataAbstractionRef::from(r.copy());
             let sorts: Vec<SortExpression> =
                 abstraction.variables().iter().map(|v| v.sort().protect()).collect();
-            let bo: ATermRef<'_> = abstraction.binding_operator().into();
-            let q = if is_forall_binder(&bo) {
+            let bo = abstraction.binding_operator();
+            let q = if bo.is_forall() {
                 Quantifier::Forall
-            } else if is_exists_binder(&bo) {
+            } else if bo.is_exists() {
                 Quantifier::Exists
-            } else if is_lambda_binder(&bo) {
+            } else if bo.is_lambda() {
                 Quantifier::Lambda
             } else {
                 Quantifier::Comprehension
@@ -930,11 +870,16 @@ impl Sdg {
 // ── DOT export ───────────────────────────────────────────────────────────────
 
 /// Writes the SDG as a Graphviz DOT file, including vertex/edge colours.
-pub(crate) fn write_dot(sdg: &Sdg, w: &mut impl std::io::Write) -> Result<(), MercError> {
-    writeln!(w, "graph sdg {{")?;
-    // fdp (force-directed) produces far more readable layouts than the default
-    // hierarchical `dot` engine for general undirected graphs like the SDG.
-    writeln!(w, "  graph [fontname=\"DejaVu Sans\", layout=fdp, overlap=scale, splines=curved];")?;
+pub(crate) fn write_dot<W>(sdg: &Sdg, w: &mut W) -> Result<(), MercError>
+where
+    W: Write,
+{
+    // digraph + dot engine gives a top-down hierarchical layout.  All
+    // non-update edges were inserted as (parent, child) so their direction
+    // is meaningful; update edges bridge parameters ↔ PVIs in both
+    // directions, so they carry constraint=false and are drawn undirected.
+    writeln!(w, "digraph sdg {{")?;
+    writeln!(w, "  graph [fontname=\"DejaVu Sans\", layout=dot, rankdir=TB, splines=curved];")?;
     writeln!(w, "  node  [fontname=\"DejaVu Sans\", style=filled, shape=ellipse];")?;
     writeln!(w, "  edge  [fontname=\"DejaVu Sans\"];")?;
 
@@ -943,10 +888,46 @@ pub(crate) fn write_dot(sdg: &Sdg, w: &mut impl std::io::Write) -> Result<(), Me
         let vc = &sdg.colours[i];
 
         let label = match vc {
-            VertexColour::Parameter => format!("par:{}", sdg.parameters[i].name()),
+            // Shape and fill colour identify the type; the label carries only the identifying name.
+            VertexColour::Parameter => sdg.parameters[i].name().to_string(),
             VertexColour::Update => {
                 if let SdgVertex::Update { parameter, .. } = &sdg.graph[node] {
-                    format!("upd:{}", sdg.parameters[*parameter].name())
+                    sdg.parameters[*parameter].name().to_string()
+                } else {
+                    unreachable!()
+                }
+            }
+            VertexColour::Pvi => {
+                if let SdgVertex::Term(aterm) = &sdg.graph[node] {
+                    PbesPropositionalVariableInstantiationRef::from(aterm.copy()).name().to_string()
+                } else {
+                    unreachable!()
+                }
+            }
+            VertexColour::BoundVariable(_) => {
+                if let SdgVertex::Term(aterm) = &sdg.graph[node] {
+                    DataVariableRef::from(aterm.copy()).name().to_string()
+                } else {
+                    unreachable!()
+                }
+            }
+            VertexColour::Quantifier(q, _) => {
+                if let SdgVertex::Term(aterm) = &sdg.graph[node] {
+                    let r = aterm.copy();
+                    let vars: Vec<String> = if is_pbes_forall(&r) {
+                        PbesForallRef::from(r).variables().iter()
+                            .map(|v| format!("{}:{}", v.name(), v.sort().pretty_print()))
+                            .collect()
+                    } else if is_pbes_exists(&r) {
+                        PbesExistsRef::from(r).variables().iter()
+                            .map(|v| format!("{}:{}", v.name(), v.sort().pretty_print()))
+                            .collect()
+                    } else {
+                        DataAbstractionRef::from(r).variables().iter()
+                            .map(|v| format!("{}:{}", v.name(), v.sort().pretty_print()))
+                            .collect()
+                    };
+                    format!("{q} {}", vars.join(","))
                 } else {
                     unreachable!()
                 }
@@ -982,6 +963,12 @@ pub(crate) fn write_dot(sdg: &Sdg, w: &mut impl std::io::Write) -> Result<(), Me
         )?;
     }
 
+    // Pin parameter nodes to the top rank so the root of the SDG is obvious.
+    let param_ids: Vec<String> = (0..sdg.parameters.len()).map(|k| format!("n{k}")).collect();
+    if !param_ids.is_empty() {
+        writeln!(w, "  {{ rank=min; {}; }}", param_ids.join("; "))?;
+    }
+
     for edge in sdg.graph.edge_indices() {
         let (u, v) = sdg.graph.edge_endpoints(edge).unwrap();
         let colour = sdg.graph.edge_weight(edge).unwrap();
@@ -992,13 +979,17 @@ pub(crate) fn write_dot(sdg: &Sdg, w: &mut impl std::io::Write) -> Result<(), Me
             attrs.push(format!("label=\"{elabel}\""));
         }
         if matches!(colour, EdgeColour::Update(_)) {
+            // Update edges bridge parameters and PVIs in both directions; don't
+            // let them influence the rank assignment.
             attrs.push("style=dashed".to_string());
+            attrs.push("dir=none".to_string());
+            attrs.push("constraint=false".to_string());
         }
 
         if attrs.is_empty() {
-            writeln!(w, "  n{} -- n{};", u.index(), v.index())?;
+            writeln!(w, "  n{} -> n{};", u.index(), v.index())?;
         } else {
-            writeln!(w, "  n{} -- n{} [{}];", u.index(), v.index(), attrs.join(", "))?;
+            writeln!(w, "  n{} -> n{} [{}];", u.index(), v.index(), attrs.join(", "))?;
         }
     }
 
@@ -1008,6 +999,9 @@ pub(crate) fn write_dot(sdg: &Sdg, w: &mut impl std::io::Write) -> Result<(), Me
 
 // ── graph6 export ─────────────────────────────────────────────────────────────
 
+/// petgraph only implements the 4-byte N(n) encoding; the format supports up to 68_719_476_735.
+const GRAPH6_MAX_NODES: usize = 258_047;
+
 /// Renders the structural skeleton of the SDG in graph6 format.
 ///
 /// graph6 encodes only the adjacency structure of a simple undirected graph;
@@ -1015,14 +1009,14 @@ pub(crate) fn write_dot(sdg: &Sdg, w: &mut impl std::io::Write) -> Result<(), Me
 /// interop artifact (nauty's `showg`, GAP's `DigraphFromGraph6String`), not
 /// as the channel through which colours reach GAP (that goes through the script).
 pub(crate) fn graph6_string(sdg: &Sdg) -> Result<String, MercError> {
-    if sdg.graph.node_count() > 258_047 {
-        return Err("graph6 does not support graphs over 258047 vertices".into());
+    if sdg.graph.node_count() > GRAPH6_MAX_NODES {
+        return Err(format!(
+            "petgraph's graph6 encoder does not support graphs over {GRAPH6_MAX_NODES} vertices"
+        )
+        .into());
     }
-    use petgraph::graph6::ToGraph6;
     Ok(sdg.graph.graph6_string())
 }
-
-// ── GAP script generation, invocation, and output parsing ────────────────────
 
 /// Generates a self-contained GAP script that computes `Aut(G)` via the
 /// Digraphs package, restricts generators to the parameter vertices, and
@@ -1086,7 +1080,7 @@ pub(crate) struct GapConfig {
     /// Path or name of the GAP executable (default: `"gap"` on `$PATH`).
     pub(crate) executable: String,
     /// If set, the generated GAP script is also written to this file.
-    pub(crate) dump_script: Option<std::path::PathBuf>,
+    pub(crate) dump_script: Option<PathBuf>,
 }
 
 impl Default for GapConfig {
@@ -1107,10 +1101,8 @@ impl Default for GapConfig {
 /// - `--quitonbreak` makes runtime errors exit with non-zero status
 ///   (note: do NOT add `-T`/`--nobreakloop`, which defeats `--quitonbreak`)
 fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
-    use std::io::ErrorKind;
-
     if let Some(path) = &config.dump_script {
-        std::fs::write(path, script)
+        fs::write(path, script)
             .map_err(|e| MercError::from(format!("failed to write GAP script to '{}': {}", path.display(), e)))?;
     }
 
@@ -1225,10 +1217,11 @@ pub(crate) struct GraphSymmetryResult {
     pub(crate) generators: Vec<crate::permutation::Permutation>,
 }
 
-/// Builds the SDG of `pbes`, invokes GAP to compute its automorphism group,
-/// and returns the generators restricted to the parameter vertices.
+/// Constructs the "symmetry detection graph" (SDG) of a PBES, and uses it (via
+/// the GAP automorphism-group computation, see [`crate::gap`]) to derive
+/// permutation symmetries of the PBES's parameters using auto morphisms of the
+/// SDG.
 pub(crate) fn graph_symmetries(pbes: &Pbes, config: &GapConfig) -> Result<GraphSymmetryResult, MercError> {
-    use log::info;
     // Unify parameters here so build_sdg works on the original PBES structure.
     let mut pbes = Pbes::from_text(&pbes.to_string())?;
     pbes.unify_parameters(false, false)?;
@@ -1267,17 +1260,60 @@ mod tests {
     use merc_utilities::test_logger;
     use petgraph::graph::NodeIndex;
     use petgraph::visit::EdgeRef;
+    use std::sync::OnceLock;
+
+    use test_case::test_case;
 
     use super::EdgeColour;
+    use super::GapConfig;
+    use super::GraphSymmetryResult;
+    use super::Quantifier;
     use super::UpdateRole;
     use super::VertexColour;
     use super::build_sdg;
+    use super::graph_symmetries;
 
-    /// The known symmetry `(0 2)(1 3)` for `examples/pbes/c.text.pbes`,
-    /// matching `symmetry::tests::test_symmetry_examples_c` -- the graph
-    /// construction should at least be shaped consistently with that result
-    /// (this test does not run GAP, so it only checks the graph, not the
-    /// derived automorphism group).
+    /// Returns `true` when GAP with the Digraphs package is usable.
+    /// Cached so the probe script runs at most once per test process.
+    fn gap_with_digraphs_available() -> bool {
+        static AVAILABLE: OnceLock<bool> = OnceLock::new();
+        *AVAILABLE.get_or_init(|| {
+            duct::cmd("gap", ["-q", "-A", "-r", "--quitonbreak"])
+                .stdin_bytes(
+                    "if LoadPackage(\"digraphs\") = fail then QUIT_GAP(1); fi;; QUIT_GAP(0);;",
+                )
+                .stdout_null()
+                .stderr_null()
+                .unchecked()
+                .run()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+    }
+
+    /// Runs `graph_symmetries` on the given PBES source, skipping if GAP or
+    /// Digraphs is unavailable.
+    fn check_gap_symmetries(source: &str) -> Option<GraphSymmetryResult> {
+        if !gap_with_digraphs_available() {
+            return None;
+        }
+        let pbes = mcrl2::Pbes::from_text(source).unwrap();
+        Some(graph_symmetries(&pbes, &GapConfig::default()).unwrap())
+    }
+
+    #[test_case(include_str!("../../../../examples/pbes/a.text.pbes"); "a")]
+    #[test_case(include_str!("../../../../examples/pbes/b.text.pbes"); "b")]
+    #[test_case(include_str!("../../../../examples/pbes/c.text.pbes"); "c")]
+    #[test_case(include_str!("../../../../examples/pbes/alloc3.text.pbes");  "alloc3")]
+    #[test_case(include_str!("../../../../examples/pbes/alloc7.text.pbes");  "alloc7")]
+    #[test_case(include_str!("../../../../examples/pbes/alloc9.text.pbes");  "alloc9")]
+    #[test_case(include_str!("../../../../examples/pbes/dining8.text.pbes"); "dining8")]
+    fn test_gap_symmetries(source: &str) {
+        check_gap_symmetries(source);
+    }
+
+    /// Checks the graph structure of the SDG built from `c.text.pbes`, which
+    /// has 4 parameters.
     #[test]
     fn test_c_pbes_parameter_vertices() {
         test_logger();
@@ -1312,8 +1348,7 @@ mod tests {
     }
 
     /// Identical subterms across two different equations collapse to a
-    /// single vertex (Definition 2's `sub(E)` is a set), with `C_eq`
-    /// accumulating both equations.
+    /// single vertex.
     #[test]
     fn test_identical_subterms_share_one_vertex_across_equations() {
         test_logger();
@@ -1355,11 +1390,7 @@ mod tests {
 
         // Two distinct PVI occurrences `Y(n)` in X's right-hand side, each
         // contributing its own update vertex X_{i,0}, even though both
-        // PVIs are syntactically identical (and therefore share one PVI
-        // vertex -- update vertices are keyed by the *PVI's own* node
-        // index, not by structural equality, so a shared PVI vertex still
-        // only yields one set of update vertices; the real regression this
-        // guards is that update vertices are fresh per call site).
+        // PVIs are syntactically identical.
         let update_count = sdg
             .graph
             .node_indices()
@@ -1368,9 +1399,8 @@ mod tests {
         assert_eq!(update_count, 1, "one PVI occurrence (post-dedup) times one parameter");
     }
 
-    /// The head function symbol of an application is a *colour*, not a
-    /// vertex: `n + n` should produce exactly the vertices for `+`, `n` --
-    /// two vertices, not three.
+    /// The head function symbol of an application is a *colour*, not a vertex:
+    /// `n + n` should produce exactly two vertices, not three.
     #[test]
     fn test_head_function_symbol_is_not_a_vertex() {
         test_logger();
@@ -1386,15 +1416,14 @@ mod tests {
             })
             .collect();
 
-        // "+" and "==" should both appear as vertex colours (the function
-        // symbol is a colour), but never as a bare unlabelled child vertex.
+        // "+" and "==" should both appear as vertex colours.
         assert!(function_names.iter().any(|name| name.as_str() == "+"));
         assert!(function_names.iter().any(|name| name.as_str() == "=="));
     }
 
     /// A non-commutative function applied twice to the *same* argument
     /// (`n - n`) produces exactly one edge to `n`, coloured with the
-    /// combined position set `{1,2}` -- not two parallel edges.
+    /// combined position set `{1,2}`.
     #[test]
     fn test_noncommutative_repeated_argument_gets_combined_label() {
         test_logger();
@@ -1416,8 +1445,7 @@ mod tests {
     }
 
     /// A commutative function applied twice to the same argument (`n ==
-    /// n`) still produces exactly one (uncoloured) edge: the combined-label
-    /// mechanism only matters for non-commutative operators.
+    /// n`) still produces exactly one (uncoloured) edge.
     #[test]
     fn test_commutative_repeated_argument_stays_uncoloured() {
         test_logger();
@@ -1517,9 +1545,9 @@ mod tests {
         );
     }
 
-    /// A data-level binder expression (e.g. `val(exists m:Nat. n==m)`) must not
-    /// cause an `unreachable!` panic: it must be assigned a `Quantifier` colour and
-    /// its bound variable must be coloured `BoundVariable`, not `Parameter`.
+    /// A data-level binder expression (e.g. `val(exists m:Nat. n==m)`) must be
+    /// assigned a `Quantifier` colour and its bound variable must be coloured
+    /// `BoundVariable`, not `Parameter`.
     #[test]
     fn test_data_level_binder_does_not_panic() {
         test_logger();
@@ -1531,7 +1559,6 @@ mod tests {
         .unwrap();
         let sdg = build_sdg(&pbes).unwrap();
 
-        use super::Quantifier;
         let has_quantifier = sdg.colours.iter().any(|c| {
             matches!(c, VertexColour::Quantifier(Quantifier::Exists, _))
         });
