@@ -1,0 +1,48 @@
+sort Phil = struct p1 | p2 | p3;
+     Fork = struct f1 | f2 | f3;
+     Enum4 = struct e3_4 | e2_4 | e1_4 | e0_4;
+
+map  lf,rf: Phil -> Fork;
+     C4_: Enum4 # Fork # Fork # Fork # Fork -> Fork;
+     C4_1: Enum4 # Pos # Pos # Pos # Pos -> Pos;
+     C4_2: Enum4 # Phil # Phil # Phil # Phil -> Phil;
+     C4_3: Enum4 # Bool # Bool # Bool # Bool -> Bool;
+
+var  x1,y4,y3,y2,y1: Fork;
+     e1,e2,e3,e4: Enum4;
+     x2,y8,y7,y6,y5: Pos;
+     x3,y12,y11,y10,y9: Phil;
+     x4,y16,y15,y14,y13: Bool;
+eqn  lf(p1)  =  f1;
+     lf(p2)  =  f2;
+     lf(p3)  =  f3;
+     rf(p1)  =  f3;
+     rf(p2)  =  f1;
+     rf(p3)  =  f2;
+     C4_(e1, x1, x1, x1, x1)  =  x1;
+     C4_(e3_4, y4, y3, y2, y1)  =  y4;
+     C4_(e2_4, y4, y3, y2, y1)  =  y3;
+     C4_(e1_4, y4, y3, y2, y1)  =  y2;
+     C4_(e0_4, y4, y3, y2, y1)  =  y1;
+     C4_1(e2, x2, x2, x2, x2)  =  x2;
+     C4_1(e3_4, y8, y7, y6, y5)  =  y8;
+     C4_1(e2_4, y8, y7, y6, y5)  =  y7;
+     C4_1(e1_4, y8, y7, y6, y5)  =  y6;
+     C4_1(e0_4, y8, y7, y6, y5)  =  y5;
+     C4_2(e3, x3, x3, x3, x3)  =  x3;
+     C4_2(e3_4, y12, y11, y10, y9)  =  y12;
+     C4_2(e2_4, y12, y11, y10, y9)  =  y11;
+     C4_2(e1_4, y12, y11, y10, y9)  =  y10;
+     C4_2(e0_4, y12, y11, y10, y9)  =  y9;
+     C4_3(e4, x4, x4, x4, x4)  =  x4;
+     C4_3(e3_4, y16, y15, y14, y13)  =  y16;
+     C4_3(e2_4, y16, y15, y14, y13)  =  y15;
+     C4_3(e1_4, y16, y15, y14, y13)  =  y14;
+     C4_3(e0_4, y16, y15, y14, y13)  =  y13;
+
+pbes nu Z(s1_P_Fork,s2_P_Fork,s3_P_Fork,s4_P_Phil,s5_P_Phil,s6_P_Phil: Pos) =
+       (val(s4_P_Phil == 4) && X0(s1_P_Fork, s2_P_Fork, s3_P_Fork, 5, s5_P_Phil, s6_P_Phil) || val(s5_P_Phil == 4) && X0(s1_P_Fork, s2_P_Fork, s3_P_Fork, s4_P_Phil, 5, s6_P_Phil) || val(s6_P_Phil == 4) && X0(s1_P_Fork, s2_P_Fork, s3_P_Fork, s4_P_Phil, s5_P_Phil, 5) || val(s3_P_Fork == 2 && s4_P_Phil == 6) && X0(s1_P_Fork, s2_P_Fork, 1, 1, s5_P_Phil, s6_P_Phil) || val(s3_P_Fork == 2 && s4_P_Phil == 5) && X0(s1_P_Fork, s2_P_Fork, 1, 7, s5_P_Phil, s6_P_Phil) || val(s3_P_Fork == 2 && s6_P_Phil == 7) && X0(s1_P_Fork, s2_P_Fork, 1, s4_P_Phil, s5_P_Phil, 1) || val(s3_P_Fork == 2 && s6_P_Phil == 5) && X0(s1_P_Fork, s2_P_Fork, 1, s4_P_Phil, s5_P_Phil, 6) || val(s3_P_Fork == 1 && s4_P_Phil == 2) && X0(s1_P_Fork, s2_P_Fork, 2, 4, s5_P_Phil, s6_P_Phil) || val(s3_P_Fork == 1 && s4_P_Phil == 1) && X0(s1_P_Fork, s2_P_Fork, 2, 3, s5_P_Phil, s6_P_Phil) || val(s3_P_Fork == 1 && s6_P_Phil == 3) && X0(s1_P_Fork, s2_P_Fork, 2, s4_P_Phil, s5_P_Phil, 4) || val(s3_P_Fork == 1 && s6_P_Phil == 1) && X0(s1_P_Fork, s2_P_Fork, 2, s4_P_Phil, s5_P_Phil, 2) || val(s2_P_Fork == 2 && s5_P_Phil == 7) && X0(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, 1, s6_P_Phil) || val(s2_P_Fork == 2 && s5_P_Phil == 5) && X0(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, 6, s6_P_Phil) || val(s2_P_Fork == 2 && s6_P_Phil == 6) && X0(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, s5_P_Phil, 1) || val(s2_P_Fork == 2 && s6_P_Phil == 5) && X0(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, s5_P_Phil, 7) || val(s2_P_Fork == 1 && s5_P_Phil == 3) && X0(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, 4, s6_P_Phil) || val(s2_P_Fork == 1 && s5_P_Phil == 1) && X0(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, 2, s6_P_Phil) || val(s2_P_Fork == 1 && s6_P_Phil == 2) && X0(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, s5_P_Phil, 4) || val(s2_P_Fork == 1 && s6_P_Phil == 1) && X0(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, s5_P_Phil, 3) || val(s1_P_Fork == 2 && s4_P_Phil == 7) && X0(1, s2_P_Fork, s3_P_Fork, 1, s5_P_Phil, s6_P_Phil) || val(s1_P_Fork == 2 && s4_P_Phil == 5) && X0(1, s2_P_Fork, s3_P_Fork, 6, s5_P_Phil, s6_P_Phil) || val(s1_P_Fork == 2 && s5_P_Phil == 6) && X0(1, s2_P_Fork, s3_P_Fork, s4_P_Phil, 1, s6_P_Phil) || val(s1_P_Fork == 2 && s5_P_Phil == 5) && X0(1, s2_P_Fork, s3_P_Fork, s4_P_Phil, 7, s6_P_Phil) || val(s1_P_Fork == 1 && s4_P_Phil == 3) && X0(2, s2_P_Fork, s3_P_Fork, 4, s5_P_Phil, s6_P_Phil) || val(s1_P_Fork == 1 && s4_P_Phil == 1) && X0(2, s2_P_Fork, s3_P_Fork, 2, s5_P_Phil, s6_P_Phil) || val(s1_P_Fork == 1 && s5_P_Phil == 2) && X0(2, s2_P_Fork, s3_P_Fork, s4_P_Phil, 4, s6_P_Phil) || val(s1_P_Fork == 1 && s5_P_Phil == 1) && X0(2, s2_P_Fork, s3_P_Fork, s4_P_Phil, 3, s6_P_Phil)) && (val(!(s4_P_Phil == 4)) || Z(s1_P_Fork, s2_P_Fork, s3_P_Fork, 5, s5_P_Phil, s6_P_Phil)) && (val(!(s5_P_Phil == 4)) || Z(s1_P_Fork, s2_P_Fork, s3_P_Fork, s4_P_Phil, 5, s6_P_Phil)) && (val(!(s6_P_Phil == 4)) || Z(s1_P_Fork, s2_P_Fork, s3_P_Fork, s4_P_Phil, s5_P_Phil, 5)) && (val(!(s3_P_Fork == 2 && s4_P_Phil == 6)) || Z(s1_P_Fork, s2_P_Fork, 1, 1, s5_P_Phil, s6_P_Phil)) && (val(!(s3_P_Fork == 2 && s4_P_Phil == 5)) || Z(s1_P_Fork, s2_P_Fork, 1, 7, s5_P_Phil, s6_P_Phil)) && (val(!(s3_P_Fork == 2 && s6_P_Phil == 7)) || Z(s1_P_Fork, s2_P_Fork, 1, s4_P_Phil, s5_P_Phil, 1)) && (val(!(s3_P_Fork == 2 && s6_P_Phil == 5)) || Z(s1_P_Fork, s2_P_Fork, 1, s4_P_Phil, s5_P_Phil, 6)) && (val(!(s3_P_Fork == 1 && s4_P_Phil == 2)) || Z(s1_P_Fork, s2_P_Fork, 2, 4, s5_P_Phil, s6_P_Phil)) && (val(!(s3_P_Fork == 1 && s4_P_Phil == 1)) || Z(s1_P_Fork, s2_P_Fork, 2, 3, s5_P_Phil, s6_P_Phil)) && (val(!(s3_P_Fork == 1 && s6_P_Phil == 3)) || Z(s1_P_Fork, s2_P_Fork, 2, s4_P_Phil, s5_P_Phil, 4)) && (val(!(s3_P_Fork == 1 && s6_P_Phil == 1)) || Z(s1_P_Fork, s2_P_Fork, 2, s4_P_Phil, s5_P_Phil, 2)) && (val(!(s2_P_Fork == 2 && s5_P_Phil == 7)) || Z(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, 1, s6_P_Phil)) && (val(!(s2_P_Fork == 2 && s5_P_Phil == 5)) || Z(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, 6, s6_P_Phil)) && (val(!(s2_P_Fork == 2 && s6_P_Phil == 6)) || Z(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, s5_P_Phil, 1)) && (val(!(s2_P_Fork == 2 && s6_P_Phil == 5)) || Z(s1_P_Fork, 1, s3_P_Fork, s4_P_Phil, s5_P_Phil, 7)) && (val(!(s2_P_Fork == 1 && s5_P_Phil == 3)) || Z(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, 4, s6_P_Phil)) && (val(!(s2_P_Fork == 1 && s5_P_Phil == 1)) || Z(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, 2, s6_P_Phil)) && (val(!(s2_P_Fork == 1 && s6_P_Phil == 2)) || Z(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, s5_P_Phil, 4)) && (val(!(s2_P_Fork == 1 && s6_P_Phil == 1)) || Z(s1_P_Fork, 2, s3_P_Fork, s4_P_Phil, s5_P_Phil, 3)) && (val(!(s1_P_Fork == 2 && s4_P_Phil == 7)) || Z(1, s2_P_Fork, s3_P_Fork, 1, s5_P_Phil, s6_P_Phil)) && (val(!(s1_P_Fork == 2 && s4_P_Phil == 5)) || Z(1, s2_P_Fork, s3_P_Fork, 6, s5_P_Phil, s6_P_Phil)) && (val(!(s1_P_Fork == 2 && s5_P_Phil == 6)) || Z(1, s2_P_Fork, s3_P_Fork, s4_P_Phil, 1, s6_P_Phil)) && (val(!(s1_P_Fork == 2 && s5_P_Phil == 5)) || Z(1, s2_P_Fork, s3_P_Fork, s4_P_Phil, 7, s6_P_Phil)) && (val(!(s1_P_Fork == 1 && s4_P_Phil == 3)) || Z(2, s2_P_Fork, s3_P_Fork, 4, s5_P_Phil, s6_P_Phil)) && (val(!(s1_P_Fork == 1 && s4_P_Phil == 1)) || Z(2, s2_P_Fork, s3_P_Fork, 2, s5_P_Phil, s6_P_Phil)) && (val(!(s1_P_Fork == 1 && s5_P_Phil == 2)) || Z(2, s2_P_Fork, s3_P_Fork, s4_P_Phil, 4, s6_P_Phil)) && (val(!(s1_P_Fork == 1 && s5_P_Phil == 1)) || Z(2, s2_P_Fork, s3_P_Fork, s4_P_Phil, 3, s6_P_Phil));
+     nu X0(s1_P_Fork,s2_P_Fork,s3_P_Fork,s4_P_Phil,s5_P_Phil,s6_P_Phil: Pos) =
+       X0(s1_P_Fork, s2_P_Fork, s3_P_Fork, s4_P_Phil, s5_P_Phil, s6_P_Phil);
+
+init Z(1, 1, 1, 1, 1, 1);
