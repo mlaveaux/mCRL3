@@ -54,6 +54,7 @@ mod inner {
     use crate::ATermRef;
     use crate::ATermStringRef;
     use crate::DataExpression;
+    use crate::DataVariable;
     use crate::Markable;
     use crate::Todo;
     use crate::is_pbes_and;
@@ -169,6 +170,11 @@ mod inner {
     }
 
     impl PbesForall {
+        /// Returns the bound variables of the forall expression.
+        pub fn variables(&self) -> ATermListRef<'_, DataVariable> {
+            self.arg(0).into()
+        }
+
         /// Returns the body of the forall expression.
         pub fn body(&self) -> PbesExpressionRef<'_> {
             self.arg(1).into()
@@ -182,6 +188,11 @@ mod inner {
     }
 
     impl PbesExists {
+        /// Returns the bound variables of the exists expression.
+        pub fn variables(&self) -> ATermListRef<'_, DataVariable> {
+            self.arg(0).into()
+        }
+
         /// Returns the body of the exists expression.
         pub fn body(&self) -> PbesExpressionRef<'_> {
             self.arg(1).into()

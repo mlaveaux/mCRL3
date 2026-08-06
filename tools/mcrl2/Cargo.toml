@@ -29,14 +29,15 @@ env_logger = "0.11"
 itertools = "0.15"
 log = "0.4"
 parking_lot = "0.12"
+petgraph = "0.8"
 rand = "0.10"
 rayon = "1.12"
 rustc-hash = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 streaming-iterator = "0.1" 
-thiserror = "2.0"
 tempfile = "3.27"
+thiserror = "2.0"
 
 # Dependencies used in procedural macros.
 proc-macro2 = "1.0"
@@ -45,6 +46,7 @@ syn = { version = "3.0", features = ["full"] }
 
 # Dependencies used in xtask
 duct = "1.1"
+which = "8.0"
 
 # The workspace libraries.
 mcrl2 = { path = "crates/mcrl2" }
@@ -68,8 +70,8 @@ merc_vpg = { path = "../../crates/vpg" }
 oxidd = { version = "0.12", features = ["manager-pointer"] }
 
 # Use a local version of mCRL2-sys for development.
-# [patch."https://github.com/MERCorg/mCRL2-sys"]
-# mcrl2-sys = { path = "crates/mCRL2-sys" }
+[patch."https://github.com/MERCorg/mCRL2-sys"]
+mcrl2-sys = { path = "/home/mlaveaux/mCRL2-sys" }
 
 [patch.crates-io]
 oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
