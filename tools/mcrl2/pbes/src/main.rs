@@ -22,7 +22,6 @@ use crate::explore_srf::parity_game_from_pbes;
 use crate::explore_srf::parity_game_from_pbes_parallel;
 use crate::explore_symbolic_srf::explore_pbes_symbolic;
 use crate::graph_symmetry::GapConfig;
-use crate::graph_symmetry::graph6_string;
 use crate::graph_symmetry::graph_symmetries;
 use crate::graph_symmetry::write_dot;
 use crate::permutation::Permutation;
@@ -157,10 +156,6 @@ struct GraphSymmetryArgs {
     /// Write the generated GAP script to this file (for debugging).
     #[arg(long)]
     dump_gap_script: Option<String>,
-
-    /// Write the graph6 structural skeleton to this file (colours not included).
-    #[arg(long)]
-    graph6: Option<String>,
 
     /// Write the SDG as a Graphviz DOT file to this path.
     #[arg(long)]
@@ -363,25 +358,17 @@ fn handle_graph_symmetry(args: &GraphSymmetryArgs) -> Result<(), MercError> {
         dump_script: args.dump_gap_script.as_deref().map(Path::new).map(|p| p.to_path_buf()),
     };
 
-    if let Some(graph6_path) = &args.graph6 {
-        let sdg = crate::graph_symmetry::build_sdg(&pbes)?;
-        let g6 = graph6_string(&sdg)?;
-        fs::write(graph6_path, g6)?;
-        log::info!("graph6 structural skeleton written to '{graph6_path}' (colours not included)");
-    }
+    let result = graph_symmetries(&pbes, &config)?;
 
     if let Some(dot_path) = &args.dot {
-        let sdg = crate::graph_symmetry::build_sdg(&pbes)?;
         let mut f = File::create(dot_path)?;
-        write_dot(&sdg, &mut f)?;
+        write_dot(&result.sdg, &mut f)?;
         log::info!("DOT file written to '{dot_path}'");
         if let Ok(dot_bin) = which::which("dot") {
             log::info!("Generating PDF using dot...");
             duct::cmd!(dot_bin, "-Tpdf", dot_path, "-O").run()?;
         }
     }
-
-    let result = graph_symmetries(&pbes, &config)?;
 
     for generator in &result.generators {
         if args.mapping_notation {
