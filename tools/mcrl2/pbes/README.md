@@ -21,21 +21,21 @@ dot -Tsvg file.dot -o file.svg
 
 ### DOT vertex legend
 
-| Shape | Fill colour | Label prefix | Meaning |
+| Shape | Fill colour | Label | Meaning |
 |---|---|---|---|
-| Rectangle (bold border) | Blue | `d` | PBES parameter `d` |
-| Diamond | Grey | `d` | Update vertex `X_{i,k}` for parameter `d` |
+| Rectangle | Blue | parameter name | PBES parameter |
+| Tiny diamond (unlabelled) | Grey | — | Update vertex `X_{i,k}` |
 | Hexagon | Light blue | `X` | Propositional variable instantiation of `X` |
-| Parallelogram | Purple | `forall x:D,…` | Quantifier with its bound variable names and sorts |
+| Parallelogram | Purple | `forall x:D,…` | Quantifier |
 | Ellipse | Yellow | function name | Data function application |
 | Ellipse | Orange | number | Machine-number constant |
 | Ellipse | Red | `&&` / `\|\|` / `!` / `=>` | Boolean connective |
-| Ellipse | Green | `x` | Bound (quantifier-scoped) variable `x` |
+| Ellipse | Green | `x` | Bound (quantifier-scoped) variable |
 
-Edges are unlabelled for commutative and flat operators (e.g. `&&`, `||`).
-Non-commutative application edges carry a position label (1-based argument
-index). Update edges are dashed and labelled with their role(s): `pvi`, `data`,
-and/or `par`.
+Edges between formula nodes are solid; edges are unlabelled for commutative and
+flat operators (e.g. `&&`, `||`) and carry a 1-based position label for
+non-commutative applications. Update edges are dashed and drawn with zero spring
+weight so they do not distort the formula-tree layout.
 
 ## Installing GAP
 
