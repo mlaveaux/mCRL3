@@ -23,7 +23,7 @@ use merc_unsafety::ProtectionIndex;
 use merc_utilities::PhantomUnsend;
 
 use crate::atermpp::SymbolRef;
-use crate::atermpp::THREAD_TERM_POOL;
+use super::THREAD_TERM_POOL;
 
 use super::global_aterm_pool::ATermPtr;
 use super::global_aterm_pool::SEND_PROTECTION_SET;

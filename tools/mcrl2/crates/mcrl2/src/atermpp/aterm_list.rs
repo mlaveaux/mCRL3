@@ -6,7 +6,7 @@ use mcrl2_sys::atermpp::ffi::_aterm;
 
 use crate::ATerm;
 use crate::ATermRef;
-use crate::THREAD_TERM_POOL;
+use super::THREAD_TERM_POOL;
 
 pub struct ATermList<T> {
     term: ATerm,

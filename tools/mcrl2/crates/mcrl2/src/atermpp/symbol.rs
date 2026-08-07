@@ -13,7 +13,7 @@ use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_get_name;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_protect;
 use mcrl2_sys::atermpp::ffi::{self};
 
-use crate::THREAD_TERM_POOL;
+use super::THREAD_TERM_POOL;
 
 /// A Symbol references to an aterm function symbol, which has a name and an arity.
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord)]

@@ -18,7 +18,7 @@ mod inner {
     use crate::ATerm;
     use crate::ATermRef;
     use crate::Markable;
-    use crate::THREAD_TERM_POOL;
+    use crate::atermpp::THREAD_TERM_POOL;
     use crate::Todo;
     use crate::is_aterm_int;
 
@@ -44,7 +44,8 @@ mod inner {
     }
 }
 
-pub use inner::*;
+pub use inner::ATermInt;
+pub use inner::ATermIntRef;
 
 impl fmt::Display for ATermInt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

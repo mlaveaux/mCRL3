@@ -33,7 +33,8 @@ mod inner {
     }
 }
 
-pub use inner::*;
+pub use inner::ATermString;
+pub use inner::ATermStringRef;
 
 impl fmt::Display for ATermString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

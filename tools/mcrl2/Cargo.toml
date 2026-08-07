@@ -70,9 +70,8 @@ merc_vpg = { path = "../../crates/vpg" }
 
 oxidd = { version = "0.12", features = ["manager-pointer"] }
 
-# Use a local version of mCRL2-sys for development.
 # [patch."https://github.com/MERCorg/mCRL2-sys"]
-# mcrl2-sys = { path = "../mCRL2-sys" }
+# mcrl2-sys = { path = "/home/mlaveaux/mCRL2-sys" }
 
 [patch.crates-io]
 oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }

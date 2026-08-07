@@ -478,7 +478,26 @@ mod inner {
     }
 }
 
-pub use inner::*;
+pub use inner::DataAbstraction;
+pub use inner::DataAbstractionRef;
+pub use inner::DataApplication;
+pub use inner::DataApplicationRef;
+pub use inner::DataBinder;
+pub use inner::DataBinderRef;
+pub use inner::DataExpression;
+pub use inner::DataExpressionRef;
+pub use inner::DataFunctionSymbol;
+pub use inner::DataFunctionSymbolRef;
+pub use inner::DataMachineNumber;
+pub use inner::DataMachineNumberRef;
+pub use inner::DataUntypedIdentifier;
+pub use inner::DataUntypedIdentifierRef;
+pub use inner::DataVariable;
+pub use inner::DataVariableRef;
+pub use inner::DataWhereClause;
+pub use inner::DataWhereClauseRef;
+pub use inner::SortExpression;
+pub use inner::SortExpressionRef;
 
 // A `DataExpressionRef` is just an address into the maximally shared term pool,
 // so it can be freely copied. Liveness is the responsibility of whoever keeps
