@@ -99,6 +99,24 @@ mod inner {
             }
         }
 
+        /// Same as [DataExpression::data_function_symbol], but returns `None` for a variable
+        /// instead of panicking.
+        ///
+        /// Pattern matching uses this to observe a symbol: a variable in the subject term has no
+        /// head symbol and therefore matches no pattern position. The variable is only tested
+        /// after the two cases that do have one, so the common path costs the same.
+        pub fn try_data_function_symbol(&self) -> Option<DataFunctionSymbolRef<'_>> {
+            if is_data_application(&self.term) {
+                Some(self.term.arg(0).into())
+            } else if is_data_function_symbol(&self.term) {
+                Some(self.term.copy().into())
+            } else if is_data_variable(&self.term) {
+                None
+            } else {
+                panic!("try_data_function_symbol not implemented for {self}");
+            }
+        }
+
         /// Returns the data sub-expressions of a data expression.
         ///     - function symbol                  f -> []
         ///     - variable                         x -> []

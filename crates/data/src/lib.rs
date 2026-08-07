@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 
+mod closed;
 mod data_expression;
 mod data_terms;
 mod machine_word_evaluation;
@@ -10,6 +11,7 @@ mod sort_terms;
 pub(crate) use data_terms::*;
 
 // Public API
+pub use closed::is_closed;
 pub use data_expression::BinderType;
 pub use data_expression::DataAbstraction;
 pub use data_expression::DataApplication;
