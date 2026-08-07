@@ -1,8 +1,13 @@
+use ahash::HashMap;
+use ahash::HashMapExt;
 use merc_utilities::test_logger;
 use test_case::test_case;
 
 use merc_aterm::ATerm;
+use merc_data::DataApplication;
 use merc_data::DataExpression;
+use merc_data::DataVariable;
+use merc_data::is_data_application;
 use merc_data::to_untyped_data_expression;
 use merc_rec_tests::load_rec_from_strings;
 use merc_sabre::InnermostRewriter;
@@ -57,6 +62,56 @@ fn check_rewriter(
         assert_eq!(
             &result, expected_result,
             "The {engine} rewrite result doesn't match the expected result"
+        );
+    }
+}
+
+/// Abstracts the arguments of `term` into fresh variables, mapped to their own normal forms.
+///
+/// Rewriting the result under that substitution must reach the same normal form as rewriting
+/// `term` itself, since the arguments are normalised either way. Returns `None` for terms
+/// without arguments, which have nothing to abstract.
+fn abstract_arguments(
+    rewriter: &mut impl RewriteEngine,
+    term: &DataExpression,
+) -> Option<(DataExpression, HashMap<DataVariable, DataExpression>)> {
+    if !is_data_application(term) {
+        return None;
+    }
+
+    let mut sigma = HashMap::new();
+    let mut arguments = vec![];
+    for (index, argument) in term.data_arguments().enumerate() {
+        // Variables and function symbols are distinct terms, so these names cannot clash with
+        // the function symbols of the specification.
+        let name = format!("x{index}");
+        let variable = DataVariable::new(name.as_str());
+
+        sigma.insert(variable.clone(), rewriter.rewrite(&argument.protect()));
+        arguments.push(DataExpression::from(variable));
+    }
+
+    let symbol = term.data_function_symbol().protect();
+    Some((DataApplication::with_args(&symbol, &arguments).into(), sigma))
+}
+
+/// Rewrites every term with `rewriter` under a substitution that supplies its arguments, and
+/// compares against the expected results.
+fn check_rewriter_with_substitution(
+    rewriter: &mut impl RewriteEngine,
+    terms: &[DataExpression],
+    expected: &[DataExpression],
+    engine: &str,
+) {
+    for (term, expected_result) in terms.iter().zip(expected) {
+        let Some((abstracted, sigma)) = abstract_arguments(rewriter, term) else {
+            continue;
+        };
+
+        let result = rewriter.rewrite_with(&abstracted, &sigma);
+        assert_eq!(
+            &result, expected_result,
+            "The {engine} rewrite result under a substitution doesn't match the expected result"
         );
     }
 }
@@ -204,6 +259,27 @@ fn test_rec_specification_naive(rec_files: Vec<&str>, expected_result: &str) {
     let expected = parse_expected(&terms, expected_result);
 
     check_rewriter(&mut NaiveRewriter::new(&spec), &terms, &expected, "naive");
+}
+
+/// Pins the substitution-aware path of every engine to its plain one on specifications with
+/// conditional rules, where the substituted subterms also end up in the condition sides. The
+/// innermost engine consumes the substitution while decomposing the term, whereas the other two
+/// eagerly substitute first.
+#[cfg_attr(miri, ignore)]
+#[test_case(vec![include_str!("../../../examples/REC/rec/check1.rec")], include_str!("snapshot/result_check1.txt") ; "check1")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/check2.rec")], include_str!("snapshot/result_check2.txt") ; "check2")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/logic3.rec")], include_str!("snapshot/result_logic3.txt") ; "logic3")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/searchinconditions.rec")], include_str!("snapshot/result_searchinconditions.txt") ; "searchinconditions")]
+#[test_case(vec![include_str!("../../../examples/REC/rec/tautologyhard.rec")], include_str!("snapshot/result_tautologyhard.txt") ; "tautologyhard")]
+fn test_rec_specification_substitution(rec_files: Vec<&str>, expected_result: &str) {
+    test_logger();
+
+    let (spec, terms) = load_spec(&rec_files);
+    let expected = parse_expected(&terms, expected_result);
+
+    check_rewriter_with_substitution(&mut InnermostRewriter::new(&spec), &terms, &expected, "innermost");
+    check_rewriter_with_substitution(&mut SabreRewriter::new(&spec), &terms, &expected, "sabre");
+    check_rewriter_with_substitution(&mut NaiveRewriter::new(&spec), &terms, &expected, "naive");
 }
 
 // These tests are too slow without optimisations.

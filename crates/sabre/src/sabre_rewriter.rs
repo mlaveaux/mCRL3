@@ -15,15 +15,32 @@ use crate::set_automaton::SetAutomaton;
 use crate::utilities::AnnouncementSabre;
 use crate::utilities::ConfigurationStack;
 use crate::utilities::DataPositionIndexed;
+use crate::utilities::RewriteSubstitution;
 use crate::utilities::SharedTermStack;
 use crate::utilities::SideInfo;
 use crate::utilities::SideInfoType;
 use crate::utilities::TermStackBuilder;
+use crate::utilities::apply_substitution;
 
 /// A shared trait for all the rewriters
 pub trait RewriteEngine {
     /// Rewrites the given term into normal form.
     fn rewrite(&mut self, term: &DataExpression) -> DataExpression;
+
+    /// Rewrites the given term into normal form, replacing its free variables according to
+    /// `sigma`.
+    ///
+    /// The range of `sigma` must already be in normal form, since replacements are spliced in
+    /// without being rewritten again. Substitution happens exactly once per free variable
+    /// occurrence, but rewrite rules can still fire across the substitution boundary, so
+    /// `rewrite_with(plus(x, 0), {x -> 5})` yields `5` rather than `plus(5, 0)`.
+    ///
+    /// Variables outside the domain of `sigma` are left unchanged; they have no head symbol and
+    /// therefore match no pattern position. Binders and where clauses are not supported, since
+    /// their bound variables would need capture-avoiding renaming.
+    fn rewrite_with<S: RewriteSubstitution>(&mut self, term: &DataExpression, sigma: &S) -> DataExpression {
+        self.rewrite(&apply_substitution(term, sigma))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -129,11 +146,15 @@ impl SabreRewriter {
                             let pos: DataExpressionRef =
                                 leaf_term.get_data_position(automaton.states()[leaf_state].label());
 
-                            let function_symbol = pos.data_function_symbol();
                             stats.symbol_comparisons += 1;
 
-                            // Get the transition belonging to the observed symbol
-                            if let Some(tr) = automaton.get_transition(leaf_state, function_symbol.operation_id()) {
+                            // Get the transition belonging to the observed symbol. A variable
+                            // has no head symbol and therefore matches no pattern position.
+                            let transition = pos
+                                .try_data_function_symbol()
+                                .and_then(|symbol| automaton.get_transition(leaf_state, symbol.operation_id()));
+
+                            if let Some(tr) = transition {
                                 // Loop over the match announcements of the transition
                                 for (announcement, annotation) in &tr.announcements {
                                     if annotation.conditions.is_empty() && annotation.equivalence_classes.is_empty() {

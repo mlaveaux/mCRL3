@@ -5,6 +5,7 @@ use merc_aterm::storage::ThreadTermPool;
 use merc_data::DataApplication;
 use merc_data::DataExpression;
 use merc_data::DataExpressionRef;
+use merc_data::DataVariableRef;
 use merc_data::is_data_machine_number;
 
 use crate::RewriteEngine;
@@ -21,7 +22,9 @@ use crate::set_automaton::SetAutomaton;
 use crate::set_automaton::machine_number_symbol;
 use crate::utilities::Config;
 use crate::utilities::DataPositionIndexed;
+use crate::utilities::EmptySubstitution;
 use crate::utilities::InnermostStack;
+use crate::utilities::RewriteSubstitution;
 use crate::utilities::TermStack;
 use crate::utilities::TermStackBuilder;
 use merc_utilities::debug_trace;
@@ -30,6 +33,10 @@ impl RewriteEngine for InnermostRewriter {
     fn rewrite(&mut self, t: &DataExpression) -> DataExpression {
         self.rewrite_with_statistics(t).0
     }
+
+    fn rewrite_with<S: RewriteSubstitution>(&mut self, t: &DataExpression, sigma: &S) -> DataExpression {
+        self.rewrite_under_with_statistics(t, sigma).0
+    }
 }
 
 impl InnermostRewriter {
@@ -37,12 +44,22 @@ impl InnermostRewriter {
     /// [RewritingStatistics] gathered while doing so, most notably the number of
     /// applied rewrite steps.
     pub fn rewrite_with_statistics(&mut self, t: &DataExpression) -> (DataExpression, RewritingStatistics) {
+        self.rewrite_under_with_statistics(t, &EmptySubstitution)
+    }
+
+    /// Same as [InnermostRewriter::rewrite_with_statistics], but replaces the free variables of
+    /// `t` according to `sigma`, see [RewriteEngine::rewrite_with].
+    pub fn rewrite_under_with_statistics<S: RewriteSubstitution>(
+        &mut self,
+        t: &DataExpression,
+        sigma: &S,
+    ) -> (DataExpression, RewritingStatistics) {
         let mut stats = RewritingStatistics::default();
 
         debug_trace!("input: {}", t);
 
         let result = THREAD_TERM_POOL.with(|tp| {
-            InnermostRewriter::rewrite_aux(tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t)
+            InnermostRewriter::rewrite_aux(tp, &mut self.stack, &mut self.builder, &mut stats, &self.apma, t, sigma)
         });
 
         info!(
@@ -77,13 +94,19 @@ impl InnermostRewriter {
     ///                       and places the result on the given index.
     ///     - Construct(arity, index, result):
     ///
-    pub(crate) fn rewrite_aux(
+    /// Free variables of `input_term` are replaced by their image under `sigma` when they are
+    /// reached, which is the point where the substitution is consumed: every term that is
+    /// matched, constructed or used to instantiate a condition afterwards is already
+    /// substituted.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn rewrite_aux<S: RewriteSubstitution>(
         tp: &ThreadTermPool,
         stack: &mut InnermostStack,
         builder: &mut TermStackBuilder,
         stats: &mut RewritingStatistics,
         automaton: &SetAutomaton<AnnouncementInnermost>,
         input_term: &DataExpression,
+        sigma: &S,
     ) -> DataExpression {
         stats.recursions += 1;
         {
@@ -116,27 +139,39 @@ impl InnermostRewriter {
                             continue;
                         }
 
-                        let symbol = term.data_function_symbol();
-                        let arguments = term.data_arguments();
+                        if let Some(symbol) = term.try_data_function_symbol() {
+                            let arguments = term.data_arguments();
 
-                        // For all the argument we reserve space on the stack.
-                        let top_of_stack = write_terms.len();
-                        for _ in 0..arguments.len() {
-                            write_terms.push(Default::default());
-                        }
+                            // For all the argument we reserve space on the stack.
+                            let top_of_stack = write_terms.len();
+                            for _ in 0..arguments.len() {
+                                write_terms.push(Default::default());
+                            }
 
-                        // Safety: symbol is stored in the container on the next line.
-                        let symbol = unsafe { write_configs.protect(&symbol) };
-                        InnermostStack::add_result(&mut write_configs, symbol.into(), arguments.len(), result);
-                        for (offset, arg) in arguments.into_iter().enumerate() {
-                            InnermostStack::add_rewrite(
-                                &mut write_configs,
-                                &mut write_terms,
-                                arg,
-                                top_of_stack + offset,
-                            );
+                            // Safety: symbol is stored in the container on the next line.
+                            let symbol = unsafe { write_configs.protect(&symbol) };
+                            InnermostStack::add_result(&mut write_configs, symbol.into(), arguments.len(), result);
+                            for (offset, arg) in arguments.into_iter().enumerate() {
+                                InnermostStack::add_rewrite(
+                                    &mut write_configs,
+                                    &mut write_terms,
+                                    arg,
+                                    top_of_stack + offset,
+                                );
+                            }
+                            drop(write_configs);
+                        } else {
+                            // A variable has no head symbol to match on. It is replaced by its
+                            // image under sigma, which is assumed to be in normal form, so it
+                            // goes straight into the result slot without being constructed.
+                            // Variables outside the domain of sigma are their own normal form.
+                            let variable: DataVariableRef<'_> = term.copy().into();
+                            let replacement = sigma.get(&variable).unwrap_or_else(|| term.copy());
+
+                            // Safety: replacement is stored in the container on the same line.
+                            write_terms[result] = Some(unsafe { write_terms.protect(&replacement) }.into());
+                            drop(write_configs);
                         }
-                        drop(write_configs);
                     }
                     Config::Construct(symbol, arity, index) => {
                         // Take the last arity arguments.
@@ -251,7 +286,7 @@ impl InnermostRewriter {
         loop {
             let state = &automaton.states()[state_index];
 
-            // Get the symbol at the position state.label
+            // Get the symbol at the position state.label; a variable there matches no pattern.
             stats.symbol_comparisons += 1;
             let pos = t.get_data_position(state.label());
 
@@ -260,7 +295,7 @@ impl InnermostRewriter {
             let operation_id = if is_data_machine_number(&pos) {
                 machine_number_symbol().operation_id()
             } else {
-                pos.data_function_symbol().operation_id()
+                pos.try_data_function_symbol()?.operation_id()
             };
 
             // Get the transition for the label and check if there is a pattern match
@@ -299,6 +334,9 @@ impl InnermostRewriter {
     }
 
     /// Checks whether the condition holds for given match announcement.
+    ///
+    /// The condition sides are built from the matched subterms, which are already substituted
+    /// normal forms, so the nested normalisations must not apply the substitution a second time.
     fn check_conditions(
         tp: &ThreadTermPool,
         stack: &mut InnermostStack,
@@ -312,8 +350,10 @@ impl InnermostRewriter {
             let rhs: DataExpression = c.rhs_term_stack.evaluate_with(t, builder);
             let lhs: DataExpression = c.lhs_term_stack.evaluate_with(t, builder);
 
-            let rhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &rhs);
-            let lhs_normal = InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &lhs);
+            let rhs_normal =
+                InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &rhs, &EmptySubstitution);
+            let lhs_normal =
+                InnermostRewriter::rewrite_aux(tp, stack, builder, stats, automaton, &lhs, &EmptySubstitution);
 
             if (lhs_normal != rhs_normal && c.equality) || (lhs_normal == rhs_normal && !c.equality) {
                 return false;

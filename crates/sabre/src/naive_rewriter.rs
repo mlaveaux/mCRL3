@@ -36,8 +36,12 @@ impl RewriteEngine for NaiveRewriter {
 
 impl NaiveRewriter {
     pub fn new(spec: &RewriteSpecification) -> NaiveRewriter {
+        // Arguments are normalised before the term is matched, so only root matches are needed.
+        // The set automaton for all positions has a destination per subterm to explore, which
+        // [NaiveRewriter::find_match] cannot follow: it walks a single chain of states and would
+        // cycle through them forever.
         NaiveRewriter {
-            apma: SetAutomaton::new(spec, AnnouncementInnermost::new, false),
+            apma: SetAutomaton::new(spec, AnnouncementInnermost::new, true),
         }
     }
 
@@ -48,7 +52,10 @@ impl NaiveRewriter {
         t: DataExpressionRef<'_>,
         stats: &mut RewritingStatistics,
     ) -> DataExpression {
-        let symbol = t.data_function_symbol();
+        // A variable has no head symbol to match on and is its own normal form.
+        let Some(symbol) = t.try_data_function_symbol() else {
+            return t.protect();
+        };
 
         // Recursively call rewrite_aux on all the subterms.
         let mut arguments = vec![];
@@ -89,9 +96,9 @@ impl NaiveRewriter {
         loop {
             let state = &automaton.states()[state_index];
 
-            // Get the symbol at the position state.label
+            // Get the symbol at the position state.label; a variable there matches no pattern.
             let u = t.get_data_position(state.label());
-            let symbol = u.data_function_symbol();
+            let symbol = u.try_data_function_symbol()?;
 
             // Get the transition for the label and check if there is a pattern match
             {
