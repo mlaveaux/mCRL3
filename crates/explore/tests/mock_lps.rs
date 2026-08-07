@@ -158,7 +158,7 @@ impl LPS for MockLps {
         0..self.summands.len()
     }
 
-    fn state_info(&self, state: &[usize]) -> State {
+    fn state_info(&self, state: &[usize], _context: &MockContext) -> State {
         // Surface the live state vector so tests can map dense indices back to
         // the concrete vectors the drivers assign them.
         state.to_vec()

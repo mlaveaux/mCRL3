@@ -56,7 +56,11 @@ pub trait LPS {
     ) -> impl Iterator<Item = usize> + 'a;
 
     /// Returns the state-level metadata for the given source `state`.
-    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo;
+    ///
+    /// `context` is the already-prepared enumeration context for this state;
+    /// implementations that derive metadata from rewriting (e.g. general PBES)
+    /// store their result in the context during [`LPS::prepare`] and read it here.
+    fn state_info(&self, state: &[Self::Value], context: &<Self::Summand as Summand>::Context) -> Self::StateInfo;
 }
 
 impl<P: LPS> LPS for &P {
@@ -85,8 +89,8 @@ impl<P: LPS> LPS for &P {
         (**self).prepare(context, state)
     }
 
-    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
-        (**self).state_info(state)
+    fn state_info(&self, state: &[Self::Value], context: &<Self::Summand as Summand>::Context) -> Self::StateInfo {
+        (**self).state_info(state, context)
     }
 }
 

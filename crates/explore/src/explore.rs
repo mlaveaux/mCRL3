@@ -95,7 +95,7 @@ where
             let from = StateIndex::new(current.index());
             let summands_to_explore = lps.prepare(&mut enumerate_context, &current_state);
 
-            let info = lps.state_info(&current_state);
+            let info = lps.state_info(&current_state, &enumerate_context);
             on_state(ctx, from, &info)?;
 
             let summands = lps.summands();
@@ -222,7 +222,7 @@ where
                 let from = StateIndex::new(state_ref.index());
                 let summands_to_explore = lps.prepare(&mut context, &state_buf);
 
-                let info = lps.state_info(&state_buf);
+                let info = lps.state_info(&state_buf, &context);
                 on_state(&mut local, from, &info)?;
 
                 let summands = lps.summands();
