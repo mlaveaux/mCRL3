@@ -287,8 +287,8 @@ impl<P: LPS> LPS for CacheLPS<P> {
         self.inner.prepare(&mut context.inner, state)
     }
 
-    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
-        self.inner.state_info(state)
+    fn state_info(&self, state: &[Self::Value], context: &<Self::Summand as Summand>::Context) -> Self::StateInfo {
+        self.inner.state_info(state, &context.inner)
     }
 }
 
