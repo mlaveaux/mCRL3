@@ -14,9 +14,9 @@ use itertools::Itertools;
 use log::debug;
 use log::info;
 use log::trace;
-use petgraph::graph6::ToGraph6;
 use petgraph::graph::NodeIndex;
 use petgraph::graph::UnGraph;
+use petgraph::graph6::ToGraph6;
 
 use mcrl2::ATerm;
 use mcrl2::ATermRef;
@@ -27,15 +27,14 @@ use mcrl2::DataFunctionSymbolRef;
 use mcrl2::DataMachineNumberRef;
 use mcrl2::DataVariable;
 use mcrl2::DataVariableRef;
-use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::Pbes;
 use mcrl2::PbesExistsRef;
 use mcrl2::PbesForallRef;
 use mcrl2::PbesImpRef;
 use mcrl2::PbesNotRef;
+use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::SortExpression;
 use mcrl2::flatten_associative;
-use mcrl2::pbes_expression_pvi;
 use mcrl2::is_abstraction;
 use mcrl2::is_application;
 use mcrl2::is_function_symbol;
@@ -50,6 +49,7 @@ use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::is_untyped_identifier;
 use mcrl2::is_variable;
 use mcrl2::is_where_clause;
+use mcrl2::pbes_expression_pvi;
 use merc_utilities::MercError;
 
 use crate::permutation::Permutation;
@@ -113,8 +113,14 @@ enum SdgVertex {
 /// `C_eq` component (see [`Sdg::equations`]).
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum VertexColour {
-    /// `C(x) = par` for a PBES parameter vertex.
-    Parameter,
+    /// `C(x) = par` for a PBES parameter vertex, refined by the parameter's sort.
+    ///
+    /// The sort is part of the colour because function symbols are coloured by
+    /// name alone (`==` and `<` exist at every sort), so without it two parameters
+    /// of different sorts with isomorphic neighbourhoods would be interchangeable
+    /// and GAP would report cross-sort permutations. Those are not symmetries: the
+    /// quotient would feed a value of the wrong sort to `set_assignments`.
+    Parameter(SortExpression),
 
     /// A quantifier-bound variable, coloured by its sort but, like
     /// [`VertexColour::Quantifier`], deliberately not by name (matching the
@@ -152,14 +158,14 @@ enum VertexColour {
 impl fmt::Display for VertexColour {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            VertexColour::Parameter          => f.write_str("par"),
-            VertexColour::BoundVariable(s)   => write!(f, "bvar:{s}"),
-            VertexColour::Function(name)     => f.write_str(name),
-            VertexColour::MachineNumber(n)   => write!(f, "{n}"),
-            VertexColour::Connective(c)      => write!(f, "{c}"),
-            VertexColour::Quantifier(q, ss)  => write!(f, "{q}:{}", ss.iter().format(",")),
-            VertexColour::Pvi                => f.write_str("pvi"),
-            VertexColour::Update             => f.write_str("update"),
+            VertexColour::Parameter(s) => write!(f, "par:{s}"),
+            VertexColour::BoundVariable(s) => write!(f, "bvar:{s}"),
+            VertexColour::Function(name) => f.write_str(name),
+            VertexColour::MachineNumber(n) => write!(f, "{n}"),
+            VertexColour::Connective(c) => write!(f, "{c}"),
+            VertexColour::Quantifier(q, ss) => write!(f, "{q}:{}", ss.iter().format(",")),
+            VertexColour::Pvi => f.write_str("pvi"),
+            VertexColour::Update => f.write_str("update"),
         }
     }
 }
@@ -167,14 +173,14 @@ impl fmt::Display for VertexColour {
 impl VertexColour {
     fn dot_fill_colour(&self) -> &'static str {
         match self {
-            VertexColour::Parameter        => "#aec6cf",
+            VertexColour::Parameter(_) => "#aec6cf",
             VertexColour::BoundVariable(_) => "#d5e8d4",
-            VertexColour::Function(_)      => "#fff2cc",
+            VertexColour::Function(_) => "#fff2cc",
             VertexColour::MachineNumber(_) => "#ffe6cc",
-            VertexColour::Connective(_)    => "#f8cecc",
-            VertexColour::Quantifier(..)   => "#e1d5e7",
-            VertexColour::Pvi              => "#dae8fc",
-            VertexColour::Update           => "#f5f5f5",
+            VertexColour::Connective(_) => "#f8cecc",
+            VertexColour::Quantifier(..) => "#e1d5e7",
+            VertexColour::Pvi => "#dae8fc",
+            VertexColour::Update => "#f5f5f5",
         }
     }
 }
@@ -191,7 +197,7 @@ impl fmt::Display for Connective {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Connective::And => "&&",
-            Connective::Or  => "||",
+            Connective::Or => "||",
             Connective::Not => "!",
             Connective::Imp => "=>",
         })
@@ -211,9 +217,9 @@ enum Quantifier {
 impl fmt::Display for Quantifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Quantifier::Forall        => "forall",
-            Quantifier::Exists        => "exists",
-            Quantifier::Lambda        => "lambda",
+            Quantifier::Forall => "forall",
+            Quantifier::Exists => "exists",
+            Quantifier::Lambda => "lambda",
             Quantifier::Comprehension => "comp",
         })
     }
@@ -235,7 +241,7 @@ impl fmt::Display for EdgeColour {
         match self {
             EdgeColour::Uncoloured => Ok(()),
             EdgeColour::Argument(positions) => write!(f, "{}", positions.iter().format(",")),
-            EdgeColour::Update(roles)       => write!(f, "{}", roles.iter().format(",")),
+            EdgeColour::Update(roles) => write!(f, "{}", roles.iter().format(",")),
         }
     }
 }
@@ -270,9 +276,9 @@ enum UpdateRole {
 impl fmt::Display for UpdateRole {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            UpdateRole::Pvi  => "pvi",
+            UpdateRole::Pvi => "pvi",
             UpdateRole::Data => "data",
-            UpdateRole::Par  => "par",
+            UpdateRole::Par => "par",
         })
     }
 }
@@ -358,7 +364,7 @@ fn unified_parameters(equations: &mcrl2::PbesEquations) -> Result<Vec<DataVariab
 /// that precondition is not yet established.
 pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     let equations = pbes.equations();
-    let parameters = unified_parameters(&equations)?;;
+    let parameters = unified_parameters(&equations)?;
 
     let mut builder = SdgBuilder::new();
 
@@ -367,7 +373,8 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     // vertices" trivial: GAP point `k+1` <-> parameter `k`.
     for (k, parameter) in parameters.iter().enumerate() {
         let term: ATerm = parameter.clone().into();
-        let index = builder.add_vertex(SdgVertex::Parameter(k), VertexColour::Parameter);
+        let colour = VertexColour::Parameter(parameter.sort().protect());
+        let index = builder.add_vertex(SdgVertex::Parameter(k), colour);
         builder.term_map.insert(term, index);
     }
     debug_assert_eq!(builder.graph.node_count(), parameters.len());
@@ -403,16 +410,14 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     debug_assert_eq!(builder.colours.len(), builder.equations.len());
     debug_assert_eq!(builder.colours.len(), builder.graph.node_count());
     for k in 0..n {
-        debug_assert_eq!(
-            builder.colours[k],
-            VertexColour::Parameter,
+        debug_assert!(
+            matches!(builder.colours[k], VertexColour::Parameter(_)),
             "the first n vertices must be exactly the parameter vertices"
         );
     }
     for (index, colour) in builder.colours.iter().enumerate().skip(n) {
-        debug_assert_ne!(
-            *colour,
-            VertexColour::Parameter,
+        debug_assert!(
+            !matches!(colour, VertexColour::Parameter(_)),
             "no vertex beyond the first n may be coloured Parameter (found at index {index})"
         );
     }
@@ -434,8 +439,13 @@ pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
 
 /// Builds up an [`Sdg`] incrementally by walking a PBES's right-hand sides.
 struct SdgBuilder {
+    /// The graph under construction; becomes [`Sdg::graph`].
     graph: UnGraph<SdgVertex, EdgeColour>,
+
+    /// `C(v)` per vertex, indexed by `NodeIndex::index()`.
     colours: Vec<VertexColour>,
+
+    /// `C_eq(v)` per vertex, indexed by `NodeIndex::index()`.
     equations: Vec<BTreeSet<usize>>,
 
     /// Deduplicates [`SdgVertex::Term`] vertices by (maximally shared) term
@@ -482,7 +492,13 @@ impl SdgBuilder {
                 .graph
                 .edge_weight_mut(edge)
                 .expect("find_edge returned a valid edge index");
-            trace!("edge: merge v{}--v{} colour {:?} into {:?}", u.index(), v.index(), colour, existing);
+            trace!(
+                "edge: merge v{}--v{} colour {:?} into {:?}",
+                u.index(),
+                v.index(),
+                colour,
+                existing
+            );
             *existing = merge_edge_colour(existing.clone(), colour);
         } else {
             trace!("edge: add   v{}--v{} colour {:?}", u.index(), v.index(), colour);
@@ -521,7 +537,13 @@ impl SdgBuilder {
 
         let colour = self.colour_of(&key)?;
         let node = self.add_vertex(SdgVertex::Term(key.clone()), colour.clone());
-        trace!("visit: new   v{} {:?} for `{:?}` (eq {})", node.index(), colour, term, equation);
+        trace!(
+            "visit: new   v{} {:?} for `{:?}` (eq {})",
+            node.index(),
+            colour,
+            term,
+            equation
+        );
         self.term_map.insert(key.clone(), node);
         self.mark_equation(node, equation);
 
@@ -530,7 +552,13 @@ impl SdgBuilder {
     }
 
     /// Visits `child`, then adds edge `(parent, child, colour)`.
-    fn visit_child(&mut self, parent: NodeIndex, child: ATermRef<'_>, colour: EdgeColour, equation: usize) -> Result<(), MercError> {
+    fn visit_child(
+        &mut self,
+        parent: NodeIndex,
+        child: ATermRef<'_>,
+        colour: EdgeColour,
+        equation: usize,
+    ) -> Result<(), MercError> {
         let child_node = self.visit(child, equation)?;
         self.add_or_merge_edge(parent, child_node, colour);
         Ok(())
@@ -564,11 +592,13 @@ impl SdgBuilder {
             if self.scope.iter().any(|bound| bound.name() == variable.name()) {
                 Ok(VertexColour::BoundVariable(variable.sort().protect()))
             } else {
-                Ok(VertexColour::Parameter)
+                Ok(VertexColour::Parameter(variable.sort().protect()))
             }
         } else if is_application(&r) {
             let application = DataApplicationRef::from(r);
-            Ok(VertexColour::Function(application.data_function_symbol().name().to_string()))
+            Ok(VertexColour::Function(
+                application.data_function_symbol().name().to_string(),
+            ))
         } else if is_function_symbol(&r) {
             let symbol = DataFunctionSymbolRef::from(r);
             Ok(VertexColour::Function(symbol.name().to_string()))
@@ -584,8 +614,7 @@ impl SdgBuilder {
             // Colour the same as the PBES-level quantifier for forall/exists so
             // that structurally identical sub-formulas remain deduplicated.
             let abstraction = DataAbstractionRef::from(r.copy());
-            let sorts: Vec<SortExpression> =
-                abstraction.variables().iter().map(|v| v.sort().protect()).collect();
+            let sorts: Vec<SortExpression> = abstraction.variables().iter().map(|v| v.sort().protect()).collect();
             let bo = abstraction.binding_operator();
             let q = if bo.is_forall() {
                 Quantifier::Forall
@@ -616,20 +645,30 @@ impl SdgBuilder {
             let mut leaves = Vec::new();
             collect_pbes_flat(r, is_pbes_and, &mut leaves);
             for leaf in leaves {
-                self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation)?;
+                self.visit_child(node, leaf.copy(), EdgeColour::Uncoloured, equation)?;
             }
         } else if is_pbes_or(&r) {
             let mut leaves = Vec::new();
             collect_pbes_flat(r, is_pbes_or, &mut leaves);
             for leaf in leaves {
-                self.visit_child(node, leaf.copy().into(), EdgeColour::Uncoloured, equation)?;
+                self.visit_child(node, leaf.copy(), EdgeColour::Uncoloured, equation)?;
             }
         } else if is_pbes_imp(&r) {
             // Implication is NOT commutative: lhs => rhs ≠ rhs => lhs.
             // Color the edges by position to prevent spurious symmetries.
             let imp = PbesImpRef::from(r);
-            self.visit_child(node, imp.lhs().into(), EdgeColour::Argument([1].into_iter().collect()), equation)?;
-            self.visit_child(node, imp.rhs().into(), EdgeColour::Argument([2].into_iter().collect()), equation)?;
+            self.visit_child(
+                node,
+                imp.lhs().into(),
+                EdgeColour::Argument([1].into_iter().collect()),
+                equation,
+            )?;
+            self.visit_child(
+                node,
+                imp.rhs().into(),
+                EdgeColour::Argument([2].into_iter().collect()),
+                equation,
+            )?;
         } else if is_pbes_not(&r) {
             let not = PbesNotRef::from(r);
             self.visit_child(node, not.body().into(), EdgeColour::Uncoloured, equation)?;
@@ -720,11 +759,7 @@ impl SdgBuilder {
         // still visited and given a vertex -- see `visit_children`).
         let pvi_node = self.visit(pvi_ref, equation)?;
 
-        let arguments: Vec<ATerm> = pvi
-            .arguments()
-            .iter()
-            .map(|argument| argument.protect().into())
-            .collect();
+        let arguments: Vec<ATerm> = pvi.arguments().iter().map(|argument| argument.protect()).collect();
         if arguments.len() != n {
             return Err(format!(
                 "Predicate variable instance '{}' has {} argument(s), but the unified parameter \
@@ -744,19 +779,32 @@ impl SdgBuilder {
         // PVI's own vertex index doubles as a stable, sufficiently unique
         // `i`.
         let i = pvi_node.index();
-        debug!("update vertices: eq {} pvi '{}' (v{}) — {} parameter(s)", equation, pvi.name(), i, n);
+        debug!(
+            "update vertices: eq {} pvi '{}' (v{}) — {} parameter(s)",
+            equation,
+            pvi.name(),
+            i,
+            n
+        );
 
-        for k in 0..n {
+        for (k, argument) in arguments.iter().enumerate() {
             let update_vertex = SdgVertex::Update {
                 equation,
                 pvi: i,
                 parameter: k,
             };
             let update_node = self.add_vertex(update_vertex, VertexColour::Update);
-            trace!("update vertex v{} X_({},{},{}) (eq {})", update_node.index(), equation, i, k, equation);
+            trace!(
+                "update vertex v{} X_({},{},{}) (eq {})",
+                update_node.index(),
+                equation,
+                i,
+                k,
+                equation
+            );
             self.mark_equation(update_node, equation);
 
-            let data_node = self.visit(arguments[k].copy(), equation)?;
+            let data_node = self.visit(argument.copy(), equation)?;
             let par_node = NodeIndex::new(k);
 
             // Group the (at most three) targets by vertex identity, and
@@ -795,8 +843,6 @@ fn merge_edge_colour(a: EdgeColour, b: EdgeColour) -> EdgeColour {
         ),
     }
 }
-
-// ── GAP-facing conversion ─────────────────────────────────────────────────────
 
 /// The SDG in the form GAP's Digraphs package expects: a symmetric digraph
 /// (every undirected edge as two opposite directed arcs) with 1-based points.
@@ -873,8 +919,6 @@ impl Sdg {
     }
 }
 
-// ── DOT export ───────────────────────────────────────────────────────────────
-
 /// Writes the SDG as a Graphviz DOT file, including vertex/edge colours.
 pub(crate) fn write_dot<W>(sdg: &Sdg, w: &mut W) -> Result<(), MercError>
 where
@@ -888,12 +932,14 @@ where
         let vc = &sdg.colours[i];
 
         let label = match vc {
-            VertexColour::Parameter => sdg.parameters[i].name().to_string(),
+            VertexColour::Parameter(_) => sdg.parameters[i].name().to_string(),
             // Update nodes are unlabeled; shape + dashed edges identify them.
             VertexColour::Update => String::new(),
             VertexColour::Pvi => {
                 if let SdgVertex::Term(aterm) = &sdg.graph[node] {
-                    PbesPropositionalVariableInstantiationRef::from(aterm.copy()).name().to_string()
+                    PbesPropositionalVariableInstantiationRef::from(aterm.copy())
+                        .name()
+                        .to_string()
                 } else {
                     unreachable!()
                 }
@@ -909,15 +955,21 @@ where
                 if let SdgVertex::Term(aterm) = &sdg.graph[node] {
                     let r = aterm.copy();
                     let vars: Vec<String> = if is_pbes_forall(&r) {
-                        PbesForallRef::from(r).variables().iter()
+                        PbesForallRef::from(r)
+                            .variables()
+                            .iter()
                             .map(|v| format!("{}:{}", v.name(), v.sort().pretty_print()))
                             .collect()
                     } else if is_pbes_exists(&r) {
-                        PbesExistsRef::from(r).variables().iter()
+                        PbesExistsRef::from(r)
+                            .variables()
+                            .iter()
                             .map(|v| format!("{}:{}", v.name(), v.sort().pretty_print()))
                             .collect()
                     } else {
-                        DataAbstractionRef::from(r).variables().iter()
+                        DataAbstractionRef::from(r)
+                            .variables()
+                            .iter()
                             .map(|v| format!("{}:{}", v.name(), v.sort().pretty_print()))
                             .collect()
                     };
@@ -930,16 +982,19 @@ where
         };
 
         let shape = match vc {
-            VertexColour::Parameter      => "box",
-            VertexColour::Update         => "diamond",
-            VertexColour::Pvi            => "hexagon",
+            VertexColour::Parameter(_) => "box",
+            VertexColour::Update => "diamond",
+            VertexColour::Pvi => "hexagon",
             VertexColour::Quantifier(..) => "parallelogram",
-            _                            => "ellipse",
+            _ => "ellipse",
         };
 
         let fill = vc.dot_fill_colour();
         if matches!(vc, VertexColour::Update) {
-            writeln!(w, "  n{i} [label=\"\", shape=diamond, fillcolor=\"{fill}\", width=0.2, height=0.2, fixedsize=true];")?;
+            writeln!(
+                w,
+                "  n{i} [label=\"\", shape=diamond, fillcolor=\"{fill}\", width=0.2, height=0.2, fixedsize=true];"
+            )?;
         } else {
             writeln!(w, "  n{i} [label=\"{label}\", shape={shape}, fillcolor=\"{fill}\"];")?;
         }
@@ -954,7 +1009,12 @@ where
             if elabel.is_empty() {
                 writeln!(w, "  n{} -- n{} [style=dashed];", u.index(), v.index())?;
             } else {
-                writeln!(w, "  n{} -- n{} [style=dashed, label=\"{elabel}\"];", u.index(), v.index())?;
+                writeln!(
+                    w,
+                    "  n{} -- n{} [style=dashed, label=\"{elabel}\"];",
+                    u.index(),
+                    v.index()
+                )?;
             }
         } else if elabel.is_empty() {
             writeln!(w, "  n{} -- n{};", u.index(), v.index())?;
@@ -967,8 +1027,6 @@ where
     Ok(())
 }
 
-// ── graph6 export ─────────────────────────────────────────────────────────────
-
 /// petgraph only implements the 4-byte N(n) encoding; the format supports up to 68_719_476_735.
 const GRAPH6_MAX_NODES: usize = 258_047;
 
@@ -980,10 +1038,9 @@ const GRAPH6_MAX_NODES: usize = 258_047;
 /// as the channel through which colours reach GAP (that goes through the script).
 pub(crate) fn graph6_string(sdg: &Sdg) -> Result<String, MercError> {
     if sdg.graph.node_count() > GRAPH6_MAX_NODES {
-        return Err(format!(
-            "petgraph's graph6 encoder does not support graphs over {GRAPH6_MAX_NODES} vertices"
-        )
-        .into());
+        return Err(
+            format!("petgraph's graph6 encoder does not support graphs over {GRAPH6_MAX_NODES} vertices").into(),
+        );
     }
     Ok(sdg.graph.graph6_string())
 }
@@ -1116,10 +1173,7 @@ pub(crate) fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercEr
 ///
 /// GAP prints permutations as 1-indexed image vectors; this function converts
 /// them to 0-indexed and builds [`Permutation`] values via [`Permutation::from_mapping`].
-fn parse_gap_output(
-    stdout: &str,
-    num_parameters: usize,
-) -> Result<(u128, u128, Vec<Permutation>), MercError> {
+fn parse_gap_output(stdout: &str, num_parameters: usize) -> Result<(u128, u128, Vec<Permutation>), MercError> {
     // Extract lines strictly between the sentinels.
     let begin_pos = stdout.find("SDG-BEGIN").ok_or_else(|| {
         MercError::from("GAP output is missing 'SDG-BEGIN' sentinel — check for syntax errors in the generated script")
@@ -1187,9 +1241,16 @@ fn parse_gap_output(
 
 /// Result returned by [`graph_symmetries`].
 pub(crate) struct GraphSymmetryResult {
+    /// The symmetry detection graph the automorphisms were computed on.
     pub(crate) sdg: Sdg,
+
+    /// `|Aut(G)|`, the order of the automorphism group of the whole SDG.
     pub(crate) automorphism_group_order: u128,
+
+    /// `|Sym(pbes)|`, the order after restricting to the parameter vertices.
     pub(crate) symmetry_group_order: u128,
+
+    /// Generators of `Sym(pbes)`, as permutations of the parameter indices.
     pub(crate) generators: Vec<Permutation>,
 }
 
@@ -1255,9 +1316,7 @@ mod tests {
         static AVAILABLE: OnceLock<bool> = OnceLock::new();
         *AVAILABLE.get_or_init(|| {
             duct::cmd("gap", ["-q", "-A", "-r", "--quitonbreak"])
-                .stdin_bytes(
-                    "if LoadPackage(\"digraphs\") = fail then QUIT_GAP(1); fi;; QUIT_GAP(0);;",
-                )
+                .stdin_bytes("if LoadPackage(\"digraphs\") = fail then QUIT_GAP(1); fi;; QUIT_GAP(0);;")
                 .stdout_null()
                 .stderr_null()
                 .unchecked()
@@ -1298,14 +1357,18 @@ mod tests {
 
         assert_eq!(sdg.num_parameters(), 4, "c.text.pbes has 4 parameters");
         for k in 0..4 {
-            assert_eq!(
-                sdg.colours[k],
-                VertexColour::Parameter,
+            assert!(
+                matches!(sdg.colours[k], VertexColour::Parameter(_)),
                 "vertex {k} should be the k'th parameter"
             );
         }
         // No other vertex may be coloured Parameter.
-        assert!(sdg.colours.iter().skip(4).all(|c| *c != VertexColour::Parameter));
+        assert!(
+            sdg.colours
+                .iter()
+                .skip(4)
+                .all(|c| !matches!(c, VertexColour::Parameter(_)))
+        );
 
         assert!(sdg.num_vertices() > 4, "there should be vertices beyond the parameters");
         assert!(sdg.num_edges() > 0);
@@ -1511,13 +1574,35 @@ mod tests {
         let pbes = Pbes::from_text("pbes mu X(n: Nat) = exists m: Nat . val(n == m); init X(0);").unwrap();
         let sdg = build_sdg(&pbes).unwrap();
 
-        let parameter_count = sdg.colours.iter().filter(|c| **c == VertexColour::Parameter).count();
+        let parameter_count = sdg
+            .colours
+            .iter()
+            .filter(|c| matches!(c, VertexColour::Parameter(_)))
+            .count();
         assert_eq!(parameter_count, 1);
 
         let has_bound_variable = sdg.colours.iter().any(|c| matches!(c, VertexColour::BoundVariable(_)));
         assert!(
             has_bound_variable,
             "the quantifier-bound 'm' should be coloured BoundVariable"
+        );
+    }
+
+    /// Parameters of different sorts must never be interchangeable.
+    ///
+    /// Function symbols are coloured by name only (`==` exists at every sort), so
+    /// without the sort in the parameter colour these two parameters have
+    /// isomorphic neighbourhoods and GAP reports a `Bool` <-> `Nat` swap. Applying
+    /// it would hand `set_assignments` a value of the wrong sort.
+    #[test]
+    fn test_parameters_of_different_sorts_are_not_interchangeable() {
+        test_logger();
+        let pbes = Pbes::from_text("pbes nu X(b: Bool, n: Nat) = X(b, n); init X(true, 0);").unwrap();
+        let sdg = build_sdg(&pbes).unwrap();
+
+        assert_ne!(
+            sdg.colours[0], sdg.colours[1],
+            "a Bool and a Nat parameter must get different colours"
         );
     }
 
@@ -1529,18 +1614,22 @@ mod tests {
         test_logger();
         // `val(exists m: Nat . n == m)` wraps a data-level binder inside val(...)
         // so the ATerm reaching colour_of is `Binder(Exists, [m:Nat], ==(n,m))`.
-        let pbes = Pbes::from_text(
-            "pbes mu X(n: Nat) = val(exists m: Nat . n == m); init X(0);",
-        )
-        .unwrap();
+        let pbes = Pbes::from_text("pbes mu X(n: Nat) = val(exists m: Nat . n == m); init X(0);").unwrap();
         let sdg = build_sdg(&pbes).unwrap();
 
-        let has_quantifier = sdg.colours.iter().any(|c| {
-            matches!(c, VertexColour::Quantifier(Quantifier::Exists, _))
-        });
-        assert!(has_quantifier, "data-level exists binder must produce a Quantifier(Exists) vertex");
+        let has_quantifier = sdg
+            .colours
+            .iter()
+            .any(|c| matches!(c, VertexColour::Quantifier(Quantifier::Exists, _)));
+        assert!(
+            has_quantifier,
+            "data-level exists binder must produce a Quantifier(Exists) vertex"
+        );
 
         let has_bound_variable = sdg.colours.iter().any(|c| matches!(c, VertexColour::BoundVariable(_)));
-        assert!(has_bound_variable, "the data-level bound 'm' must be coloured BoundVariable");
+        assert!(
+            has_bound_variable,
+            "the data-level bound 'm' must be coloured BoundVariable"
+        );
     }
 }
