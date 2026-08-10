@@ -53,17 +53,17 @@ fn test_user_application_lowers() {
 
 #[test]
 fn test_nested_user_application_lowers() {
-    assert_eq!(
-        lower("sort D; cons d: D; map f: D -> D;", "f(f(f(d)))"),
-        "f(f(f(d)))"
-    );
+    assert_eq!(lower("sort D; cons d: D; map f: D -> D;", "f(f(f(d)))"), "f(f(f(d)))");
 }
 
 #[test]
 fn test_struct_constructor_lowers() {
     // The constructors of a structured sort are declared by desugaring, not by
     // the user text, so this exercises resolution against the desugared spec.
-    assert_eq!(lower("sort D = struct c(n: Nat) | e;", "c(3)"), "c(@cNat(@cDub(true, @c1)))");
+    assert_eq!(
+        lower("sort D = struct c(n: Nat) | e;", "c(3)"),
+        "c(@cNat(@cDub(true, @c1)))"
+    );
 }
 
 #[test]
