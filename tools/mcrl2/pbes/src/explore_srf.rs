@@ -1,9 +1,7 @@
-use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use log::debug;
-use log::info;
 
 use mcrl2::_aterm;
 use mcrl2::ATerm;
@@ -25,30 +23,16 @@ use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
-use merc_explore::configure_rayon_thread_pool;
-use merc_explore::explore;
-use merc_explore::explore_parallel;
-use merc_io::TimeProgress;
-use merc_lts::StateIndex;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 use merc_vpg::ParityGame;
-use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::Priority;
-use merc_vpg::VertexIndex;
 
-/// Periodic progress reporter for PBES exploration. A PBES state is a BES
-/// equation (parity-game vertex), so the count is reported as BES equations.
-fn bes_progress() -> TimeProgress<(usize, usize)> {
-    TimeProgress::new(
-        |(equations, edges): (usize, usize)| {
-            info!("Explored {equations} BES equations, {edges} edges...");
-        },
-        1,
-    )
-}
+use crate::explore_common::compute_priorities;
+use crate::explore_common::run_explore_parity_game;
+use crate::explore_common::run_explore_parity_game_parallel;
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
 pub(crate) fn parity_game_from_pbes(
@@ -59,73 +43,18 @@ pub(crate) fn parity_game_from_pbes(
     let lps = PbesSrfLps::new(pbes)?;
     let timing = Timing::new();
 
-    // Only layer the enumeration cache on top of the LPS when a caching strategy
-    // is actually requested; otherwise explore the bare LPS directly.
     match caching {
-        CachingStrategy::None => run_explore_srf(&lps, strategy, &timing),
+        CachingStrategy::None => run_explore_parity_game(&lps, strategy, &timing),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = run_explore_srf(&cached, strategy, &timing)?;
+            let game = run_explore_parity_game(&cached, strategy, &timing)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
     }
 }
 
-/// Runs the sequential SRF PBES exploration loop over any [`LPS`] view producing
-/// unit labels and `(Player, Priority)` state info, building the parity game. The
-/// view is either the bare LPS or one wrapped in [`CacheLPS`].
-fn run_explore_srf<M>(lps: &M, strategy: ExplorationStrategy, timing: &Timing) -> Result<ParityGame, MercError>
-where
-    M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)>,
-{
-    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
-
-    // Count BES equations (vertices) and edges in the exploration closures,
-    // driving the periodic progress reporter from `on_transition`.
-    let progress = bes_progress();
-    let equations = Cell::new(0usize);
-    let edges = Cell::new(0usize);
-
-    let _initial = explore(
-        lps,
-        strategy,
-        timing,
-        &mut builder,
-        |b: &mut ParityGameBuilder, state: StateIndex, info: &(Player, Priority)| {
-            equations.set(equations.get() + 1);
-            b.add_vertex(VertexIndex::new(state.value()), info.0, info.1);
-            Ok(())
-        },
-        |b: &mut ParityGameBuilder, from: StateIndex, _label: &(), to: StateIndex| {
-            edges.set(edges.get() + 1);
-            progress.print((equations.get(), edges.get()));
-            b.add_edge(VertexIndex::new(from.value()), VertexIndex::new(to.value()));
-            Ok(())
-        },
-    )?;
-    info!(
-        "Exploration complete: {} BES equations, {} edges",
-        equations.get(),
-        edges.get(),
-    );
-
-    Ok(builder.finish(true, true))
-}
-
-/// Per-worker output partition for [`parity_game_from_pbes_parallel`].
-///
-/// Holds the vertices and edges discovered by one worker. All values are dense
-/// `usize`-backed indices (and plain `Player`/`Priority`), so the partition is
-/// `Send` and the partitions merge by concatenation without any remapping.
-#[derive(Default)]
-struct PbesPartition {
-    vertices: Vec<(VertexIndex, Player, Priority)>,
-    edges: Vec<(VertexIndex, VertexIndex)>,
-}
-
-/// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel
-/// across `threads` worker threads.
+/// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel.
 pub(crate) fn parity_game_from_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
@@ -134,70 +63,15 @@ pub(crate) fn parity_game_from_pbes_parallel(
 ) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
 
-    let pool = configure_rayon_thread_pool(threads, pinned)?;
-
-    // Only layer the enumeration cache on top of the LPS when a caching strategy
-    // is actually requested; otherwise explore the bare LPS directly.
     match caching {
-        CachingStrategy::None => run_explore_srf_parallel(&lps, &pool),
+        CachingStrategy::None => run_explore_parity_game_parallel(&lps, threads, caching, pinned),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = run_explore_srf_parallel(&cached, &pool)?;
+            let game = run_explore_parity_game_parallel(&cached, threads, caching, pinned)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
     }
-}
-
-/// Runs the parallel SRF PBES exploration over any [`LPS`] view, merging the
-/// per-worker partitions into a parity game. The view is either the bare LPS or
-/// one wrapped in [`CacheLPS`].
-fn run_explore_srf_parallel<M>(lps: &M, pool: &rayon::ThreadPool) -> Result<ParityGame, MercError>
-where
-    M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)> + Sync,
-    <M::Summand as Summand>::Context: Send,
-{
-    let timing = Timing::new();
-    let (_initial, partitions) = timing.measure("explore", || {
-        pool.install(|| {
-            explore_parallel(
-                lps,
-                PbesPartition::default,
-                |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
-                    partition
-                        .vertices
-                        .push((VertexIndex::new(state.value()), info.0, info.1));
-                    Ok(())
-                },
-                |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
-                    partition
-                        .edges
-                        .push((VertexIndex::new(from.value()), VertexIndex::new(to.value())));
-                    Ok(())
-                },
-            )
-        })
-    })?;
-
-    let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
-    let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
-    info!("Exploration complete: {total_equations} BES equations, {total_edges} edges");
-
-    // Merge the per-worker partitions: every state is reported to `on_state`
-    // exactly once, so each vertex is added once. Add all vertices before edges
-    // since an edge may target a vertex discovered by another worker.
-    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
-    for partition in &partitions {
-        for &(vertex, player, priority) in &partition.vertices {
-            builder.add_vertex(vertex, player, priority);
-        }
-    }
-    for partition in &partitions {
-        for &(from, to) in &partition.edges {
-            builder.add_edge(from, to);
-        }
-    }
-    Ok(builder.finish(true, true))
 }
 
 /// Per-thread enumeration context for a [`PbesSrfLps`].
@@ -327,7 +201,8 @@ impl PbesSrfLps {
         }
 
         let num_params = srf.equations()[0].variable().parameters().len();
-        let priorities = compute_priorities(&srf);
+        let is_mu: Vec<bool> = srf.equations().iter().map(|e| e.is_mu()).collect();
+        let priorities = compute_priorities(&is_mu);
 
         // Equation name -> equation index, used when resolving target PVIs.
         let name_to_eq: HashMap<String, usize> = srf
@@ -454,6 +329,10 @@ impl PbesSrfLps {
             value_mapping,
         })
     }
+
+    pub(crate) fn num_params(&self) -> usize {
+        self.num_params
+    }
 }
 
 impl LPS for PbesSrfLps {
@@ -508,7 +387,7 @@ impl LPS for PbesSrfLps {
         self.equation_summands[state[0]].iter().copied()
     }
 
-    fn state_info(&self, state: &[Self::Value]) -> Self::StateInfo {
+    fn state_info(&self, state: &[Self::Value], _context: &PbesSrfContext) -> Self::StateInfo {
         self.state_info[state[0]]
     }
 }
@@ -586,58 +465,4 @@ impl Summand for PbesSrfSummand {
 
         report_result
     }
-}
-
-/// Computes a priority for each equation for a **max** parity game.
-///
-/// Algorithm:
-/// 1. Assign each equation an *alternation depth* (incremented on every
-///    μ ↔ ν switch), so the outermost block has depth 0 and the innermost
-///    has depth `max_depth`.
-/// 2. Reverse: `priority = max_depth − depth`, making the outermost block
-///    the highest-priority block.
-/// 3. Shift all priorities by 1 when the outermost equation's current parity
-///    does not match its fixpoint type (ν → even, μ → odd).
-fn compute_priorities(srf: &SrfPbes) -> Vec<usize> {
-    let equations = srf.equations();
-    if equations.is_empty() {
-        return Vec::new();
-    }
-
-    // Step 1: compute alternation depth per equation.
-    let mut depths = vec![0usize; equations.len()];
-    let mut current_depth = 0usize;
-    let mut prev_is_mu = equations[0].is_mu();
-
-    for (i, eq) in equations.iter().enumerate() {
-        let is_mu = eq.is_mu();
-        if i > 0 && is_mu != prev_is_mu {
-            current_depth += 1;
-        }
-        depths[i] = current_depth;
-        prev_is_mu = is_mu;
-    }
-
-    // Step 2: reverse so outermost (depth 0) → highest priority (max_depth).
-    let max_depth = *depths.last().unwrap();
-    let mut priorities: Vec<usize> = depths.iter().map(|&d| max_depth - d).collect();
-
-    // Step 3: shift all priorities by 1 iff the outermost equation's priority
-    // parity does not match its fixpoint type (ν needs even, μ needs odd).
-    let first_is_mu = equations[0].is_mu();
-    if first_is_mu == priorities[0].is_multiple_of(2) {
-        for p in &mut priorities {
-            *p += 1;
-        }
-    }
-
-    debug_assert!(
-        priorities
-            .iter()
-            .zip(equations.iter())
-            .all(|(p, eq)| p.is_multiple_of(2) != eq.is_mu()),
-        "Max parity game invariant violated: ν must have even priority and μ must have odd priority"
-    );
-
-    priorities
 }
