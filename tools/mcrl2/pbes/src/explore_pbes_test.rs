@@ -4,36 +4,33 @@ mod tests {
     use std::process::Command;
 
     use mcrl2::Pbes;
+    use merc_explore::CachingStrategy;
     use merc_explore::ExplorationStrategy;
     use merc_io::temp_dir;
     use merc_io::traced_command;
-    use merc_vpg::PG;
     use merc_vpg::solve_zielonka;
 
     use crate::explore_pbes::explore_pbes;
+    use crate::explore_pbes::explore_pbes_parallel;
     use crate::explore_srf::explore_srf_pbes;
 
     /// Explores `pbes` with both the SRF path and the general path, solves each
     /// parity game with Zielonka, and asserts the initial-vertex winner agrees.
     fn assert_general_matches_srf(pbes: &Pbes) {
-        use merc_explore::CachingStrategy;
-
         // Normalise to positive normal form so the SRF converter accepts it.
         let mut normalised = pbes.clone();
         normalised.normalize();
 
-        let game_srf =
-            explore_srf_pbes(&normalised, ExplorationStrategy::Bfs, CachingStrategy::None)
-                .expect("SRF exploration failed");
-        let game_gen = explore_pbes(normalised, ExplorationStrategy::Bfs)
+        let game_srf = explore_srf_pbes(&normalised, ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("SRF exploration failed");
+        let game_gen = explore_pbes(normalised, ExplorationStrategy::Bfs, CachingStrategy::None)
             .expect("General exploration failed");
 
         let (sol_srf, _) = solve_zielonka(&game_srf, false);
         let (sol_gen, _) = solve_zielonka(&game_gen, false);
 
         assert_eq!(
-            sol_srf[0][0],
-            sol_gen[0][0],
+            sol_srf[0][0], sol_gen[0][0],
             "SRF and general explorers disagree on initial-vertex winner"
         );
     }
@@ -42,10 +39,6 @@ mod tests {
         let pbes = Pbes::from_text(text).expect("Failed to parse PBES");
         assert_general_matches_srf(&pbes);
     }
-
-    // -----------------------------------------------------------------------
-    // Inline unit tests — known formula structures
-    // -----------------------------------------------------------------------
 
     #[test]
     fn test_simple_mu_true() {
@@ -102,16 +95,12 @@ mod tests {
     #[test]
     fn test_and_of_two_pvis() {
         // nu X = Y && Z; nu Y = val(true); nu Z = val(true);
-        assert_general_matches_srf_from_text(
-            "pbes nu X = Y && Z; nu Y = val(true); nu Z = val(true); init X;",
-        );
+        assert_general_matches_srf_from_text("pbes nu X = Y && Z; nu Y = val(true); nu Z = val(true); init X;");
     }
 
     #[test]
     fn test_or_of_two_pvis() {
-        assert_general_matches_srf_from_text(
-            "pbes mu X = Y || Z; mu Y = val(false); mu Z = val(false); init X;",
-        );
+        assert_general_matches_srf_from_text("pbes mu X = Y || Z; mu Y = val(false); mu Z = val(false); init X;");
     }
 
     #[test]
@@ -125,23 +114,17 @@ mod tests {
     #[test]
     fn test_data_param_bool() {
         // PBES with a Bool parameter
-        assert_general_matches_srf_from_text(
-            "pbes nu X(b: Bool) = val(b); init X(true);",
-        );
+        assert_general_matches_srf_from_text("pbes nu X(b: Bool) = val(b); init X(true);");
     }
 
     #[test]
     fn test_data_param_nat() {
-        assert_general_matches_srf_from_text(
-            "pbes mu X(n: Nat) = val(n == 0); init X(1);",
-        );
+        assert_general_matches_srf_from_text("pbes mu X(n: Nat) = val(n == 0); init X(1);");
     }
 
     #[test]
     fn test_data_param_with_pvi() {
-        assert_general_matches_srf_from_text(
-            "pbes nu X(n: Int) = val(n > 0) || X(n - 1); init X(3);",
-        );
+        assert_general_matches_srf_from_text("pbes nu X(n: Int) = val(n > 0) || X(n - 1); init X(3);");
     }
 
     #[test]
@@ -153,14 +136,116 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // Random PBES tests — use merc_syntax::random_pbes
-    // -----------------------------------------------------------------------
+    /// Explores `pbes` with local caching and asserts the result matches the uncached exploration.
+    fn assert_cached_matches_uncached(pbes: &Pbes) {
+        let mut normalised = pbes.clone();
+        normalised.normalize();
+
+        let game_uncached = explore_pbes(normalised.clone(), ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("uncached exploration failed");
+        let game_cached = explore_pbes(normalised, ExplorationStrategy::Bfs, CachingStrategy::Local)
+            .expect("cached exploration failed");
+
+        let (sol_uncached, _) = solve_zielonka(&game_uncached, false);
+        let (sol_cached, _) = solve_zielonka(&game_cached, false);
+
+        assert_eq!(
+            sol_uncached[0][0], sol_cached[0][0],
+            "cached and uncached explorers disagree on initial-vertex winner"
+        );
+    }
+
+    #[test]
+    fn test_cached_and_formula() {
+        let pbes =
+            Pbes::from_text("pbes nu X = Y && Z; nu Y = val(true); nu Z = val(true); init X;").expect("parse failed");
+        assert_cached_matches_uncached(&pbes);
+    }
+
+    #[test]
+    fn test_cached_or_formula() {
+        let pbes =
+            Pbes::from_text("pbes mu X = Y || Z; mu Y = val(false); mu Z = val(false); init X;").expect("parse failed");
+        assert_cached_matches_uncached(&pbes);
+    }
+
+    /// Explores `pbes` with the parallel explorer under every caching strategy
+    /// and asserts each result matches the sequential uncached exploration.
+    ///
+    /// The parallel explorer numbers vertices sparsely (see `explore_parallel`),
+    /// so its game has extra unreachable deadlock vertices; vertex 0 is the
+    /// initial state in both, so the comparison is on the solution rather than
+    /// on the vertex and edge counts.
+    fn assert_parallel_matches_sequential(pbes: &Pbes) {
+        let mut normalised = pbes.clone();
+        normalised.normalize();
+
+        let sequential = explore_pbes(normalised.clone(), ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("sequential exploration failed");
+        let (sol_sequential, _) = solve_zielonka(&sequential, false);
+
+        for caching in [CachingStrategy::None, CachingStrategy::Local] {
+            let parallel =
+                explore_pbes_parallel(normalised.clone(), 4, caching, false).expect("parallel exploration failed");
+            let (sol_parallel, _) = solve_zielonka(&parallel, false);
+
+            assert_eq!(
+                sol_sequential[0][0], sol_parallel[0][0],
+                "parallel explorer with {caching:?} caching disagrees with the sequential one"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parallel_and_formula() {
+        let pbes =
+            Pbes::from_text("pbes nu X = Y && Z; nu Y = val(true); nu Z = val(true); init X;").expect("parse failed");
+        assert_parallel_matches_sequential(&pbes);
+    }
+
+    #[test]
+    fn test_parallel_or_formula() {
+        let pbes =
+            Pbes::from_text("pbes mu X = Y || Z; mu Y = val(false); mu Z = val(false); init X;").expect("parse failed");
+        assert_parallel_matches_sequential(&pbes);
+    }
+
+    #[test]
+    fn test_parallel_data_param_with_pvi() {
+        let pbes = Pbes::from_text("pbes nu X(n: Int) = val(n > 0) || X(n - 1); init X(3);").expect("parse failed");
+        assert_parallel_matches_sequential(&pbes);
+    }
+
+    #[test]
+    fn test_parallel_random_pbes_seeds() {
+        use merc_syntax::random_pbes;
+        use rand::SeedableRng;
+
+        for seed in 0u64..50 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let pbes_ast = random_pbes(&mut rng, 3, 2, 3, false, false);
+            let pbes = Pbes::from_text(&pbes_ast.to_string()).expect("parse failed");
+            assert_parallel_matches_sequential(&pbes);
+        }
+    }
+
+    #[test]
+    fn test_cached_random_pbes_seeds() {
+        use merc_syntax::random_pbes;
+        use rand::SeedableRng;
+
+        for seed in 0u64..50 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let pbes_ast = random_pbes(&mut rng, 3, 2, 3, false, false);
+            let pbes = Pbes::from_text(&pbes_ast.to_string()).expect("parse failed");
+            assert_cached_matches_uncached(&pbes);
+        }
+    }
 
     #[test]
     fn test_random_pbes_seeds() {
-        use rand::SeedableRng;
         use merc_syntax::random_pbes;
+        use rand::SeedableRng;
 
         for seed in 0u64..50 {
             let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
@@ -184,8 +269,7 @@ mod tests {
         let temp = temp_dir("test_explore_pbes").unwrap();
         let pbes_path = temp.path().join("spec.pbes");
 
-        let status = traced_command(Command::new(&txt2pbes).arg(&path).arg(&pbes_path))
-            .expect("txt2pbes failed");
+        let status = traced_command(Command::new(&txt2pbes).arg(&path).arg(&pbes_path)).expect("txt2pbes failed");
         assert!(status.success());
 
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
@@ -204,18 +288,13 @@ mod tests {
         let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(spec);
         let formula_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(formula);
         assert!(spec_path.exists(), "spec not found: {}", spec_path.display());
-        assert!(
-            formula_path.exists(),
-            "formula not found: {}",
-            formula_path.display()
-        );
+        assert!(formula_path.exists(), "formula not found: {}", formula_path.display());
 
         let temp = temp_dir("test_explore_pbes").unwrap();
         let lps_path = temp.path().join("spec.lps");
         let pbes_path = temp.path().join("spec.pbes");
 
-        let status = traced_command(Command::new(&mcrl22lps).arg(&spec_path).arg(&lps_path))
-            .expect("mcrl22lps failed");
+        let status = traced_command(Command::new(&mcrl22lps).arg(&spec_path).arg(&lps_path)).expect("mcrl22lps failed");
         assert!(status.success());
 
         let status = traced_command(

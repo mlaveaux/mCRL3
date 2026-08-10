@@ -17,7 +17,6 @@ use merc_vpg::Player;
 use merc_vpg::Priority;
 use merc_vpg::VertexIndex;
 
-use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 
 /// Periodic progress reporter for PBES exploration.
@@ -75,17 +74,15 @@ where
 /// Per-worker output partition for parallel parity-game exploration.
 #[derive(Default)]
 pub(crate) struct PbesPartition {
+    /// Vertices discovered by this worker, with their owner and priority.
     pub(crate) vertices: Vec<(VertexIndex, Player, Priority)>,
+
+    /// Edges discovered by this worker, as `(source, target)` pairs.
     pub(crate) edges: Vec<(VertexIndex, VertexIndex)>,
 }
 
 /// Builds a [`ParityGame`] by exploring any sync-safe LPS in parallel.
-pub(crate) fn explore_pbes_parallel_impl<M>(
-    lps: &M,
-    threads: usize,
-    caching: CachingStrategy,
-    pinned: bool,
-) -> Result<ParityGame, MercError>
+pub(crate) fn explore_pbes_parallel_impl<M>(lps: &M, threads: usize, pinned: bool) -> Result<ParityGame, MercError>
 where
     M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)> + Sync,
     <M::Summand as Summand>::Context: Send,
