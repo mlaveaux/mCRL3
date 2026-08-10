@@ -8,7 +8,7 @@ mod tests {
     use merc_utilities::Timing;
     use merc_vpg::PG;
 
-    use crate::explore_srf::parity_game_from_pbes;
+    use crate::explore_srf::explore_srf_pbes;
     use crate::explore_symbolic_srf::explore_pbes_symbolic;
 
     /// Reads a textual PBES, explores it both explicitly (into a parity game)
@@ -26,7 +26,7 @@ mod tests {
 
         let pbes = Pbes::from_text_file(text_pbes_path.to_str().unwrap()).expect("Failed to read text PBES");
 
-        let game = parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
+        let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
             .expect("Failed to build parity game");
 
         let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);

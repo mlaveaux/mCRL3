@@ -995,6 +995,7 @@ dependencies = [
  "merc_io",
  "merc_lts",
  "merc_symbolic",
+ "merc_syntax",
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",

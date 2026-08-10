@@ -11,8 +11,8 @@ mod tests {
     use merc_vpg::Set;
     use merc_vpg::solve_zielonka;
 
-    use crate::explore_srf::parity_game_from_pbes;
-    use crate::explore_srf::parity_game_from_pbes_parallel;
+    use crate::explore_srf::explore_srf_pbes;
+    use crate::explore_srf::explore_srf_pbes_parallel;
 
     fn pbessolve_result(pbessolve: &Path, pbes_path: &Path) -> bool {
         let output = Command::new(pbessolve)
@@ -74,7 +74,7 @@ mod tests {
 
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
         let game =
-            parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
+            explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
         let (solution, _) = solve_zielonka(&game, false);
         let result = solution[0][0];
 
@@ -137,7 +137,7 @@ mod tests {
 
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
         let game =
-            parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
+            explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
         let (solution, _) = solve_zielonka(&game, false);
         let result = solution[0][0];
 
@@ -155,7 +155,7 @@ mod tests {
     fn assert_parallel_matches_sequential_pbes(pbes_path: &Path) {
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
 
-        let sequential = parity_game_from_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
+        let sequential = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
             .expect("Sequential exploration failed");
         let (sequential_solution, _) = solve_zielonka(&sequential, false);
 
@@ -175,7 +175,7 @@ mod tests {
         sequential_solution: &[Set; 2],
         caching: CachingStrategy,
     ) {
-        let parallel = parity_game_from_pbes_parallel(pbes, 4, caching, false).expect("Parallel exploration failed");
+        let parallel = explore_srf_pbes_parallel(pbes, 4, caching, false).expect("Parallel exploration failed");
 
         // The parallel explorer numbers vertices sparsely (see `explore_parallel`),
         // so its game has extra unreachable deadlock vertices and thus more

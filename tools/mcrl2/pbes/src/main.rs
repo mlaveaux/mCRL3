@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::Parser;
 use clap::Subcommand;
@@ -17,15 +18,22 @@ use merc_tools::report_error;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
-use crate::explore_srf::parity_game_from_pbes;
-use crate::explore_srf::parity_game_from_pbes_parallel;
+use crate::bsgs::Bsgs;
+use crate::explore_common::run_explore_parity_game;
+use crate::explore_common::run_explore_parity_game_parallel;
+use crate::explore_pbes::explore_pbes;
+use crate::explore_srf::PbesSrfLps;
+use crate::explore_srf::explore_srf_pbes;
+use crate::explore_srf::explore_srf_pbes_parallel;
 use crate::explore_symbolic_srf::explore_pbes_symbolic;
 use crate::graph_symmetry::GapConfig;
 use crate::graph_symmetry::graph_symmetries;
 use crate::graph_symmetry::write_dot;
 use crate::permutation::Permutation;
+use crate::quotient_lps::QuotientLps;
 use crate::symmetry::SymmetryAlgorithm;
 
+use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_vpg::PG;
@@ -35,13 +43,18 @@ use merc_vpg::solve_priority_promotion;
 use merc_vpg::solve_zielonka;
 use merc_vpg::verify_solution;
 
+mod bsgs;
 mod clone_iterator;
+mod explore_common;
+mod explore_pbes;
+mod explore_pbes_test;
 mod explore_srf;
 mod explore_srf_test;
 mod explore_symbolic_srf;
 mod explore_symbolic_srf_test;
 mod graph_symmetry;
 mod permutation;
+mod quotient_lps;
 mod symmetry;
 
 /// Default number of nodes for the Oxidd LDD manager.
@@ -191,6 +204,27 @@ struct ExploreExplicitArgs {
     /// Pin each worker thread round-robin to the available CPU cores.
     #[arg(long, default_value_t = false)]
     pinned: bool,
+
+    /// Apply symmetry reduction: compute graph automorphisms, build a BSGS, and
+    /// canonicalize every next-state to its orbit representative before adding
+    /// it to the state space.
+    #[arg(long, default_value_t = false)]
+    symmetry: bool,
+
+    /// Supply generators directly in mapping '[0->1,...]' or cycle '(0 1)'
+    /// notation to build the BSGS without running GAP symmetry detection.
+    /// Repeat the flag for multiple generators: `--quotient '(0 1)' --quotient '(2 3)'`.
+    #[arg(long, value_name = "PERM")]
+    quotient: Vec<String>,
+
+    /// Path or name of the GAP executable used to compute the BSGS (only
+    /// relevant when `--symmetry` or `--quotient` is set).
+    #[arg(long, default_value = "gap")]
+    gap_path: String,
+
+    /// Convert to SRF before exploring (legacy; default is the direct structure-graph algorithm).
+    #[arg(long, default_value_t = false)]
+    srf: bool,
 }
 
 #[derive(clap::Args, Debug)]
@@ -237,6 +271,27 @@ struct SolveArgs {
     /// Pin each worker thread round-robin to the available CPU cores.
     #[arg(long, default_value_t = false)]
     pinned: bool,
+
+    /// Apply symmetry reduction: compute graph automorphisms, build a BSGS, and
+    /// canonicalize every next-state to its orbit representative before adding
+    /// it to the state space.
+    #[arg(long, default_value_t = false)]
+    symmetry: bool,
+
+    /// Supply generators directly in mapping '[0->1,...]' or cycle '(0 1)'
+    /// notation to build the BSGS without running GAP symmetry detection.
+    /// Repeat the flag for multiple generators: `--quotient '(0 1)' --quotient '(2 3)'`.
+    #[arg(long, value_name = "PERM")]
+    quotient: Vec<String>,
+
+    /// Path or name of the GAP executable used to compute the BSGS (only
+    /// relevant when `--symmetry` or `--quotient` is set).
+    #[arg(long, default_value = "gap")]
+    gap_path: String,
+
+    /// Convert to SRF before exploring (legacy; default is the direct structure-graph algorithm).
+    #[arg(long, default_value_t = false)]
+    srf: bool,
 }
 
 fn main() -> ExitCode {
@@ -290,10 +345,18 @@ fn read_pbes(filename: &str, format: Option<PbesFormat>) -> Result<Pbes, MercErr
 
 fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format.clone())?;
-    let game = if args.threads > 1 {
-        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
+    let game = if !args.quotient.is_empty() {
+        let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
+        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+    } else if args.symmetry {
+        let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
+        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+    } else if args.threads > 1 {
+        explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
+    } else if args.srf {
+        explore_srf_pbes(&pbes, args.strategy, args.caching)?
     } else {
-        parity_game_from_pbes(&pbes, args.strategy, args.caching)?
+        explore_pbes(&pbes, args.strategy)?
     };
     println!(
         "Parity game: {} vertices, {} edges",
@@ -313,14 +376,105 @@ fn handle_explore_symbolic(cli: &Cli, args: &ExploreSymbolicArgs, timing: &Timin
     Ok(())
 }
 
+/// Parse permutation strings in mapping `[0->1,...]` or cycle `(0 1)` notation.
+fn parse_generators(strs: &[String]) -> Result<Vec<Permutation>, MercError> {
+    strs.iter()
+        .map(|s| {
+            let s = s.trim();
+            if s.starts_with('[') {
+                Permutation::from_mapping_notation(s)
+            } else {
+                Permutation::from_cycle_notation(s)
+            }
+        })
+        .collect()
+}
+
+/// Build a BSGS from user-supplied generator strings without running graph-symmetry detection.
+fn build_bsgs_from_user_generators(pbes: &Pbes, strs: &[String], gap_path: &str) -> Result<Arc<Bsgs>, MercError> {
+    let config = GapConfig {
+        executable: gap_path.to_string(),
+        dump_script: None,
+    };
+    let generators = parse_generators(strs)?;
+    let lps = PbesSrfLps::new(pbes)?;
+    let n = lps.num_params();
+    let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &config)?);
+    info!("User-supplied generators: |G| = {} ({} generator(s))", bsgs.order(), generators.len());
+    Ok(bsgs)
+}
+
+/// Compute graph symmetries for `pbes` and build a BSGS from them.
+fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str) -> Result<Arc<Bsgs>, MercError> {
+    let config = GapConfig {
+        executable: gap_path.to_string(),
+        dump_script: None,
+    };
+    let sym_result = graph_symmetries(pbes, &config)?;
+    let lps = PbesSrfLps::new(pbes)?;
+    let n = lps.num_params();
+    let bsgs = Arc::new(Bsgs::from_generators(&sym_result.generators, n, &config)?);
+    info!("|G| = {} ({} generator(s))", bsgs.order(), sym_result.generators.len());
+    Ok(bsgs)
+}
+
+/// Explore `pbes` into a parity game, canonicalizing every next-state via `bsgs`.
+fn explore_with_symmetry(
+    pbes: &Pbes,
+    strategy: ExplorationStrategy,
+    caching: CachingStrategy,
+    threads: usize,
+    pinned: bool,
+    bsgs: Arc<Bsgs>,
+) -> Result<merc_vpg::ParityGame, MercError> {
+    use merc_vpg::ParityGame;
+    let lps = PbesSrfLps::new(pbes)?;
+    let timing = Timing::new();
+
+    let game: ParityGame = if threads > 1 {
+        match caching {
+            CachingStrategy::None => {
+                let qlps = QuotientLps::new(lps, bsgs, 1);
+                run_explore_parity_game_parallel(&qlps, threads, caching, pinned)?
+            }
+            _ => {
+                let cached = CacheLPS::new(&lps, caching);
+                let qlps = QuotientLps::new(cached, bsgs, 1);
+                run_explore_parity_game_parallel(&qlps, threads, caching, pinned)?
+            }
+        }
+    } else {
+        match caching {
+            CachingStrategy::None => {
+                let qlps = QuotientLps::new(lps, bsgs, 1);
+                run_explore_parity_game(&qlps, strategy, &timing)?
+            }
+            _ => {
+                let cached = CacheLPS::new(lps, caching);
+                let qlps = QuotientLps::new(cached, bsgs, 1);
+                run_explore_parity_game(&qlps, strategy, &timing)?
+            }
+        }
+    };
+    Ok(game)
+}
+
 /// Handles the solve command, which explores a PBES into a parity game and
 /// solves the game, printing the solution of the initial vertex.
 fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format.clone())?;
-    let game = if args.threads > 1 {
-        parity_game_from_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
+    let game = if !args.quotient.is_empty() {
+        let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
+        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+    } else if args.symmetry {
+        let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
+        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+    } else if args.threads > 1 {
+        explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
+    } else if args.srf {
+        explore_srf_pbes(&pbes, args.strategy, args.caching)?
     } else {
-        parity_game_from_pbes(&pbes, args.strategy, args.caching)?
+        explore_pbes(&pbes, args.strategy)?
     };
     info!(
         "Parity game: {} vertices, {} edges",
