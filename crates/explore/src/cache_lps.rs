@@ -293,7 +293,7 @@ impl<P: LPS> LPS for CacheLPS<P> {
 }
 
 impl<P: LPS> CacheSummandWrapper<P> {
-    fn replay_cached(
+    fn replay_partial(
         &self,
         context: &mut CacheContext<P>,
         state: &[P::Value],
@@ -311,6 +311,21 @@ impl<P: LPS> CacheSummandWrapper<P> {
             for (&pos, value) in self.write_positions.iter().zip(self.forest.iter(*write_tree)) {
                 replay_buf[pos] = value;
             }
+            report(label, replay_buf)?;
+        }
+        Ok(())
+    }
+
+    fn replay_full(
+        &self,
+        context: &mut CacheContext<P>,
+        results: &[(P::Label, Tree)],
+        report: &mut impl FnMut(&P::Label, &[P::Value]) -> Result<(), MercError>,
+    ) -> Result<(), MercError> {
+        let replay_buf = &mut context.replay_buf;
+        for (label, full_tree) in results {
+            replay_buf.clear();
+            replay_buf.extend(self.forest.iter(*full_tree));
             report(label, replay_buf)?;
         }
         Ok(())
@@ -357,8 +372,13 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         // Fast path: a present entry is replayed in place under the shard read
         // lock, without cloning the entry's captured results.
+        let full_state = self.write_positions.is_empty();
         let hit = self.cache.find_with(hash, eq, |entry| {
-            self.replay_cached(context, state, &entry.results, &mut report)
+            if full_state {
+                self.replay_full(context, &entry.results, &mut report)
+            } else {
+                self.replay_partial(context, state, &entry.results, &mut report)
+            }
         });
         if let Some(result) = hit {
             #[cfg(feature = "metrics")]
@@ -369,9 +389,9 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         #[cfg(feature = "metrics")]
         self.misses.increment();
-        // Cache MISS: delegate to inner summand, capture results. Only the
-        // values at the write positions are stored; on replay they are
-        // scattered back onto the live source state (see the hit branch).
+        // Cache MISS: delegate to inner summand and capture results.
+        // Full-state mode stores the complete next-state vector; partial mode
+        // stores only the write-position values (with pass-through from source).
         let mut captured: Vec<(P::Label, Tree)> = Vec::new();
         {
             let inner_summand = &self.inner.summands()[self.index];
@@ -386,8 +406,12 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
             inner_summand.enumerate(inner, state, |label, next_state| {
                 key_buf.clear();
-                for &pos in write_positions {
-                    key_buf.push(next_state[pos]);
+                if full_state {
+                    key_buf.extend_from_slice(next_state);
+                } else {
+                    for &pos in write_positions {
+                        key_buf.push(next_state[pos]);
+                    }
                 }
                 let tree = forest.insert_with(key_buf, forest_context);
                 captured.push((label.clone(), tree));
