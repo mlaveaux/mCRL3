@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use clap::ValueEnum;
 
 use merc_aterm::ATerm;
+use merc_data::DataExpression;
 use merc_data::to_untyped_data_expression;
 use merc_sabre::InnermostRewriter;
 use merc_sabre::NaiveRewriter;
@@ -26,6 +27,11 @@ pub enum Rewriter {
 }
 
 /// Rewrites the given REC specification.
+///
+/// The terms of a REC specification are untyped aterms, so each is first
+/// converted into the untyped [DataExpression] form the rewriters expect; an
+/// mCRL2 specification instead supplies already type-checked and lowered terms
+/// to [rewrite_terms] directly.
 pub fn rewrite_rec(
     rewriter: Rewriter,
     spec: &RewriteSpecification,
@@ -33,60 +39,57 @@ pub fn rewrite_rec(
     output: bool,
     timing: &Timing,
 ) -> Result<(), MercError> {
+    let terms: Vec<DataExpression> = syntax_terms
+        .iter()
+        .map(|term| to_untyped_data_expression(term.clone(), None))
+        .collect();
+
+    rewrite_terms(rewriter, spec, &terms, output, timing)
+}
+
+/// Rewrites every term to normal form with the selected rewriter, printing the
+/// results when `output` is set.
+///
+/// The rewriter is constructed once for the whole batch: building the set
+/// automaton of a full mCRL2 specification dominates the cost of rewriting a
+/// handful of terms.
+pub fn rewrite_terms(
+    rewriter: Rewriter,
+    spec: &RewriteSpecification,
+    terms: &[DataExpression],
+    output: bool,
+    timing: &Timing,
+) -> Result<(), MercError> {
+    /// Rewrites every term with `engine`, printing each result when asked.
+    fn rewrite_all(engine: &mut impl RewriteEngine, terms: &[DataExpression], output: bool, timing: &Timing) {
+        timing.measure("rewrite_rec", || {
+            for term in terms {
+                let result = engine.rewrite(term);
+                if output {
+                    println!("{}", result)
+                }
+            }
+        });
+    }
+
     match rewriter {
         Rewriter::Naive => {
             let mut inner = timing.measure("rewriter_construction", || NaiveRewriter::new(spec));
-
-            timing.measure("rewrite_rec", || {
-                for term in syntax_terms {
-                    let term = to_untyped_data_expression(term.clone(), None);
-                    let result = inner.rewrite(&term);
-                    if output {
-                        println!("{}", result)
-                    }
-                }
-            });
+            rewrite_all(&mut inner, terms, output, timing);
         }
         Rewriter::Innermost => {
             let mut inner = timing.measure("rewriter_construction", || InnermostRewriter::new(spec));
-
-            timing.measure("rewrite_rec", || {
-                for term in syntax_terms {
-                    let term = to_untyped_data_expression(term.clone(), None);
-                    let result = inner.rewrite(&term);
-                    if output {
-                        println!("{}", result)
-                    }
-                }
-            });
+            rewrite_all(&mut inner, terms, output, timing);
         }
         Rewriter::InnermostCompiling => {
             let mut inner = timing.measure("rewriter_construction", || {
                 SabreCompilingRewriter::new(spec, true, false)
             })?;
-
-            timing.measure("rewrite_rec", || {
-                for term in syntax_terms {
-                    let term = to_untyped_data_expression(term.clone(), None);
-                    let result = inner.rewrite(&term);
-                    if output {
-                        println!("{}", result)
-                    }
-                }
-            });
+            rewrite_all(&mut inner, terms, output, timing);
         }
         Rewriter::Sabre => {
             let mut sa = timing.measure("rewriter_construction", || SabreRewriter::new(spec));
-
-            timing.measure("rewrite_rec", || {
-                for term in syntax_terms {
-                    let term = to_untyped_data_expression(term.clone(), None);
-                    let result = sa.rewrite(&term);
-                    if output {
-                        println!("{}", result)
-                    }
-                }
-            });
+            rewrite_all(&mut sa, terms, output, timing);
         }
     }
 

@@ -6,8 +6,10 @@ use std::rc::Rc;
 use log::debug;
 
 use merc_collections::IndexedSet;
+use merc_data::DataExpression;
 use merc_data::Mcrl2DataSpecification;
 use merc_syntax::ConstructorId;
+use merc_syntax::DataExpr;
 use merc_syntax::DefId;
 use merc_syntax::EqnSpecId;
 use merc_syntax::EqnVarId;
@@ -20,6 +22,7 @@ use merc_syntax::apply_sort_expression;
 
 use crate::AliasError;
 use crate::EquationTyping;
+use crate::InferenceError;
 use crate::NumberEncoding;
 use crate::Signature;
 use crate::TypeCheckContext;
@@ -38,9 +41,12 @@ use crate::desugar_structured_sorts;
 use crate::extend_system_with_inferred_sorts;
 use crate::filter_signature;
 use crate::hoist_anonymous_structs;
+use crate::infer_expression;
 use crate::is_well_typed;
+use crate::lower_data_expr;
 use crate::lower_data_expressions;
 use crate::lower_data_specification;
+use crate::lower_expression;
 use crate::merge_signatures;
 use crate::normalize_sorts;
 use crate::resolve_sort_ids;
@@ -377,6 +383,41 @@ impl DataSpecification {
     /// this is a pure read-only replay.
     pub fn lower_data_specification(&self) -> Mcrl2DataSpecification {
         lower_data_specification(&self.context, &self.spec, &self.system, self.encoding)
+    }
+
+    /// Type checks a single data expression against this specification and
+    /// lowers it to the same aterm form [`Self::lower_data_specification`]
+    /// produces, so the result can be handed straight to a rewriter built from
+    /// that specification.
+    ///
+    /// `expr` is a *closed* term: it may use any constructor or mapping this
+    /// specification declares (user or system-defined) and may introduce its own
+    /// bound variables through `lambda`/`forall`/`exists`/a comprehension/`whr`,
+    /// but a free identifier is an [`InferenceError::UndeclaredName`] — there is
+    /// no enclosing `var` block to draw equation variables from. Sorts are
+    /// inferred exactly as in a user equation, except that no other side widens
+    /// the result: `1 + 1` types at `Pos`, its minimal sort.
+    ///
+    /// Takes `&mut self` because inference interns the sorts it discovers into
+    /// the shared context; the specification itself is not modified.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the expression type checks but Phase-4 lowering cannot render
+    /// it — an internal inconsistency between the two phases, treated the same
+    /// way as for a user equation in [`lower_data_specification`].
+    pub fn typecheck_expression(&mut self, expr: &DataExpr) -> Result<DataExpression, InferenceError> {
+        // The built-in operator nodes (`x + y`, `[x, y]`, `f[x -> y]`) become
+        // applications first, exactly as `from_untyped_with` does for the
+        // equations: inference and lowering both require a lowered expression.
+        let expr = lower_data_expr(expr.clone());
+
+        let typing = infer_expression(&mut self.context, &self.spec, &self.system, &expr)?;
+
+        Ok(
+            lower_expression(&self.context, &self.spec, &self.system, &typing, &expr, self.encoding)
+                .unwrap_or_else(|| panic!("expression '{expr}' passed inference but failed lowering")),
+        )
     }
 }
 

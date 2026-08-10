@@ -97,17 +97,21 @@ pub enum InferenceError {
     #[error("the body '{body}' of a forall/exists must have sort Bool")]
     QuantifierNotBool { body: String, span: Span },
 
-    #[error("the equation '{equation}' has no valid sort assignment")]
-    NoTyping { equation: String, span: Span },
+    #[error("'{expression}' has no valid sort assignment")]
+    NoTyping { expression: String, span: Span },
 
-    #[error("the sorts in equation '{equation}' are ambiguous")]
-    AmbiguousExpression { equation: String, span: Span },
+    #[error("the sorts in '{expression}' are ambiguous")]
+    AmbiguousExpression { expression: String, span: Span },
 
-    #[error("the sorts in equation '{equation}' are underdetermined")]
-    UnderdeterminedSort { equation: String, span: Span },
+    #[error("the sorts in '{expression}' are underdetermined")]
+    UnderdeterminedSort { expression: String, span: Span },
 
-    #[error("the binder sort '{sort}' in equation '{equation}' is not a valid variable sort")]
-    InvalidBinderSort { sort: String, equation: String, span: Span },
+    #[error("the binder sort '{sort}' in '{expression}' is not a valid variable sort")]
+    InvalidBinderSort {
+        sort: String,
+        expression: String,
+        span: Span,
+    },
 }
 
 impl InferenceError {
@@ -126,6 +130,15 @@ impl InferenceError {
             | InferenceError::UnderdeterminedSort { span, .. }
             | InferenceError::InvalidBinderSort { span, .. } => span,
         }
+    }
+
+    /// Renders this error's message, followed by a caret-annotated source
+    /// snippet (see [Span::render]). `source` must be the original text the
+    /// error was raised against — the specification for an equation error, the
+    /// expression text for one raised by
+    /// [`crate::DataSpecification::typecheck_expression`].
+    pub fn render(&self, source: &str) -> String {
+        format!("{self}\n{}", self.span().render(source))
     }
 }
 
@@ -294,15 +307,94 @@ fn infer_equation(
         EquationRole::System => &system.equation_declarations[eqn_spec_id],
     };
     let equation = &eqn_spec.equations[equation_id];
-    let equation_text = || format!("{} = {}", equation.lhs, equation.rhs);
-    debug!("inference: typing equation '{}'", equation_text());
+    infer(
+        ctx,
+        spec,
+        system,
+        role,
+        eqn_spec_id,
+        &eqn_spec.variables,
+        Roots::Equation {
+            condition: equation.condition.as_ref(),
+            lhs: &equation.lhs,
+            rhs: &equation.rhs,
+        },
+        &|| format!("{} = {}", equation.lhs, equation.rhs),
+        &equation.span,
+    )
+}
+
+/// Infers the sorts of one standalone data expression — a term to be
+/// rewritten, not part of any equation — against the *user* signature of
+/// `spec` (plus the system signature and the full polymorphic scheme table,
+/// exactly as a user equation resolves names).
+///
+/// The expression is closed: it declares no equation variables, so every name
+/// in it must resolve to a declared constructor or mapping, and a free
+/// identifier is an [`InferenceError::UndeclaredName`]. Bound variables
+/// introduced by a `lambda`/`forall`/`exists`/comprehension/`whr` inside the
+/// expression are unaffected — those carry their own declared sorts.
+///
+/// Unlike an equation there is no second side to widen against, so the
+/// expression's sort follows from its own structure alone: `1 + 1` infers at
+/// `Pos`, the minimal sort the ranked search admits.
+pub(crate) fn infer_expression(
+    ctx: &mut TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    expr: &DataExpr,
+) -> Result<EquationTyping, InferenceError> {
+    infer(
+        ctx,
+        spec,
+        system,
+        EquationRole::User,
+        // Unused: the `User` role reads no per-group state, and there are no
+        // equation variables whose sort would be resolved against a block.
+        EqnSpecId::new(0),
+        &[],
+        Roots::Expression(expr),
+        &|| expr.to_string(),
+        &expr.span,
+    )
+}
+
+/// The expressions one inference run covers.
+enum Roots<'a> {
+    /// The three sides of an equation, joined through a common supersort.
+    Equation {
+        condition: Option<&'a DataExpr>,
+        lhs: &'a DataExpr,
+        rhs: &'a DataExpr,
+    },
+    /// A single standalone expression, typed on its own (see [infer_expression]).
+    Expression(&'a DataExpr),
+}
+
+/// Generates the constraints of `roots`, solves them by ranked backtracking,
+/// and extracts the sorts of the best solution. Shared by [infer_equation] and
+/// [infer_expression]; `text` renders the whole input for diagnostics and
+/// `span` locates it in the source.
+#[allow(clippy::too_many_arguments)]
+fn infer<'a>(
+    ctx: &mut TypeCheckContext,
+    spec: &'a UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    role: EquationRole,
+    eqn_spec_id: EqnSpecId,
+    equation_variables: &'a [IdDecl<EqnVarId>],
+    roots: Roots<'a>,
+    equation_text: &dyn Fn() -> String,
+    equation_span: &Span,
+) -> Result<EquationTyping, InferenceError> {
+    debug!("inference: typing '{}'", equation_text());
 
     let mut unifier = Unifier::new();
 
     // The equation variables shadow constructors and mappings on lookup; their
     // declared sorts are concrete, so all uses of a variable share one node.
     let mut variables = HashMap::new();
-    for var in &eqn_spec.variables {
+    for var in equation_variables {
         let sort = resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var);
         let node = unifier.resolved_node(sort);
         variables.insert(var.identifier.as_str(), node);
@@ -357,7 +449,11 @@ fn infer_equation(
         constraints: Vec::new(),
     };
 
-    match generator.generate(equation.condition.as_ref(), &equation.lhs, &equation.rhs) {
+    let generated = match roots {
+        Roots::Equation { condition, lhs, rhs } => generator.generate(condition, lhs, rhs),
+        Roots::Expression(expr) => generator.generate_expression(expr),
+    };
+    match generated {
         Ok(()) => {}
         Err(GenFailure::InvalidBinderSort(sort, span)) => {
             debug!(
@@ -366,7 +462,7 @@ fn infer_equation(
             );
             return Err(InferenceError::InvalidBinderSort {
                 sort,
-                equation: equation_text(),
+                expression: equation_text(),
                 span,
             });
         }
@@ -423,8 +519,8 @@ fn infer_equation(
         None => {
             debug!("inference: no valid sort assignment for '{}'", equation_text());
             Err(InferenceError::NoTyping {
-                equation: equation_text(),
-                span: equation.span.clone(),
+                expression: equation_text(),
+                span: equation_span.clone(),
             })
         }
         Some(best) if best.duplicate => {
@@ -434,8 +530,8 @@ fn infer_equation(
                 equation_text()
             );
             Err(InferenceError::AmbiguousExpression {
-                equation: equation_text(),
-                span: equation.span.clone(),
+                expression: equation_text(),
+                span: equation_span.clone(),
             })
         }
         Some(best) => match best.typing {
@@ -445,8 +541,8 @@ fn infer_equation(
                     equation_text()
                 );
                 Err(InferenceError::UnderdeterminedSort {
-                    equation: equation_text(),
-                    span: equation.span.clone(),
+                    expression: equation_text(),
+                    span: equation_span.clone(),
                 })
             }
             Some((sorts, names)) => {
@@ -464,7 +560,7 @@ fn infer_equation(
 
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
-                    for var in &eqn_spec.variables {
+                    for var in equation_variables {
                         let sort = resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var);
                         trace!(
                             "inference:   variable {}: {}",
@@ -740,6 +836,17 @@ impl<'a> ConstraintGenerator<'a> {
             lhs: rhs_sort,
             rhs: joined,
         }));
+        Ok(())
+    }
+
+    /// Emits the constraints of a single standalone expression (see
+    /// [infer_expression]). Unlike [Self::generate] there is no second side to
+    /// widen against, so no `Sub` into a shared variable is added and the
+    /// expression's sort is whatever its own structure admits.
+    fn generate_expression(&mut self, expr: &'a DataExpr) -> Result<(), GenFailure> {
+        debug_assert!(is_lowered(expr), "inference requires lowered expressions");
+
+        self.visit(expr)?;
         Ok(())
     }
 
@@ -1712,11 +1819,11 @@ mod tests {
         let text = "map f: Bool; eqn f = 1;";
         let error = inference_error(text);
         match &error {
-            InferenceError::NoTyping { equation, span } => {
+            InferenceError::NoTyping { expression, span } => {
                 // The whole equation (including its trailing `;`) is the
                 // offending unit; nothing narrower pins down a sort to blame.
                 assert_eq!(&text[span.start..span.end], "f = 1;");
-                assert_eq!(equation, "f = 1");
+                assert_eq!(expression, "f = 1");
             }
             other => panic!("expected NoTyping, got {other}"),
         }
