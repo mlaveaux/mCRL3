@@ -1,12 +1,15 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
+use mcrl2::DataExpression;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataSpecification;
 use mcrl2::DataVariable;
 use mcrl2::Pbes;
 use mcrl2::PbesAndRef;
 use mcrl2::PbesExpressionRef;
+use mcrl2::PbesExpressionVisitor;
 use mcrl2::PbesOrRef;
 use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::PbesRewriteContext;
@@ -17,6 +20,9 @@ use mcrl2::is_pbes_false;
 use mcrl2::is_pbes_or;
 use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::is_pbes_true;
+use mcrl2::is_variable;
+use mcrl2::variable_occurrences_data_expression;
+use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::Summand;
@@ -28,7 +34,8 @@ use merc_vpg::Player;
 use merc_vpg::Priority;
 
 use crate::explore_common::compute_priorities;
-use crate::explore_common::run_explore_parity_game;
+use crate::explore_common::explore_pbes_impl;
+use crate::explore_common::explore_pbes_parallel_impl;
 
 /// Tag values occupy the top 4 bits of a state[0] word so they never collide
 /// with equation indices (which are small) or with usize::MAX (the sequence
@@ -38,10 +45,10 @@ const TAG_MASK: usize = 0xF << (usize::BITS - 4);
 const TRUE_SINK: usize = 0x1 << (usize::BITS - 4);
 /// Source state is a false-sink (self-loop, Odd wins).
 const FALSE_SINK: usize = 0x2 << (usize::BITS - 4);
-/// Source state is an auxiliary AND node; full state: `[AUX_AND, priority, aux_idx]`.
-const AUX_AND: usize = 0x3 << (usize::BITS - 4);
-/// Source state is an auxiliary OR node; full state: `[AUX_OR, priority, aux_idx]`.
-const AUX_OR: usize = 0x4 << (usize::BITS - 4);
+/// Source state is an auxiliary AND node; full state: `[AND_OP, priority, aux_idx]`.
+const AND_OP: usize = 0x3 << (usize::BITS - 4);
+/// Source state is an auxiliary OR node; full state: `[OR_OP, priority, aux_idx]`.
+const OR_OP: usize = 0x4 << (usize::BITS - 4);
 
 type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 type AuxMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
@@ -57,8 +64,8 @@ type AuxMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
 /// - PVI state:  `[eq_idx, intern(v0), …, intern(vn)]` — length `1 + num_params`
 /// - TRUE sink:  `[TRUE_SINK]`  — length 1
 /// - FALSE sink: `[FALSE_SINK]` — length 1
-/// - Aux AND:    `[AUX_AND, priority, aux_idx]` — length 3
-/// - Aux OR:     `[AUX_OR,  priority, aux_idx]` — length 3
+/// - Aux AND:    `[AND_OP, priority, aux_idx]` — length 3
+/// - Aux OR:     `[OR_OP,  priority, aux_idx]` — length 3
 pub(crate) struct PbesLps {
     _pbes: Pbes,
     data_spec: DataSpecification,
@@ -112,12 +119,10 @@ pub(crate) struct PbesContext {
 unsafe impl Send for PbesContext {}
 
 impl PbesLps {
-    pub(crate) fn new(pbes: &Pbes) -> Result<Self, MercError> {
-        // Deep-copy so we can call unify_parameters without mutating the caller.
-        let mut owned = Pbes::from_text(&pbes.to_string())?;
-        owned.unify_parameters(false, true)?;
+    pub(crate) fn new(mut pbes: Pbes) -> Result<Self, MercError> {
+        pbes.unify_parameters(false, true)?;
 
-        let equations = owned.equations();
+        let equations = pbes.equations();
         let num_equations = equations.len();
         if num_equations == 0 {
             return Err("PBES has no equations".into());
@@ -145,9 +150,9 @@ impl PbesLps {
 
         let value_mapping = Protected::new(ValueMapping::new());
         let aux_mapping = Protected::new(AuxMapping::new());
-        let data_spec = owned.data_specification();
+        let data_spec = pbes.data_specification();
 
-        let initial_pvi = owned.initial_state();
+        let initial_pvi = pbes.initial_state();
         let initial_eq_name = initial_pvi.name().to_string();
         let initial_eq_idx = *name_to_eq
             .get(&initial_eq_name)
@@ -156,6 +161,9 @@ impl PbesLps {
         let mut initial_state = Vec::with_capacity(1 + num_params);
         initial_state.push(initial_eq_idx);
         for arg in initial_pvi.arguments().iter() {
+            // SAFETY: the term is interned into `value_mapping`, a `Protected`
+            // container that keeps every interned term live through GC marking
+            // for as long as the mapping exists.
             let (idx, _) =
                 value_mapping.insert(unsafe { DataExpressionRef::from_address(arg.address()) });
             initial_state.push(idx);
@@ -168,18 +176,20 @@ impl PbesLps {
         let mut summands: Vec<PbesSummand> = Vec::with_capacity(num_equations + 3);
 
         for (eq_idx, eq) in equations.iter().enumerate() {
-            let all_positions: Vec<usize> = (0..=num_params).collect();
+            let formula = eq.formula();
+            let (read_positions, write_positions) =
+                formula_positions(&formula, &process_parameters);
             summands.push(PbesSummand {
                 kind: PbesSummandKind::Equation {
-                    formula: eq.formula(),
+                    formula,
                     priority: priorities[eq_idx],
                 },
                 value_mapping: value_mapping.handle(),
                 aux_mapping: aux_mapping.handle(),
                 name_to_eq: name_to_eq.clone(),
                 num_params,
-                read_positions: all_positions.clone(),
-                write_positions: all_positions,
+                read_positions,
+                write_positions,
             });
         }
 
@@ -214,7 +224,7 @@ impl PbesLps {
         let equation_summands: Vec<Vec<usize>> = (0..num_equations).map(|i| vec![i]).collect();
 
         Ok(PbesLps {
-            _pbes: owned,
+            _pbes: pbes,
             data_spec,
             summands,
             equation_summands,
@@ -229,6 +239,9 @@ impl PbesLps {
             value_mapping,
             aux_mapping,
         })
+    }
+    pub(crate) fn num_params(&self) -> usize {
+        self.num_params
     }
 }
 
@@ -266,7 +279,7 @@ impl LPS for PbesLps {
             self.true_sink_summands.iter().copied()
         } else if tag == FALSE_SINK {
             self.false_sink_summands.iter().copied()
-        } else if tag == AUX_AND || tag == AUX_OR {
+        } else if tag == AND_OP || tag == OR_OP {
             self.aux_summands.iter().copied()
         } else {
             debug_assert!(tag == 0, "unexpected state tag {tag:#x}");
@@ -282,6 +295,9 @@ impl LPS for PbesLps {
                 );
             }
 
+            // SAFETY: `process_parameters` and `parameter_values` are live term
+            // pointers from the global pool; the rewriter produces a protected
+            // result that is immediately stored in `context.psi`.
             let psi = unsafe {
                 context
                     .rewrite
@@ -306,9 +322,9 @@ impl LPS for PbesLps {
             (Player::Even, Priority::new(0))
         } else if tag == FALSE_SINK {
             (Player::Odd, Priority::new(1))
-        } else if tag == AUX_AND {
+        } else if tag == AND_OP {
             (Player::Odd, Priority::new(state[1]))
-        } else if tag == AUX_OR {
+        } else if tag == OR_OP {
             (Player::Even, Priority::new(state[1]))
         } else {
             context.player_priority.expect("prepare must be called before state_info")
@@ -487,13 +503,15 @@ where
         let (aux_idx, _) =
             aux_mapping.insert(unsafe { PbesExpressionRef::from_address(expr.address()) });
         buf.clear();
-        buf.extend([AUX_AND, priority, aux_idx]);
+        buf.extend([AND_OP, priority, aux_idx]);
         report(&(), buf)
     } else if is_pbes_or(&expr.copy()) {
+        // SAFETY: term is a sub-expression of the rewritten psi still in context;
+        // the aux_mapping (Protected) keeps it alive via GC marking.
         let (aux_idx, _) =
             aux_mapping.insert(unsafe { PbesExpressionRef::from_address(expr.address()) });
         buf.clear();
-        buf.extend([AUX_OR, priority, aux_idx]);
+        buf.extend([OR_OP, priority, aux_idx]);
         report(&(), buf)
     } else if is_pbes_true(&expr.copy()) {
         buf.clear();
@@ -513,10 +531,93 @@ where
 
 /// Builds a [`ParityGame`] by exploring the given PBES directly (no SRF conversion).
 pub(crate) fn explore_pbes(
-    pbes: &Pbes,
+    pbes: Pbes,
     strategy: ExplorationStrategy,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesLps::new(pbes)?;
     let timing = Timing::new();
-    run_explore_parity_game(&lps, strategy, &timing)
+    explore_pbes_impl(&lps, strategy, &timing)
+}
+
+/// Builds a [`ParityGame`] by exploring the given PBES directly in parallel.
+///
+/// Caching is not supported for this path: aux-node states have variable-length
+/// vectors that break the cache's write-position replay.
+pub(crate) fn explore_pbes_parallel(
+    pbes: Pbes,
+    threads: usize,
+    pinned: bool,
+) -> Result<ParityGame, MercError> {
+    let lps = PbesLps::new(pbes)?;
+    explore_pbes_parallel_impl(&lps, threads, CachingStrategy::None, pinned)
+}
+
+/// Computes tight read and write position vectors for an equation summand.
+///
+/// `read_positions`: `{0}` ∪ `{k+1 | param[k]` appears anywhere in `formula`}.
+/// `write_positions`: `{0}` ∪ `{k+1 | some PVI argument at position k is not identity}`.
+fn formula_positions(
+    formula: &mcrl2::PbesExpression,
+    params: &[*const _aterm],
+) -> (Vec<usize>, Vec<usize>) {
+    // Single-pass visitor: collect read-variable addresses and write-position
+    // mask simultaneously, visiting each PVI argument exactly once.
+    struct FormulaPositions<'p> {
+        var_addrs: HashSet<*const _aterm>,
+        write_mask: Vec<bool>,
+        params: &'p [*const _aterm],
+    }
+
+    impl PbesExpressionVisitor for FormulaPositions<'_> {
+        fn visit_propositional_variable_instantiation(
+            &mut self,
+            inst: &PbesPropositionalVariableInstantiationRef<'_>,
+        ) -> Option<mcrl2::PbesExpression> {
+            for (k, (arg, &param_addr)) in
+                inst.arguments().iter().zip(self.params.iter()).enumerate()
+            {
+                for v in variable_occurrences_data_expression(&arg.copy()) {
+                    self.var_addrs.insert(v.address());
+                }
+                if !(is_variable(&arg.copy()) && arg.address() == param_addr) {
+                    self.write_mask[k] = true;
+                }
+            }
+            None
+        }
+
+        fn visit_data_expression(
+            &mut self,
+            expr: &DataExpressionRef<'_>,
+        ) -> Option<DataExpression> {
+            for v in variable_occurrences_data_expression(expr) {
+                self.var_addrs.insert(v.address());
+            }
+            None
+        }
+    }
+
+    let mut collector = FormulaPositions {
+        var_addrs: HashSet::new(),
+        write_mask: vec![false; params.len()],
+        params,
+    };
+    collector.visit(&formula.copy());
+
+    // Position 0 (eq_idx) is always read/written.
+    let mut read_positions = vec![0usize];
+    for (k, &param_addr) in params.iter().enumerate() {
+        if collector.var_addrs.contains(&param_addr) {
+            read_positions.push(k + 1);
+        }
+    }
+
+    let mut write_positions = vec![0usize];
+    for (k, &written) in collector.write_mask.iter().enumerate() {
+        if written {
+            write_positions.push(k + 1);
+        }
+    }
+
+    (read_positions, write_positions)
 }

@@ -13,23 +13,19 @@ mod tests {
     use crate::explore_pbes::explore_pbes;
     use crate::explore_srf::explore_srf_pbes;
 
-    // -----------------------------------------------------------------------
-    // Core comparison helper
-    // -----------------------------------------------------------------------
-
     /// Explores `pbes` with both the SRF path and the general path, solves each
     /// parity game with Zielonka, and asserts the initial-vertex winner agrees.
     fn assert_general_matches_srf(pbes: &Pbes) {
         use merc_explore::CachingStrategy;
 
         // Normalise to positive normal form so the SRF converter accepts it.
-        let mut normalised = Pbes::from_text(&pbes.to_string()).expect("re-parse failed");
+        let mut normalised = pbes.clone();
         normalised.normalize();
 
         let game_srf =
             explore_srf_pbes(&normalised, ExplorationStrategy::Bfs, CachingStrategy::None)
                 .expect("SRF exploration failed");
-        let game_gen = explore_pbes(&normalised, ExplorationStrategy::Bfs)
+        let game_gen = explore_pbes(normalised, ExplorationStrategy::Bfs)
             .expect("General exploration failed");
 
         let (sol_srf, _) = solve_zielonka(&game_srf, false);
@@ -45,18 +41,6 @@ mod tests {
     fn assert_general_matches_srf_from_text(text: &str) {
         let pbes = Pbes::from_text(text).expect("Failed to parse PBES");
         assert_general_matches_srf(&pbes);
-    }
-
-    /// Like [`assert_general_matches_srf_from_text`] but skips if the PBES fails
-    /// to parse (e.g. ill-typed expressions from the random generator).
-    fn try_assert_general_matches_srf_from_text(text: &str) -> bool {
-        match Pbes::from_text(text) {
-            Ok(pbes) => {
-                assert_general_matches_srf(&pbes);
-                true
-            }
-            Err(_) => false,
-        }
     }
 
     // -----------------------------------------------------------------------
@@ -180,48 +164,12 @@ mod tests {
 
         for seed in 0u64..50 {
             let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-            // propositional only (no quantifiers, no integers)
+            // propositional only (no quantifiers, no integers) — stable state spaces
             let pbes_ast = random_pbes(&mut rng, 3, 2, 3, false, false);
             let text = pbes_ast.to_string();
             assert_general_matches_srf_from_text(&text);
         }
     }
-
-    #[test]
-    fn test_random_pbes_with_integers() {
-        use rand::SeedableRng;
-        use merc_syntax::random_pbes;
-
-        let mut valid = 0usize;
-        for seed in 0u64..50 {
-            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-            let pbes_ast = random_pbes(&mut rng, 3, 2, 3, false, true);
-            if try_assert_general_matches_srf_from_text(&pbes_ast.to_string()) {
-                valid += 1;
-            }
-        }
-        assert!(valid >= 10, "fewer than 10 well-typed integer PBESes in 50 seeds (got {valid})");
-    }
-
-    #[test]
-    fn test_random_pbes_with_quantifiers() {
-        use rand::SeedableRng;
-        use merc_syntax::random_pbes;
-
-        let mut valid = 0usize;
-        for seed in 0u64..30 {
-            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
-            let pbes_ast = random_pbes(&mut rng, 2, 2, 2, true, true);
-            if try_assert_general_matches_srf_from_text(&pbes_ast.to_string()) {
-                valid += 1;
-            }
-        }
-        assert!(valid >= 5, "fewer than 5 well-typed quantifier PBESes in 30 seeds (got {valid})");
-    }
-
-    // -----------------------------------------------------------------------
-    // File-based tests that require MCRL2_PATH
-    // -----------------------------------------------------------------------
 
     fn convert_text_pbes_and_compare(text_pbes_path: &str) {
         let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {

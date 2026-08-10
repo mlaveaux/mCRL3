@@ -50,9 +50,9 @@ pub struct ATermRef<'a> {
     marker: PhantomData<&'a ()>,
 }
 
-/// These are safe because terms are never modified. Garbage collection is
-/// always performed with exclusive access and uses relaxed atomics to perform
-/// some interior mutability.
+// SAFETY: terms are never modified. Garbage collection is always performed
+// with exclusive access and uses relaxed atomics to perform some interior
+// mutability.
 unsafe impl Send for ATermRef<'_> {}
 unsafe impl Sync for ATermRef<'_> {}
 
