@@ -4,9 +4,9 @@ use std::marker::PhantomData;
 use itertools::Itertools;
 use mcrl2_sys::atermpp::ffi::_aterm;
 
+use super::THREAD_TERM_POOL;
 use crate::ATerm;
 use crate::ATermRef;
-use super::THREAD_TERM_POOL;
 
 pub struct ATermList<T> {
     term: ATerm,

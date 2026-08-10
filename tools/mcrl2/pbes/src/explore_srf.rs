@@ -64,10 +64,10 @@ pub(crate) fn explore_srf_pbes_parallel(
     let lps = PbesSrfLps::new(pbes)?;
 
     match caching {
-        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, caching, pinned),
+        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_parallel_impl(&cached, threads, caching, pinned)?;
+            let game = explore_pbes_parallel_impl(&cached, threads, pinned)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }

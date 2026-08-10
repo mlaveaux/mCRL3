@@ -359,9 +359,9 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use super::THREAD_TERM_POOL;
     use crate::ATerm;
     use crate::ATermRef;
-    use crate::THREAD_TERM_POOL;
     use crate::random_term;
 
     /// Make sure that the term has the same number of arguments as its arity.

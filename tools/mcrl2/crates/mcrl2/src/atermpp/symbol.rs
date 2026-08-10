@@ -7,11 +7,11 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 
+use mcrl2_sys::atermpp::ffi;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_drop;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_get_arity;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_get_name;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_protect;
-use mcrl2_sys::atermpp::ffi;
 
 use super::THREAD_TERM_POOL;
 

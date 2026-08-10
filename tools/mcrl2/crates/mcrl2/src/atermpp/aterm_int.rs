@@ -18,8 +18,8 @@ mod inner {
     use crate::ATerm;
     use crate::ATermRef;
     use crate::Markable;
-    use crate::atermpp::THREAD_TERM_POOL;
     use crate::Todo;
+    use crate::atermpp::THREAD_TERM_POOL;
     use crate::is_aterm_int;
 
     /// Represents an atermpp::aterm_int from the mCRL2 toolset.
