@@ -1,4 +1,4 @@
-//! Authors: Menno Bartels and Maurice Laveaux
+// Authors: Menno Bartels and Maurice Laveaux
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;

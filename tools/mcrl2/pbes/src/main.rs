@@ -19,10 +19,11 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use crate::bsgs::Bsgs;
-use crate::explore_common::run_explore_parity_game;
-use crate::explore_common::run_explore_parity_game_parallel;
+use crate::explore_common::explore_pbes_impl;
+use crate::explore_common::explore_pbes_parallel_impl;
+use crate::explore_pbes::PbesLps;
 use crate::explore_pbes::explore_pbes;
-use crate::explore_srf::PbesSrfLps;
+use crate::explore_pbes::explore_pbes_parallel;
 use crate::explore_srf::explore_srf_pbes;
 use crate::explore_srf::explore_srf_pbes_parallel;
 use crate::explore_symbolic_srf::explore_pbes_symbolic;
@@ -351,12 +352,14 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> 
     } else if args.symmetry {
         let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
         explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
-    } else if args.threads > 1 {
+    } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
+    } else if args.threads > 1 {
+        explore_pbes_parallel(pbes, args.threads, args.pinned)?
     } else if args.srf {
         explore_srf_pbes(&pbes, args.strategy, args.caching)?
     } else {
-        explore_pbes(&pbes, args.strategy)?
+        explore_pbes(pbes, args.strategy)?
     };
     println!(
         "Parity game: {} vertices, {} edges",
@@ -397,7 +400,7 @@ fn build_bsgs_from_user_generators(pbes: &Pbes, strs: &[String], gap_path: &str)
         dump_script: None,
     };
     let generators = parse_generators(strs)?;
-    let lps = PbesSrfLps::new(pbes)?;
+    let lps = PbesLps::new(pbes.clone())?;
     let n = lps.num_params();
     let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &config)?);
     info!("User-supplied generators: |G| = {} ({} generator(s))", bsgs.order(), generators.len());
@@ -411,7 +414,7 @@ fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str) -> Result<Arc<Bsgs>, MercErr
         dump_script: None,
     };
     let sym_result = graph_symmetries(pbes, &config)?;
-    let lps = PbesSrfLps::new(pbes)?;
+    let lps = PbesLps::new(pbes.clone())?;
     let n = lps.num_params();
     let bsgs = Arc::new(Bsgs::from_generators(&sym_result.generators, n, &config)?);
     info!("|G| = {} ({} generator(s))", bsgs.order(), sym_result.generators.len());
@@ -422,41 +425,20 @@ fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str) -> Result<Arc<Bsgs>, MercErr
 fn explore_with_symmetry(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
-    caching: CachingStrategy,
+    _caching: CachingStrategy,
     threads: usize,
     pinned: bool,
     bsgs: Arc<Bsgs>,
 ) -> Result<merc_vpg::ParityGame, MercError> {
-    use merc_vpg::ParityGame;
-    let lps = PbesSrfLps::new(pbes)?;
+    let lps = PbesLps::new(pbes.clone())?;
     let timing = Timing::new();
+    let qlps = QuotientLps::new(lps, bsgs, 1);
 
-    let game: ParityGame = if threads > 1 {
-        match caching {
-            CachingStrategy::None => {
-                let qlps = QuotientLps::new(lps, bsgs, 1);
-                run_explore_parity_game_parallel(&qlps, threads, caching, pinned)?
-            }
-            _ => {
-                let cached = CacheLPS::new(&lps, caching);
-                let qlps = QuotientLps::new(cached, bsgs, 1);
-                run_explore_parity_game_parallel(&qlps, threads, caching, pinned)?
-            }
-        }
+    if threads > 1 {
+        explore_pbes_parallel_impl(&qlps, threads, CachingStrategy::None, pinned)
     } else {
-        match caching {
-            CachingStrategy::None => {
-                let qlps = QuotientLps::new(lps, bsgs, 1);
-                run_explore_parity_game(&qlps, strategy, &timing)?
-            }
-            _ => {
-                let cached = CacheLPS::new(lps, caching);
-                let qlps = QuotientLps::new(cached, bsgs, 1);
-                run_explore_parity_game(&qlps, strategy, &timing)?
-            }
-        }
-    };
-    Ok(game)
+        explore_pbes_impl(&qlps, strategy, &timing)
+    }
 }
 
 /// Handles the solve command, which explores a PBES into a parity game and
@@ -469,12 +451,14 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
     } else if args.symmetry {
         let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
         explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
-    } else if args.threads > 1 {
+    } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
+    } else if args.threads > 1 {
+        explore_pbes_parallel(pbes, args.threads, args.pinned)?
     } else if args.srf {
         explore_srf_pbes(&pbes, args.strategy, args.caching)?
     } else {
-        explore_pbes(&pbes, args.strategy)?
+        explore_pbes(pbes, args.strategy)?
     };
     info!(
         "Parity game: {} vertices, {} edges",
