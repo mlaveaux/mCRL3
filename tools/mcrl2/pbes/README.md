@@ -37,6 +37,11 @@ flat operators (e.g. `&&`, `||`) and carry a 1-based position label for
 non-commutative applications. Update edges are dashed and drawn with zero spring
 weight so they do not distort the formula-tree layout.
 
+For a detailed description of the SDG construction and its relation to the
+technical report, see the
+[merc-pbes graph-symmetry](https://MERCorg.github.io/merc-website/tools/merc-pbes-graph-symmetry/)
+page on the MERC website.
+
 ## Installing GAP
 
 Download and install GAP 4 from <https://www.gap-system.org/>. The `gap`
