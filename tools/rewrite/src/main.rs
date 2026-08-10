@@ -226,10 +226,7 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                         // same specification the rules come from, so the two
                         // share one number encoding and one sort lattice.
                         let mut terms = Vec::new();
-                        for text in read_expressions(args.terms.as_deref())?
-                            .iter()
-                            .chain(&args.expression)
-                        {
+                        for text in read_expressions(args.terms.as_deref())?.iter().chain(&args.expression) {
                             terms.push(typecheck_expression(&mut data_spec, text)?);
                         }
 
