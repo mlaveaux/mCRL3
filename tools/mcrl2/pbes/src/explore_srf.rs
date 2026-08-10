@@ -35,7 +35,7 @@ use crate::explore_common::run_explore_parity_game;
 use crate::explore_common::run_explore_parity_game_parallel;
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
-pub(crate) fn parity_game_from_pbes(
+pub(crate) fn explore_srf_pbes(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
@@ -55,7 +55,7 @@ pub(crate) fn parity_game_from_pbes(
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel.
-pub(crate) fn parity_game_from_pbes_parallel(
+pub(crate) fn explore_srf_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
     caching: CachingStrategy,
