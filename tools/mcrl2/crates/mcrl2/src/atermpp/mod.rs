@@ -45,5 +45,5 @@ pub use random_term::random_term;
 pub use symbol::Symbol;
 pub use symbol::SymbolRef;
 
-pub use thread_aterm_pool::ThreadTermPool;
 pub(crate) use thread_aterm_pool::THREAD_TERM_POOL;
+pub use thread_aterm_pool::ThreadTermPool;

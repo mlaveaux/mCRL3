@@ -73,8 +73,7 @@ mod tests {
         let reference = pbessolve_result(&pbessolve, &pbes_path);
 
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
-        let game =
-            explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
+        let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
         let (solution, _) = solve_zielonka(&game, false);
         let result = solution[0][0];
 
@@ -136,8 +135,7 @@ mod tests {
         let reference = pbessolve_result(&pbessolve, &pbes_path);
 
         let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
-        let game =
-            explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
+        let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching).expect("Failed to build parity game");
         let (solution, _) = solve_zielonka(&game, false);
         let result = solution[0][0];
 
