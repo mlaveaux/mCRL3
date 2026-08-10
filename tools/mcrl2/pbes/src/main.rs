@@ -355,11 +355,11 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> 
     } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else if args.threads > 1 {
-        explore_pbes_parallel(pbes, args.threads, args.pinned)?
+        explore_pbes_parallel(pbes, args.threads, args.caching, args.pinned)?
     } else if args.srf {
         explore_srf_pbes(&pbes, args.strategy, args.caching)?
     } else {
-        explore_pbes(pbes, args.strategy)?
+        explore_pbes(pbes, args.strategy, args.caching)?
     };
     println!(
         "Parity game: {} vertices, {} edges",
@@ -403,7 +403,11 @@ fn build_bsgs_from_user_generators(pbes: &Pbes, strs: &[String], gap_path: &str)
     let lps = PbesLps::new(pbes.clone())?;
     let n = lps.num_params();
     let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &config)?);
-    info!("User-supplied generators: |G| = {} ({} generator(s))", bsgs.order(), generators.len());
+    info!(
+        "User-supplied generators: |G| = {} ({} generator(s))",
+        bsgs.order(),
+        generators.len()
+    );
     Ok(bsgs)
 }
 
@@ -425,19 +429,37 @@ fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str) -> Result<Arc<Bsgs>, MercErr
 fn explore_with_symmetry(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
-    _caching: CachingStrategy,
+    caching: CachingStrategy,
     threads: usize,
     pinned: bool,
     bsgs: Arc<Bsgs>,
 ) -> Result<merc_vpg::ParityGame, MercError> {
     let lps = PbesLps::new(pbes.clone())?;
     let timing = Timing::new();
-    let qlps = QuotientLps::new(lps, bsgs, 1);
 
-    if threads > 1 {
-        explore_pbes_parallel_impl(&qlps, threads, CachingStrategy::None, pinned)
-    } else {
-        explore_pbes_impl(&qlps, strategy, &timing)
+    match caching {
+        CachingStrategy::None => {
+            let qlps = QuotientLps::new(&lps, bsgs, 1);
+            if threads > 1 {
+                explore_pbes_parallel_impl(&qlps, threads, pinned)
+            } else {
+                explore_pbes_impl(&qlps, strategy, &timing)
+            }
+        }
+        _ => {
+            // The cache sits *inside* the quotient (see [`QuotientLps`]) so the
+            // keys stay the narrow read-position projections of the raw states
+            // instead of covering every parameter touched by canonicalization.
+            let cached = CacheLPS::new(&lps, caching);
+            let qlps = QuotientLps::new(&cached, bsgs, 1);
+            let game = if threads > 1 {
+                explore_pbes_parallel_impl(&qlps, threads, pinned)
+            } else {
+                explore_pbes_impl(&qlps, strategy, &timing)
+            }?;
+            debug!("{}", cached.metrics());
+            Ok(game)
+        }
     }
 }
 
@@ -454,11 +476,11 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
     } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else if args.threads > 1 {
-        explore_pbes_parallel(pbes, args.threads, args.pinned)?
+        explore_pbes_parallel(pbes, args.threads, args.caching, args.pinned)?
     } else if args.srf {
         explore_srf_pbes(&pbes, args.strategy, args.caching)?
     } else {
-        explore_pbes(pbes, args.strategy)?
+        explore_pbes(pbes, args.strategy, args.caching)?
     };
     info!(
         "Parity game: {} vertices, {} edges",
