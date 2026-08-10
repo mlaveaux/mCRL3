@@ -308,9 +308,8 @@ pub(crate) fn merc_derive_terms_impl(_attributes: TokenStream, input: TokenStrea
 
                             // Build an identifier with the postfix Ref<'_>
                             let name_ref = format_ident!("{}Ref", identifier);
-                            let path: syn::Path = parse_quote!(#name_ref <'_>);
 
-                            ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
+                            ref_implementation.self_ty = Box::new(parse_quote!(#name_ref <'_>));
 
                             added.push(Item::Verbatim(ref_implementation.into_token_stream()));
                         }

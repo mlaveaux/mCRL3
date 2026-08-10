@@ -46,3 +46,7 @@ tikv-jemallocator = { workspace = true, optional = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(loom)', 'cfg(kani)'] }
+
+[lints.rustdoc]
+# See the note on [workspace.lints.rustdoc] in the workspace root Cargo.toml.
+private_intra_doc_links = "allow"

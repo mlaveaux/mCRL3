@@ -58,6 +58,9 @@ pub(crate) fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercErr
         })
         .collect();
 
+    // The data variables corresponding to the data parameters.
+    let data_variables: Vec<DataVariable> = data_parameters.iter().map(|index| parameters[*index].clone()).collect();
+
     let mut mapping = BTreeMap::from_iter(
         parameters
             .iter()
@@ -87,7 +90,7 @@ pub(crate) fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercErr
             );
 
             // Compute used-for and map the variables back to their position in the variables.
-            let mut used_for_indices: Vec<usize> = used_for(clause)
+            let mut used_for_indices: Vec<usize> = used_for(clause, &data_variables)
                 .iter()
                 .map(|var| {
                     parameters
@@ -104,7 +107,7 @@ pub(crate) fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercErr
             // Compute used-in and map the variables back to their position in the variables.
             ui.insert(
                 unique_index,
-                used_in(equation, clause)
+                used_in(equation, clause, &data_variables)
                     .iter()
                     .map(|var| {
                         parameters
@@ -118,7 +121,7 @@ pub(crate) fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercErr
             // Compute changed-by and map the variables back to their position in the variables.
             cb.insert(
                 unique_index,
-                changed_by(equation, clause)
+                changed_by(equation, clause, &data_variables)
                     .iter()
                     .map(|var| {
                         parameters
@@ -237,15 +240,18 @@ pub(crate) fn export<W: Write>(write: &mut W, pbes: &Pbes) -> Result<(), MercErr
 ///
 /// Given clause `j`, `used_for(j)` hold iff `d_k` in `fv(f_j)` for some data variable
 /// `d_k`.
-fn used_for(clause: &SrfSummand) -> Vec<DataVariable> {
+fn used_for(clause: &SrfSummand, data_variables: &[DataVariable]) -> Vec<DataVariable> {
     free_variables_pbes_expression(&clause.condition().copy())
+        .into_iter()
+        .filter(|variable| data_variables.contains(variable))
+        .collect()
 }
 
 /// returns the data variables that are used in a given clause, i.e., there is
 /// an update that contains the variable.
 ///
 /// A data variable `d_k` is used in a clause `j` iff there is some `l <= n` such that `d_k` in `fv(g_j,l(d,e_j))` where if `X = X_j` then `k != l`.
-fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
+fn used_in(equation: &SrfEquation, clause: &SrfSummand, data_variables: &[DataVariable]) -> Vec<DataVariable> {
     debug_assert!(
         is_pbes_propositional_variable_instantiation(&clause.variable()),
         "The clause variable must always be a PVI"
@@ -268,6 +274,11 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
 
     let mut result = Vec::new();
     for (var_index, variable) in params.iter().enumerate() {
+        if !data_variables.contains(&variable) {
+            // Only data variables are of interest.
+            continue;
+        }
+
         for (update_index, update) in args.iter().enumerate() {
             if is_self_recursive && var_index == update_index {
                 // Exclude the variable's own update for self-recursive clauses.
@@ -288,7 +299,7 @@ fn used_in(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
 /// Returns the data variables that are changed by a given clause, i.e., there is an update that contains the variable and the variable is updated to a different value.
 ///
 /// A data variable `d_k` is changed by a clause `j` if `X = X_j` and `d_k` != `g_j,k(d, e_j)`.
-fn changed_by(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> {
+fn changed_by(equation: &SrfEquation, clause: &SrfSummand, data_variables: &[DataVariable]) -> Vec<DataVariable> {
     debug_assert!(
         is_pbes_propositional_variable_instantiation(&clause.variable()),
         "The clause variable must always be a PVI"
@@ -308,6 +319,11 @@ fn changed_by(equation: &SrfEquation, clause: &SrfSummand) -> Vec<DataVariable> 
         );
 
         for (variable, update) in params.iter().zip(args.iter()) {
+            if !data_variables.contains(&variable) {
+                // Only data variables are of interest.
+                continue;
+            }
+
             if Into::<DataExpressionRef<'_>>::into(variable.copy()) != update.copy() {
                 // This variable is changed by the clause.
                 result.push(variable);

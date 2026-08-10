@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "merc-lts"
+path = "src/main.rs"
+# Avoid a rustdoc output filename collision with the `merc_lts` library crate.
+doc = false
+
 [dependencies]
 merc_collections.workspace = true
 merc_explore.workspace = true

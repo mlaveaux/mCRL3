@@ -228,9 +228,7 @@ pub(crate) fn mcrl2_derive_terms_impl(_attributes: TokenStream, input: TokenStre
                                 .get_ident()
                                 .expect("impl target type must be a simple identifier")
                         );
-                        let path = parse_quote!(#name_ref <'_>);
-
-                        ref_implementation.self_ty = Box::new(syn::Type::Path(syn::TypePath { qself: None, path }));
+                        ref_implementation.self_ty = Box::new(parse_quote!(#name_ref <'_>));
 
                         added.push(Item::Verbatim(ref_implementation.into_token_stream()));
                     }

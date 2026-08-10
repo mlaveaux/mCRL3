@@ -229,13 +229,14 @@ impl Renderer {
                     // wgpu requires each copied row to be padded to COPY_BYTES_PER_ROW_ALIGNMENT, so the
                     // mapped buffer has a padded stride. Repack into a tightly packed RGBA8 buffer; copying
                     // it as-is would skew the image whenever the width is not a multiple of the alignment.
-                    let mapped = buffer.slice(..).get_mapped_range();
-                    let packed = repack_padded_rows(&mapped, width, height);
-                    drop(mapped);
+                    if let Ok(mapped) = buffer.slice(..).get_mapped_range() {
+                        let packed = repack_padded_rows(&mapped, width, height);
+                        drop(mapped);
 
-                    *output.lock().unwrap() = SharedPixelBuffer::clone_from_slice(&packed, width, height);
+                        *output.lock().unwrap() = SharedPixelBuffer::clone_from_slice(&packed, width, height);
 
-                    buffer.unmap();
+                        buffer.unmap();
+                    }
                 }
             });
 

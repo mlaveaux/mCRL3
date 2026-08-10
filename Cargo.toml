@@ -53,6 +53,14 @@ members = [
     "tools/vpg",
 ]
 
+[workspace.lints.rustdoc]
+# Several public functions/types intentionally link to crate-internal items
+# from their doc comments (e.g. to explain an implementation detail without
+# exposing it). Keep the links themselves (so a rename still trips the
+# separate, still-denied `broken_intra_doc_links` lint) but don't fail the
+# build just because the linked item isn't publicly reachable.
+private_intra_doc_links = "allow"
+
 [workspace.dependencies]
 ahash = "0.8"
 bitstream-io = "4.10"
@@ -106,7 +114,7 @@ tikv-jemallocator = "0.7"
 # Used in macros
 proc-macro2 = "1.0"
 quote = "1.0"
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3.0", features = ["full"] }
 
 # Used for xtask
 duct = "1.1"
@@ -134,9 +142,9 @@ merc_collections = { version = "3.0", path = "crates/collections" }
 merc_data = { version = "3.0", path = "crates/data" }
 merc_explore = { version = "2.0", path = "crates/explore" }
 merc_io = { version = "3.0", path = "crates/io" }
-merc_lts = { version = "2.0", path = "crates/lts" }
+merc_lts = { version = "3.0", path = "crates/lts" }
 merc_macros = { version = "2.0", path = "crates/macros" }
-merc_number = { version = "2.0", path = "crates/number" }
+merc_number = { version = "3.0", path = "crates/number" }
 merc_rec-tests = { path = "crates/rec-tests" }
 merc_reduction = { version = "3.0", path = "crates/reduction" }
 merc_refinement = { version = "3.0", path = "crates/refinement" }

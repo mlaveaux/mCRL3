@@ -27,19 +27,19 @@ impl DependencyGraph {
         }
     }
 
-    /// Restrict the dependency graph to the given vertices, and reorder them according to the given order.
-    pub fn reorder(&self, vertices: &[usize]) -> Self {
+    /// Restrict the dependency graph to the given order, and reorder vertices according to it.
+    pub fn reorder(&self, order: &[usize]) -> Self {
         let mut new_relations = Vec::with_capacity(self.relations.len());
 
         for relation in &self.relations {
             let mut new_read_vars: Vec<usize> = relation
                 .read_vars()
-                .filter_map(|var| vertices.iter().position(|&v| v == var))
+                .filter_map(|var| order.iter().position(|&v| v == var))
                 .collect();
 
             let mut new_write_vars: Vec<usize> = relation
                 .write_vars()
-                .filter_map(|var| vertices.iter().position(|&v| v == var))
+                .filter_map(|var| order.iter().position(|&v| v == var))
                 .collect();
 
             new_read_vars.sort_unstable();
