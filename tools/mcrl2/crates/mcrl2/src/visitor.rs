@@ -244,10 +244,7 @@ pub fn variable_occurrences_pbes_expression(expr: &PbesExpressionRef<'_>) -> Vec
             None
         }
 
-        fn visit_data_expression(
-            &mut self,
-            expr: &DataExpressionRef<'_>,
-        ) -> Option<DataExpression> {
+        fn visit_data_expression(&mut self, expr: &DataExpressionRef<'_>) -> Option<DataExpression> {
             for v in variable_occurrences_data_expression(expr) {
                 self.result.push(v);
             }
@@ -315,6 +312,28 @@ pub fn free_variables_data_expression(expr: &DataExpressionRef<'_>) -> Vec<DataV
     result
 }
 
+/// Appends every non-`&&` leaf of a nested AND chain to `out`, reusing the buffer.
+pub fn flatten_pbes_and_into(expr: PbesExpressionRef<'_>, out: &mut Vec<PbesExpression>) {
+    if is_pbes_and(&expr.copy()) {
+        let and = PbesAndRef::from(expr);
+        flatten_pbes_and_into(and.lhs(), out);
+        flatten_pbes_and_into(and.rhs(), out);
+    } else {
+        out.push(expr.protect());
+    }
+}
+
+/// Appends every non-`||` leaf of a nested OR chain to `out`, reusing the buffer.
+pub fn flatten_pbes_or_into(expr: PbesExpressionRef<'_>, out: &mut Vec<PbesExpression>) {
+    if is_pbes_or(&expr.copy()) {
+        let or = PbesOrRef::from(expr);
+        flatten_pbes_or_into(or.lhs(), out);
+        flatten_pbes_or_into(or.rhs(), out);
+    } else {
+        out.push(expr.protect());
+    }
+}
+
 /// Recursively collects the arguments of a nested application chain where `is_op` matches,
 /// flattening any depth of nesting. Intermediate matching applications are not included.
 pub fn flatten_associative<F>(expr: &DataExpressionRef<'_>, mut is_op: F) -> Vec<DataExpression>
@@ -340,15 +359,18 @@ where
     }
 }
 
-/// Controls how [`DataExpressionContextVisitor::try_visit`] proceeds below the current node.
-///
-/// Mirrors `SortDescend` from the syntax crate; see [`PbesDescend`] for the PBES variant.
-pub enum DataDescend<C> {
+/// Controls how [`DataExpressionContextVisitor::try_visit`] and
+/// [`PbesExpressionContextVisitor::try_visit`] proceed below the current node.
+pub enum Descend<C> {
     /// Visit children with this context.
     Descend(C),
     /// Do not visit children.
     Prune,
 }
+
+/// Outcome of visiting a single node: either break out of the traversal with a value of type
+/// `T`, or continue with a [`Descend`] decision carrying context `C`.
+pub type VisitResult<T, C, E> = Result<ControlFlow<T, Descend<C>>, E>;
 
 /// Context-threading traversal over data expressions. Override [`visit_node`] to inspect each
 /// node; the provided [`try_visit`] drives recursion into children automatically.
@@ -366,56 +388,56 @@ pub trait DataExpressionContextVisitor {
         &mut self,
         _var: &DataVariableRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_application(
         &mut self,
         _appl: &DataApplicationRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_abstraction(
         &mut self,
         _abstraction: &DataAbstractionRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_function_symbol(
         &mut self,
         _function_symbol: &DataFunctionSymbolRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_where_clause(
         &mut self,
         _where_: &DataWhereClauseRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_machine_number(
         &mut self,
         _number: &DataMachineNumberRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_untyped_identifier(
         &mut self,
         _identifier: &DataUntypedIdentifierRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, DataDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(DataDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn try_visit(
@@ -433,8 +455,8 @@ pub trait DataExpressionContextVisitor {
             let appl = DataApplicationRef::from(expr.copy());
             let ctx = match self.visit_application(&appl, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(DataDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(DataDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             for arg in appl.data_arguments() {
                 let arg_ref: DataExpressionRef<'_> = arg.into();
@@ -446,8 +468,8 @@ pub trait DataExpressionContextVisitor {
             let abstraction = DataAbstractionRef::from(expr.copy());
             let ctx = match self.visit_abstraction(&abstraction, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(DataDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(DataDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&abstraction.body(), ctx)? {
                 return Ok(Some(result));
@@ -462,8 +484,8 @@ pub trait DataExpressionContextVisitor {
             let where_ = DataWhereClauseRef::from(expr.copy());
             let ctx = match self.visit_where_clause(&where_, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(DataDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(DataDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             for decl in where_.declarations().iter() {
                 let rhs = DataExpression::new(decl.arg(1).protect());
@@ -502,57 +524,56 @@ pub struct ClosureVisitor<C, T, E, F> {
 
 impl<C, T, E, F> ClosureVisitor<C, T, E, F> {
     pub fn new(f: F) -> Self {
-        ClosureVisitor { f, _marker: PhantomData }
+        ClosureVisitor {
+            f,
+            _marker: PhantomData,
+        }
     }
 }
 
 impl<C, T, E, F> DataExpressionContextVisitor for ClosureVisitor<C, T, E, F>
 where
     C: Copy,
-    F: FnMut(&DataExpressionRef<'_>, C) -> Result<ControlFlow<T, DataDescend<C>>, E>,
+    F: FnMut(&DataExpressionRef<'_>, C) -> VisitResult<T, C, E>,
 {
     type Context = C;
     type Break = T;
     type Error = E;
 
-    fn visit_variable(&mut self, var: &DataVariableRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_variable(&mut self, var: &DataVariableRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(var.copy()), ctx)
     }
 
-    fn visit_application(&mut self, appl: &DataApplicationRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_application(&mut self, appl: &DataApplicationRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(appl.copy()), ctx)
     }
 
-    fn visit_abstraction(&mut self, abstraction: &DataAbstractionRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_abstraction(&mut self, abstraction: &DataAbstractionRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(abstraction.copy()), ctx)
     }
 
-    fn visit_function_symbol(&mut self, fs: &DataFunctionSymbolRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_function_symbol(&mut self, fs: &DataFunctionSymbolRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(fs.copy()), ctx)
     }
 
-    fn visit_where_clause(&mut self, where_: &DataWhereClauseRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_where_clause(&mut self, where_: &DataWhereClauseRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(where_.copy()), ctx)
     }
 
-    fn visit_machine_number(&mut self, number: &DataMachineNumberRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_machine_number(&mut self, number: &DataMachineNumberRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(number.copy()), ctx)
     }
 
-    fn visit_untyped_identifier(&mut self, identifier: &DataUntypedIdentifierRef<'_>, ctx: C) -> Result<ControlFlow<T, DataDescend<C>>, E> {
+    fn visit_untyped_identifier(&mut self, identifier: &DataUntypedIdentifierRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&DataExpressionRef::from(identifier.copy()), ctx)
     }
 }
 
 /// Visits subexpressions of a data expression top-down, routing through [`DataExpressionContextVisitor`].
-pub fn try_visit_data_expr_with<C, T, E, F>(
-    expr: &DataExpressionRef<'_>,
-    ctx: C,
-    visitor: F,
-) -> Result<Option<T>, E>
+pub fn try_visit_data_expr_with<C, T, E, F>(expr: &DataExpressionRef<'_>, ctx: C, visitor: F) -> Result<Option<T>, E>
 where
     C: Copy,
-    F: FnMut(&DataExpressionRef<'_>, C) -> Result<ControlFlow<T, DataDescend<C>>, E>,
+    F: FnMut(&DataExpressionRef<'_>, C) -> VisitResult<T, C, E>,
 {
     ClosureVisitor::<C, T, E, F>::new(visitor).try_visit(expr, ctx)
 }
@@ -561,17 +582,10 @@ where
 pub fn visit_data_expr_with<T, C, F>(expr: &DataExpressionRef<'_>, ctx: C, mut visitor: F) -> Option<T>
 where
     C: Copy,
-    F: FnMut(&DataExpressionRef<'_>, C) -> ControlFlow<T, DataDescend<C>>,
+    F: FnMut(&DataExpressionRef<'_>, C) -> ControlFlow<T, Descend<C>>,
 {
     use std::convert::Infallible;
-    try_visit_data_expr_with(expr, ctx, |e, c| -> Result<_, Infallible> { Ok(visitor(e, c)) })
-        .expect("infallible")
-}
-
-/// Controls how [`PbesExpressionContextVisitor::try_visit`] proceeds below the current node.
-pub enum PbesDescend<C> {
-    Descend(C),
-    Prune,
+    try_visit_data_expr_with(expr, ctx, |e, c| -> Result<_, Infallible> { Ok(visitor(e, c)) }).expect("infallible")
 }
 
 /// Adapts a `FnMut` closure into a [`PbesExpressionContextVisitor`].
@@ -582,7 +596,10 @@ pub struct PbesClosureVisitor<C, T, E, F> {
 
 impl<C, T, E, F> PbesClosureVisitor<C, T, E, F> {
     pub fn new(f: F) -> Self {
-        PbesClosureVisitor { f, _marker: PhantomData }
+        PbesClosureVisitor {
+            f,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -602,56 +619,56 @@ pub trait PbesExpressionContextVisitor {
         &mut self,
         _inst: &PbesPropositionalVariableInstantiationRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_not(
         &mut self,
         _not: &PbesNotRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_and(
         &mut self,
         _and: &PbesAndRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_or(
         &mut self,
         _or: &PbesOrRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_imp(
         &mut self,
         _imp: &PbesImpRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_forall(
         &mut self,
         _forall: &PbesForallRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn visit_exists(
         &mut self,
         _exists: &PbesExistsRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     /// Visits a data expression leaf. By default does not recurse into data subterms;
@@ -660,8 +677,8 @@ pub trait PbesExpressionContextVisitor {
         &mut self,
         _expr: &DataExpressionRef<'_>,
         ctx: Self::Context,
-    ) -> Result<ControlFlow<Self::Break, PbesDescend<Self::Context>>, Self::Error> {
-        Ok(ControlFlow::Continue(PbesDescend::Descend(ctx)))
+    ) -> VisitResult<Self::Break, Self::Context, Self::Error> {
+        Ok(ControlFlow::Continue(Descend::Descend(ctx)))
     }
 
     fn try_visit(
@@ -685,8 +702,8 @@ pub trait PbesExpressionContextVisitor {
             let and = PbesAndRef::from(expr.copy());
             let ctx = match self.visit_and(&and, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(PbesDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(PbesDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&and.lhs(), ctx)? {
                 return Ok(Some(result));
@@ -698,8 +715,8 @@ pub trait PbesExpressionContextVisitor {
             let or = PbesOrRef::from(expr.copy());
             let ctx = match self.visit_or(&or, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(PbesDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(PbesDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&or.lhs(), ctx)? {
                 return Ok(Some(result));
@@ -711,8 +728,8 @@ pub trait PbesExpressionContextVisitor {
             let imp = PbesImpRef::from(expr.copy());
             let ctx = match self.visit_imp(&imp, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(PbesDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(PbesDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&imp.lhs(), ctx)? {
                 return Ok(Some(result));
@@ -724,8 +741,8 @@ pub trait PbesExpressionContextVisitor {
             let not = PbesNotRef::from(expr.copy());
             let ctx = match self.visit_not(&not, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(PbesDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(PbesDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&not.body(), ctx)? {
                 return Ok(Some(result));
@@ -734,8 +751,8 @@ pub trait PbesExpressionContextVisitor {
             let forall = PbesForallRef::from(expr.copy());
             let ctx = match self.visit_forall(&forall, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(PbesDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(PbesDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&forall.body(), ctx)? {
                 return Ok(Some(result));
@@ -744,8 +761,8 @@ pub trait PbesExpressionContextVisitor {
             let exists = PbesExistsRef::from(expr.copy());
             let ctx = match self.visit_exists(&exists, ctx)? {
                 ControlFlow::Break(result) => return Ok(Some(result)),
-                ControlFlow::Continue(PbesDescend::Prune) => return Ok(None),
-                ControlFlow::Continue(PbesDescend::Descend(ctx)) => ctx,
+                ControlFlow::Continue(Descend::Prune) => return Ok(None),
+                ControlFlow::Continue(Descend::Descend(ctx)) => ctx,
             };
             if let Some(result) = self.try_visit(&exists.body(), ctx)? {
                 return Ok(Some(result));
@@ -761,54 +778,54 @@ pub trait PbesExpressionContextVisitor {
 impl<C, T, E, F> PbesExpressionContextVisitor for PbesClosureVisitor<C, T, E, F>
 where
     C: Copy,
-    F: FnMut(&PbesExpressionRef<'_>, C) -> Result<ControlFlow<T, PbesDescend<C>>, E>,
+    F: FnMut(&PbesExpressionRef<'_>, C) -> VisitResult<T, C, E>,
 {
     type Context = C;
     type Break = T;
     type Error = E;
 
-    fn visit_propositional_variable_instantiation(&mut self, inst: &PbesPropositionalVariableInstantiationRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_propositional_variable_instantiation(
+        &mut self,
+        inst: &PbesPropositionalVariableInstantiationRef<'_>,
+        ctx: C,
+    ) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(inst.copy()), ctx)
     }
 
-    fn visit_not(&mut self, not: &PbesNotRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_not(&mut self, not: &PbesNotRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(not.copy()), ctx)
     }
 
-    fn visit_and(&mut self, and: &PbesAndRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_and(&mut self, and: &PbesAndRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(and.copy()), ctx)
     }
 
-    fn visit_or(&mut self, or: &PbesOrRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_or(&mut self, or: &PbesOrRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(or.copy()), ctx)
     }
 
-    fn visit_imp(&mut self, imp: &PbesImpRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_imp(&mut self, imp: &PbesImpRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(imp.copy()), ctx)
     }
 
-    fn visit_forall(&mut self, forall: &PbesForallRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_forall(&mut self, forall: &PbesForallRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(forall.copy()), ctx)
     }
 
-    fn visit_exists(&mut self, exists: &PbesExistsRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_exists(&mut self, exists: &PbesExistsRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(exists.copy()), ctx)
     }
 
-    fn visit_data_expression(&mut self, expr: &DataExpressionRef<'_>, ctx: C) -> Result<ControlFlow<T, PbesDescend<C>>, E> {
+    fn visit_data_expression(&mut self, expr: &DataExpressionRef<'_>, ctx: C) -> VisitResult<T, C, E> {
         (self.f)(&PbesExpressionRef::from(expr.copy()), ctx)
     }
 }
 
 /// Visits subexpressions of a PBES expression top-down, routing through [`PbesExpressionContextVisitor`].
-pub fn try_visit_pbes_expr_with<C, T, E, F>(
-    expr: &PbesExpressionRef<'_>,
-    ctx: C,
-    visitor: F,
-) -> Result<Option<T>, E>
+pub fn try_visit_pbes_expr_with<C, T, E, F>(expr: &PbesExpressionRef<'_>, ctx: C, visitor: F) -> Result<Option<T>, E>
 where
     C: Copy,
-    F: FnMut(&PbesExpressionRef<'_>, C) -> Result<ControlFlow<T, PbesDescend<C>>, E>,
+    F: FnMut(&PbesExpressionRef<'_>, C) -> VisitResult<T, C, E>,
 {
     PbesClosureVisitor::<C, T, E, F>::new(visitor).try_visit(expr, ctx)
 }
@@ -817,9 +834,8 @@ where
 pub fn visit_pbes_expr_with<T, C, F>(expr: &PbesExpressionRef<'_>, ctx: C, mut visitor: F) -> Option<T>
 where
     C: Copy,
-    F: FnMut(&PbesExpressionRef<'_>, C) -> ControlFlow<T, PbesDescend<C>>,
+    F: FnMut(&PbesExpressionRef<'_>, C) -> ControlFlow<T, Descend<C>>,
 {
     use std::convert::Infallible;
-    try_visit_pbes_expr_with(expr, ctx, |e, c| -> Result<_, Infallible> { Ok(visitor(e, c)) })
-        .expect("infallible")
+    try_visit_pbes_expr_with(expr, ctx, |e, c| -> Result<_, Infallible> { Ok(visitor(e, c)) }).expect("infallible")
 }
