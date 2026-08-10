@@ -33,5 +33,6 @@ serde.workspace = true
 streaming-iterator.workspace = true
 
 [dev-dependencies]
+merc_syntax.workspace = true
 test-case.workspace = true
 thiserror.workspace = true

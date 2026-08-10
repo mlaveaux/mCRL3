@@ -40,6 +40,14 @@ pub(crate) fn is_pbes_exists(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_exists(term.get())
 }
 
+pub fn is_pbes_true(term: &ATermRef<'_>) -> bool {
+    mcrl2_sys::pbes::ffi::mcrl2_pbes_is_true(term.get())
+}
+
+pub fn is_pbes_false(term: &ATermRef<'_>) -> bool {
+    mcrl2_sys::pbes::ffi::mcrl2_pbes_is_false(term.get())
+}
+
 // This module is only used internally to run the proc macro.
 #[mcrl2_derive_terms]
 mod inner {
@@ -200,7 +208,22 @@ mod inner {
     }
 }
 
-pub use inner::*;
+pub use inner::PbesAnd;
+pub use inner::PbesAndRef;
+pub use inner::PbesExists;
+pub use inner::PbesExistsRef;
+pub use inner::PbesExpression;
+pub use inner::PbesExpressionRef;
+pub use inner::PbesForall;
+pub use inner::PbesForallRef;
+pub use inner::PbesImp;
+pub use inner::PbesImpRef;
+pub use inner::PbesNot;
+pub use inner::PbesNotRef;
+pub use inner::PbesOr;
+pub use inner::PbesOrRef;
+pub use inner::PbesPropositionalVariableInstantiation;
+pub use inner::PbesPropositionalVariableInstantiationRef;
 
 impl From<PbesPropositionalVariableInstantiation> for PbesExpression {
     fn from(inst: PbesPropositionalVariableInstantiation) -> Self {
@@ -382,6 +405,16 @@ impl<'a> From<PbesExpressionRef<'a>> for DataExpressionRef<'a> {
     }
 }
 
+// The underlying raw pointer is maximally shared and never modified; copying
+// the reference is always safe. Liveness is the caller's responsibility.
+impl Clone for PbesExpressionRef<'_> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for PbesExpressionRef<'_> {}
+
 impl From<DataExpression> for PbesExpression {
     fn from(expr: DataExpression) -> Self {
         Self::new(expr.into())
@@ -391,5 +424,17 @@ impl From<DataExpression> for PbesExpression {
 impl<'a> From<DataExpressionRef<'a>> for PbesExpressionRef<'a> {
     fn from(expr: DataExpressionRef<'a>) -> Self {
         Self::new(expr.into())
+    }
+}
+
+impl PbesExpressionRef<'static> {
+    /// Creates an unprotected `'static` reference to the term at `ptr`.
+    ///
+    /// # Safety
+    /// `ptr` must point to a live PBES expression term that will remain alive
+    /// for the duration of use — typically because it is held by a
+    /// garbage-collection container such as [`crate::Protected`].
+    pub unsafe fn from_address(ptr: *const crate::_aterm) -> Self {
+        Self::new(unsafe { ATermRef::new(ptr) })
     }
 }
