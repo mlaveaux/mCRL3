@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 use mcrl2_sys::cxx::CxxVector;
@@ -8,6 +10,9 @@ use mcrl2_sys::pbes::ffi::local_control_flow_graph_vertex;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_pbes_file;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_text;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_text_file;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_create_rewrite_context;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_formula;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_set_assignments;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_index;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_name;
@@ -162,6 +167,52 @@ pub fn make_data_assignment_list(variables: &ATerm, values: &ATerm) -> ATerm {
 impl fmt::Display for Pbes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", mcrl2_pbes_to_string(&self.pbes))
+    }
+}
+
+/// Wraps an `enumerate_quantifiers_rewriter` together with a substitution σ.
+///
+/// Not `Send`: the underlying C++ rewriter is single-threaded. Clone the PBES
+/// and construct a separate context per thread.
+pub struct PbesRewriteContext {
+    ctx: RefCell<UniquePtr<mcrl2_sys::pbes::ffi::pbes_rewrite_context>>,
+    _not_send: PhantomData<*const ()>,
+}
+
+impl PbesRewriteContext {
+    pub fn from_data_spec(data_spec: &DataSpecification) -> Self {
+        let ctx = mcrl2_pbes_create_rewrite_context(
+            data_spec.get().as_ref().expect("data_specification UniquePtr should not be null"),
+        );
+        PbesRewriteContext {
+            ctx: RefCell::new(ctx),
+            _not_send: PhantomData,
+        }
+    }
+
+    /// Sets σ := { variables[i] ↦ values[i] } for the next rewrite call.
+    ///
+    /// # Safety
+    /// Every pointer in `variables` must be a live `data::variable` term, and
+    /// every pointer in `values` must be a live `data::data_expression` term.
+    pub unsafe fn set_assignments(
+        &self,
+        variables: &[*const mcrl2_sys::atermpp::ffi::_aterm],
+        values: &[*const mcrl2_sys::atermpp::ffi::_aterm],
+    ) {
+        mcrl2_pbes_rewrite_set_assignments(self.ctx.borrow_mut().pin_mut(), variables, values);
+    }
+
+    /// Rewrites `formula` under the current σ.
+    ///
+    /// The result is a protected `PbesExpression` and remains valid
+    /// independently of subsequent calls.
+    ///
+    /// # Safety
+    /// `formula` must be a live `pbes_expression` term.
+    pub unsafe fn rewrite_formula(&self, formula: &PbesExpression) -> PbesExpression {
+        let ptr = unsafe { mcrl2_pbes_rewrite_formula(self.ctx.borrow_mut().pin_mut(), formula.get()) };
+        PbesExpression::new(unsafe { ATerm::from_ptr(ptr) })
     }
 }
 

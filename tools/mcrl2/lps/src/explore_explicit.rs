@@ -650,7 +650,7 @@ impl LPS for ExplicitLinearProcessSpecification {
         0..self.summands.len()
     }
 
-    fn state_info(&self, _state: &[Self::Value]) -> Self::StateInfo {}
+    fn state_info(&self, _state: &[Self::Value], _context: &<Self::Summand as Summand>::Context) -> Self::StateInfo {}
 }
 
 impl Summand for ExplicitSummand {

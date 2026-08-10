@@ -2,6 +2,7 @@ use std::fmt;
 
 use mcrl2::LinearProcessSpecification;
 use merc_explore::LPS;
+use merc_explore::Summand;
 use merc_utilities::MercError;
 use merc_utilities::ShardedCounter;
 
@@ -235,5 +236,5 @@ impl LPS for CfgLinearProcessSpecification {
         })
     }
 
-    fn state_info(&self, _state: &[Self::Value]) -> Self::StateInfo {}
+    fn state_info(&self, _state: &[Self::Value], _context: &<Self::Summand as Summand>::Context) -> Self::StateInfo {}
 }
