@@ -120,8 +120,8 @@ mod tests {
         assert!(
             check_equivalence_classes(&expression, &eq),
             "The equivalence classes are not checked correctly, equivalences: {:?} and term {}",
-            &eq,
-            &expression
+            eq,
+            expression
         );
     }
 }

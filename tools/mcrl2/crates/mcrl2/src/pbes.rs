@@ -10,9 +10,6 @@ use mcrl2_sys::pbes::ffi::local_control_flow_graph_vertex;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_pbes_file;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_text;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_text_file;
-use mcrl2_sys::pbes::ffi::mcrl2_pbes_create_rewrite_context;
-use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_formula;
-use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_set_assignments;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_index;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_name;
@@ -20,6 +17,8 @@ use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_outgoing_edges;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertex_value;
 use mcrl2_sys::pbes::ffi::mcrl2_local_control_flow_graph_vertices;
 use mcrl2_sys::pbes::ffi::mcrl2_make_data_assignment_list;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_clone;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_create_rewrite_context;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_data_specification;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_formula;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_is_mu;
@@ -29,6 +28,8 @@ use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_propositional_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_propositional_variable;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_formula;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_set_assignments;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_srf_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_string;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_unify_parameters;
@@ -172,7 +173,10 @@ impl fmt::Display for Pbes {
 
 impl Clone for Pbes {
     fn clone(&self) -> Self {
-        Pbes::from_text(&self.to_string()).expect("PBES round-trip clone failed")
+        let _guard = lock_global();
+        Pbes {
+            pbes: mcrl2_pbes_clone(&self.pbes),
+        }
     }
 }
 
@@ -188,7 +192,10 @@ pub struct PbesRewriteContext {
 impl PbesRewriteContext {
     pub fn from_data_spec(data_spec: &DataSpecification) -> Self {
         let ctx = mcrl2_pbes_create_rewrite_context(
-            data_spec.get().as_ref().expect("data_specification UniquePtr should not be null"),
+            data_spec
+                .get()
+                .as_ref()
+                .expect("data_specification UniquePtr should not be null"),
         );
         PbesRewriteContext {
             ctx: RefCell::new(ctx),

@@ -140,20 +140,20 @@ mod inner {
 
     use super::is_abstraction;
     use super::is_application;
+    use super::is_bag_comprehension_binder;
     use super::is_binding_operator;
     use super::is_data_expression;
-    use super::is_function_symbol;
-    use super::is_machine_number;
-    use super::is_sort_expression;
-    use super::is_untyped_identifier;
-    use super::is_variable;
-    use super::is_where_clause;
-    use super::is_bag_comprehension_binder;
     use super::is_exists_binder;
     use super::is_forall_binder;
+    use super::is_function_symbol;
     use super::is_lambda_binder;
+    use super::is_machine_number;
     use super::is_set_comprehension_binder;
+    use super::is_sort_expression;
+    use super::is_untyped_identifier;
     use super::is_untyped_set_bag_comprehension_binder;
+    use super::is_variable;
+    use super::is_where_clause;
     use super::mcrl2_data_expression_to_string;
     use super::mcrl2_sort_expression_to_string;
 

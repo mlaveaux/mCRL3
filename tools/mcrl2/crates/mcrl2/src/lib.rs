@@ -142,14 +142,16 @@ pub use pbes_expression::is_pbes_propositional_variable_instantiation;
 pub use pbes_expression::is_pbes_true;
 
 pub use visitor::ClosureVisitor;
-pub use visitor::DataDescend;
 pub use visitor::DataExpressionContextVisitor;
 pub use visitor::DataExpressionVisitor;
+pub use visitor::Descend;
 pub use visitor::PbesClosureVisitor;
-pub use visitor::PbesDescend;
 pub use visitor::PbesExpressionContextVisitor;
 pub use visitor::PbesExpressionVisitor;
+pub use visitor::VisitResult;
 pub use visitor::flatten_associative;
+pub use visitor::flatten_pbes_and_into;
+pub use visitor::flatten_pbes_or_into;
 pub use visitor::free_variables_data_expression;
 pub use visitor::pbes_expression_pvi;
 pub use visitor::try_visit_data_expr_with;

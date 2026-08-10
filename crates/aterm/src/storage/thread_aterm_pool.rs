@@ -652,7 +652,6 @@ impl DerefMut for ProtectionSetGuard<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::mem::ManuallyDrop;
     use std::sync::mpsc;
 
     use crate::ATerm;
@@ -748,7 +747,7 @@ mod tests {
 
             // Leak the term so it is still protected at thread teardown, exercising the orphan
             // adoption path. The bug we guard against is post-teardown read UB.
-            std::mem::forget(ManuallyDrop::new(term));
+            std::mem::forget(term);
         });
 
         handle.join().expect("Thread should join without panic");

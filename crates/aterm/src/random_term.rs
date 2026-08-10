@@ -1,18 +1,18 @@
 #![forbid(unsafe_code)]
 
 #[cfg(test)]
-mod inner {
-    pub use rand::Rng;
-    pub use rustc_hash::FxHashSet;
-
-    pub use crate::ATerm;
-    pub use crate::Symbol;
-    pub use crate::Term;
-    pub use crate::storage::THREAD_TERM_POOL;
-}
+use rand::Rng;
+#[cfg(test)]
+use rustc_hash::FxHashSet;
 
 #[cfg(test)]
-use inner::*;
+use crate::ATerm;
+#[cfg(test)]
+use crate::Symbol;
+#[cfg(test)]
+use crate::Term;
+#[cfg(test)]
+use crate::storage::THREAD_TERM_POOL;
 
 /// Create a random term consisting of the given symbol and constants. Performs
 /// iterations number of constructions, and uses chance_duplicates to choose the

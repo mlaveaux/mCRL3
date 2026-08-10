@@ -41,7 +41,7 @@ const CASES: &[(&str, &[&str])] = &[
 
 pub fn criterion_benchmark_set_automaton(c: &mut Criterion) {
     for (name, rec_files) in CASES {
-        let (syntax_spec, _) = load_rec_from_strings(&rec_files).unwrap();
+        let (syntax_spec, _) = load_rec_from_strings(rec_files).unwrap();
         let result = syntax_spec.to_rewrite_spec();
 
         c.bench_function(&format!("set automaton {}", name), |bencher| {
