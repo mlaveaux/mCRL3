@@ -1070,7 +1070,7 @@ impl Default for GapConfig {
 /// - `-r` ignores the user's gap.ini
 /// - `--quitonbreak` makes runtime errors exit with non-zero status
 ///   (note: do NOT add `-T`/`--nobreakloop`, which defeats `--quitonbreak`)
-fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
+pub(crate) fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
     if let Some(path) = &config.dump_script {
         fs::write(path, script)
             .map_err(|e| MercError::from(format!("failed to write GAP script to '{}': {}", path.display(), e)))?;
