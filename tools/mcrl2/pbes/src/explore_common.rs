@@ -32,7 +32,7 @@ pub(crate) fn bes_progress() -> TimeProgress<(usize, usize)> {
 
 /// Builds a [`ParityGame`] by exploring any LPS that produces unit labels and
 /// `(Player, Priority)` state info (i.e. a parity game vertex description).
-pub(crate) fn run_explore_parity_game<M>(
+pub(crate) fn explore_pbes_impl<M>(
     lps: &M,
     strategy: ExplorationStrategy,
     timing: &Timing,
@@ -80,7 +80,7 @@ pub(crate) struct PbesPartition {
 }
 
 /// Builds a [`ParityGame`] by exploring any sync-safe LPS in parallel.
-pub(crate) fn run_explore_parity_game_parallel<M>(
+pub(crate) fn explore_pbes_parallel_impl<M>(
     lps: &M,
     threads: usize,
     caching: CachingStrategy,

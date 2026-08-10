@@ -31,8 +31,8 @@ use merc_vpg::Player;
 use merc_vpg::Priority;
 
 use crate::explore_common::compute_priorities;
-use crate::explore_common::run_explore_parity_game;
-use crate::explore_common::run_explore_parity_game_parallel;
+use crate::explore_common::explore_pbes_impl;
+use crate::explore_common::explore_pbes_parallel_impl;
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
 pub(crate) fn explore_srf_pbes(
@@ -44,10 +44,10 @@ pub(crate) fn explore_srf_pbes(
     let timing = Timing::new();
 
     match caching {
-        CachingStrategy::None => run_explore_parity_game(&lps, strategy, &timing),
+        CachingStrategy::None => explore_pbes_impl(&lps, strategy, &timing),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = run_explore_parity_game(&cached, strategy, &timing)?;
+            let game = explore_pbes_impl(&cached, strategy, &timing)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
@@ -64,10 +64,10 @@ pub(crate) fn explore_srf_pbes_parallel(
     let lps = PbesSrfLps::new(pbes)?;
 
     match caching {
-        CachingStrategy::None => run_explore_parity_game_parallel(&lps, threads, caching, pinned),
+        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, caching, pinned),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = run_explore_parity_game_parallel(&cached, threads, caching, pinned)?;
+            let game = explore_pbes_parallel_impl(&cached, threads, caching, pinned)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }

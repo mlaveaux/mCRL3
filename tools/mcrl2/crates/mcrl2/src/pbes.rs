@@ -170,6 +170,12 @@ impl fmt::Display for Pbes {
     }
 }
 
+impl Clone for Pbes {
+    fn clone(&self) -> Self {
+        Pbes::from_text(&self.to_string()).expect("PBES round-trip clone failed")
+    }
+}
+
 /// Wraps an `enumerate_quantifiers_rewriter` together with a substitution σ.
 ///
 /// Not `Send`: the underlying C++ rewriter is single-threaded. Clone the PBES

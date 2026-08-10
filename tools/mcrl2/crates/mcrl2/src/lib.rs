@@ -155,6 +155,7 @@ pub use visitor::pbes_expression_pvi;
 pub use visitor::try_visit_data_expr_with;
 pub use visitor::try_visit_pbes_expr_with;
 pub use visitor::variable_occurrences_data_expression;
+pub use visitor::variable_occurrences_pbes_expression;
 pub use visitor::visit_data_expr_with;
 pub use visitor::visit_pbes_expr_with;
 

@@ -219,6 +219,46 @@ pub fn variable_occurrences_data_expression(expr: &DataExpressionRef<'_>) -> Vec
     result
 }
 
+/// Returns all the variables occurring in the given PBES expression.
+///
+/// This covers variables in propositional variable instantiation arguments and
+/// in any data sub-expressions.  Occurrences are listed as many times as they
+/// appear; deduplicate at the call site if a set is required.
+pub fn variable_occurrences_pbes_expression(expr: &PbesExpressionRef<'_>) -> Vec<DataVariable> {
+    let mut result = Vec::new();
+
+    struct PbesVarCollector<'a> {
+        result: &'a mut Vec<DataVariable>,
+    }
+
+    impl PbesExpressionVisitor for PbesVarCollector<'_> {
+        fn visit_propositional_variable_instantiation(
+            &mut self,
+            inst: &PbesPropositionalVariableInstantiationRef<'_>,
+        ) -> Option<PbesExpression> {
+            for arg in inst.arguments().iter() {
+                for v in variable_occurrences_data_expression(&arg.copy()) {
+                    self.result.push(v);
+                }
+            }
+            None
+        }
+
+        fn visit_data_expression(
+            &mut self,
+            expr: &DataExpressionRef<'_>,
+        ) -> Option<DataExpression> {
+            for v in variable_occurrences_data_expression(expr) {
+                self.result.push(v);
+            }
+            None
+        }
+    }
+
+    PbesVarCollector { result: &mut result }.visit(expr);
+    result
+}
+
 /// Returns all the free variables of the given data expression.
 ///
 /// This returns occurrences, so a free variable that appears multiple times is
