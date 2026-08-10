@@ -23,13 +23,20 @@ use merc_aterm::Term as MercTerm;
 use merc_data::Mcrl2DataSpecification;
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification as TypecheckedSpec;
+use merc_typecheck::NumberEncoding;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /// Run the full merc typecheck + lowering pipeline on `text`.
+///
+/// The oracle is built with machine numbers enabled, so number literals are
+/// digit chains (`@most_significant_digitNat(0)`) rather than the Appendix-B
+/// binary constructors (`@c0`). merc must be asked for the same encoding or
+/// the two sides are not comparable.
 fn lower(text: &str) -> Mcrl2DataSpecification {
     let untyped = UntypedDataSpecification::parse(text).expect("merc parse failed");
-    let mut typed = TypecheckedSpec::from_untyped(untyped).expect("merc typecheck failed");
+    let mut typed =
+        TypecheckedSpec::from_untyped_with(untyped, NumberEncoding::MachineWord).expect("merc typecheck failed");
     typed.lower_data_specification()
 }
 
