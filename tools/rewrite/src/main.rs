@@ -1,17 +1,22 @@
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::Parser;
 use clap::Subcommand;
+use log::info;
 use log::warn;
 
+use merc_data::DataExpression;
 use merc_rec_tests::load_rec_from_file;
 use merc_rewrite::Rewriter;
 use merc_rewrite::rewrite_rec;
+use merc_rewrite::rewrite_terms;
 use merc_sabre::RewriteSpecification;
+use merc_syntax::DataExpr;
 use merc_syntax::UntypedDataSpecification;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
@@ -74,8 +79,17 @@ struct RewriteArgs {
     #[arg(value_name = "SPEC")]
     specification: PathBuf,
 
-    /// File containing the terms to be rewritten.
-    terms: Option<String>,
+    /// File containing the terms to be rewritten. For an mCRL2 specification
+    /// this is a file of mCRL2 data expressions, one per line; blank lines and
+    /// lines starting with `%` are ignored. Ignored for a REC specification,
+    /// which carries its own terms.
+    terms: Option<PathBuf>,
+
+    /// An mCRL2 data expression to rewrite, type checked and lowered against
+    /// the specification. May be repeated; combines with `TERMS`. Only
+    /// supported for an mCRL2 specification.
+    #[arg(long, short = 'e', value_name = "EXPR")]
+    expression: Vec<String>,
 
     #[arg(long, value_enum)]
     format: Option<Format>,
@@ -139,6 +153,33 @@ fn main() -> ExitCode {
     report_error(result)
 }
 
+/// Reads the mCRL2 data expressions of a terms file, one per line.
+///
+/// Blank lines and `%`-comment lines (mCRL2's comment syntax) are skipped, so
+/// a terms file may be annotated. Returns an empty list when no file is given.
+fn read_expressions(path: Option<&Path>) -> Result<Vec<String>, MercError> {
+    let Some(path) = path else {
+        return Ok(Vec::new());
+    };
+
+    let contents = std::fs::read_to_string(path)?;
+    Ok(contents
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('%'))
+        .map(str::to_string)
+        .collect())
+}
+
+/// Parses, type checks and lowers one mCRL2 data expression against `spec`,
+/// rendering a parse or type error against the expression text itself.
+fn typecheck_expression(spec: &mut DataSpecification, text: &str) -> Result<DataExpression, MercError> {
+    let expr = DataExpr::parse(text)?;
+
+    spec.typecheck_expression(&expr)
+        .map_err(|err| MercError::from(err.render(text)))
+}
+
 fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), MercError> {
     if let Some(command) = commands {
         match command {
@@ -160,6 +201,11 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                                 "The --terms option is currently ignored when rewriting REC specifications, the terms are taken from the REC spec."
                             );
                         }
+                        if !args.expression.is_empty() {
+                            warn!(
+                                "The --expression option is only supported for mCRL2 specifications, the terms are taken from the REC spec."
+                            );
+                        }
 
                         let (syntax_spec, syntax_terms) = load_rec_from_file(&args.specification)?;
 
@@ -168,29 +214,33 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
                         rewrite_rec(args.rewriter, &spec, &syntax_terms, args.output, timing)?;
                     }
                     Format::Mcrl2 => {
-                        if args.terms.is_some() {
-                            warn!(
-                                "The --terms option is not yet supported when rewriting mCRL2 specifications; only the rule count is reported."
-                            );
-                        }
-
                         let source = std::fs::read_to_string(&args.specification)?;
                         let untyped_spec = UntypedDataSpecification::parse(&source)?;
 
-                        let data_spec = match DataSpecification::from_untyped(untyped_spec) {
+                        let mut data_spec = match DataSpecification::from_untyped(untyped_spec) {
                             Ok(data_spec) => data_spec,
                             Err(err) => return Err(err.render(&source).into()),
                         };
 
+                        // Every term is type checked and lowered against the
+                        // same specification the rules come from, so the two
+                        // share one number encoding and one sort lattice.
+                        let mut terms = Vec::new();
+                        for text in read_expressions(args.terms.as_deref())?
+                            .iter()
+                            .chain(&args.expression)
+                        {
+                            terms.push(typecheck_expression(&mut data_spec, text)?);
+                        }
+
                         let mcrl2_spec = data_spec.lower_data_specification();
                         let spec = RewriteSpecification::from_data_specification(&mcrl2_spec);
+                        info!("Loaded {} rewrite rule(s)", spec.rewrite_rules().len());
 
-                        if args.output {
-                            warn!(
-                                "The --output option is not yet supported when rewriting mCRL2 specifications; only the rule count is reported."
-                            );
+                        if terms.is_empty() {
+                            warn!("No terms to rewrite; pass --expression or a terms file.");
                         }
-                        println!("Loaded {} rewrite rule(s)", spec.rewrite_rules().len());
+                        rewrite_terms(args.rewriter, &spec, &terms, args.output, timing)?;
                     }
                 }
             }

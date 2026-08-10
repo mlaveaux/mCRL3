@@ -444,6 +444,34 @@ pub(crate) fn lower_equation(
     Some(LoweredEquation { condition, lhs, rhs })
 }
 
+/// Re-walks one standalone expression alongside its [`EquationTyping`], the
+/// counterpart of [lower_equation] for an expression typed on its own by
+/// `infer_expression` (see [`crate::DataSpecification::typecheck_expression`]).
+///
+/// The `ExprId` numbering of a lone expression starts at its own root, so the
+/// walk is the same one [lower_equation] performs on an equation side.
+pub(crate) fn lower_expression(
+    ctx: &TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    typing: &EquationTyping,
+    expr: &DataExpr,
+    encoding: NumberEncoding,
+) -> Option<DataExpression> {
+    let EquationTyping { sorts, names } = typing;
+
+    Lowering {
+        ctx,
+        spec,
+        system,
+        sorts,
+        names,
+        next_id: 0,
+        encoding,
+    }
+    .lower(expr)
+}
+
 struct Lowering<'a> {
     ctx: &'a TypeCheckContext,
     spec: &'a UntypedDataSpecification,
