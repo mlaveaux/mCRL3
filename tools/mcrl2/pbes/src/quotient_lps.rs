@@ -19,7 +19,7 @@ use crate::bsgs::Bsgs;
 /// When combined with [`merc_explore::CacheLPS`], place the cache *inside* and the
 /// quotient *outside*:
 /// ```text
-/// QuotientLps<CacheLPS<PbesSrfLps>>
+/// QuotientLps<CacheLPS<PbesLps>>
 /// ```
 /// This keeps cache keys narrow (raw, un-canonicalized write positions) and avoids
 /// forcing the cache to track all parameters as written.
@@ -179,7 +179,7 @@ mod tests {
     use merc_vpg::Priority;
 
     use crate::bsgs::Bsgs;
-    use crate::explore_common::run_explore_parity_game;
+    use crate::explore_common::explore_pbes_impl;
     use crate::explore_srf::PbesSrfLps;
     use crate::graph_symmetry::GapConfig;
     use crate::permutation::Permutation;
@@ -208,11 +208,11 @@ init X(true);"#;
         let bsgs = Arc::new(Bsgs::from_generators(&[], n, &gap_config())?);
 
         let timing = Timing::new();
-        let plain_game = run_explore_parity_game(&lps, ExplorationStrategy::Bfs, &timing)?;
+        let plain_game = explore_pbes_impl(&lps, ExplorationStrategy::Bfs, &timing)?;
 
         let lps2 = PbesSrfLps::new(&pbes)?;
         let qlps = QuotientLps::new(lps2, bsgs, 1);
-        let quot_game = run_explore_parity_game(&qlps, ExplorationStrategy::Bfs, &timing)?;
+        let quot_game = explore_pbes_impl(&qlps, ExplorationStrategy::Bfs, &timing)?;
 
         assert_eq!(plain_game.num_of_vertices(), quot_game.num_of_vertices());
         assert_eq!(plain_game.num_of_edges(), quot_game.num_of_edges());
@@ -236,7 +236,7 @@ init X(true);"#;
         let qlps = QuotientLps::new(cached, bsgs, 1);
 
         let timing = Timing::new();
-        let game = run_explore_parity_game(&qlps, ExplorationStrategy::Bfs, &timing)?;
+        let game = explore_pbes_impl(&qlps, ExplorationStrategy::Bfs, &timing)?;
         assert!(game.num_of_vertices() > 0);
         Ok(())
     }
