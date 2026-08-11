@@ -8,8 +8,10 @@ use merc_utilities::MercError;
 use merc_utilities::ShardedCounter;
 
 use crate::LPS;
+use crate::OwnedStateEffect;
 use crate::SequenceForest;
 use crate::SequenceForestContext;
+use crate::StateEffect;
 use crate::Summand;
 use crate::Tree;
 
@@ -67,8 +69,9 @@ pub struct CacheSummandWrapper<P: LPS> {
 
     /// Positions in the state vector that are read by this summand; these form the cache key.
     read_positions: Vec<usize>,
-    /// Positions in the state vector that are written by this summand; these are stored in the cache values.
-    write_positions: Vec<usize>,
+    /// How the inner summand's next states relate to the source state, which
+    /// decides whether cache values hold write positions or whole vectors.
+    effect: OwnedStateEffect,
 
     /// Caching strategy in effect for this summand.
     strategy: CachingStrategy,
@@ -105,7 +108,7 @@ impl<P: LPS> CacheLPS<P> {
             .map(|(i, s)| CacheSummandWrapper {
                 index: i,
                 read_positions: s.read_positions().to_vec(),
-                write_positions: s.write_positions().to_vec(),
+                effect: s.effect().to_owned(),
                 strategy,
                 cache: ShardedHashMap::with_shards(CACHE_SHARDS),
                 forest: Arc::clone(&forest),
@@ -116,6 +119,12 @@ impl<P: LPS> CacheLPS<P> {
             .collect();
 
         CacheLPS { inner, summands }
+    }
+
+    /// Returns the wrapped LPS, so callers can reach capabilities that this
+    /// wrapper forwards rather than implements.
+    pub fn inner(&self) -> &P {
+        &self.inner
     }
 
     /// Collects per-summand cache metrics for this [`CacheLPS`].
@@ -297,6 +306,7 @@ impl<P: LPS> CacheSummandWrapper<P> {
         &self,
         context: &mut CacheContext<P>,
         state: &[P::Value],
+        write_positions: &[usize],
         results: &[(P::Label, Tree)],
         report: &mut impl FnMut(&P::Label, &[P::Value]) -> Result<(), MercError>,
     ) -> Result<(), MercError> {
@@ -308,7 +318,7 @@ impl<P: LPS> CacheSummandWrapper<P> {
         for (label, write_tree) in results {
             replay_buf.clear();
             replay_buf.extend_from_slice(state);
-            for (&pos, value) in self.write_positions.iter().zip(self.forest.iter(*write_tree)) {
+            for (&pos, value) in write_positions.iter().zip(self.forest.iter(*write_tree)) {
                 replay_buf[pos] = value;
             }
             report(label, replay_buf)?;
@@ -372,13 +382,11 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         // Fast path: a present entry is replayed in place under the shard read
         // lock, without cloning the entry's captured results.
-        let full_state = self.write_positions.is_empty();
-        let hit = self.cache.find_with(hash, eq, |entry| {
-            if full_state {
-                self.replay_full(context, &entry.results, &mut report)
-            } else {
-                self.replay_partial(context, state, &entry.results, &mut report)
+        let hit = self.cache.find_with(hash, eq, |entry| match &self.effect {
+            OwnedStateEffect::Positions(positions) => {
+                self.replay_partial(context, state, positions, &entry.results, &mut report)
             }
+            OwnedStateEffect::Opaque => self.replay_full(context, &entry.results, &mut report),
         });
         if let Some(result) = hit {
             #[cfg(feature = "metrics")]
@@ -389,14 +397,14 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
         #[cfg(feature = "metrics")]
         self.misses.increment();
-        // Cache MISS: delegate to inner summand and capture results.
-        // Full-state mode stores the complete next-state vector; partial mode
-        // stores only the write-position values (with pass-through from source).
+        // Cache MISS: delegate to inner summand and capture results. An opaque
+        // effect stores the complete next-state vector; a positional one stores
+        // only the write-position values, with pass-through from the source.
         let mut captured: Vec<(P::Label, Tree)> = Vec::new();
         {
             let inner_summand = &self.inner.summands()[self.index];
             let forest = &self.forest;
-            let write_positions = &self.write_positions;
+            let effect = &self.effect;
             let CacheContext {
                 key_buf,
                 forest_context,
@@ -406,12 +414,19 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
 
             inner_summand.enumerate(inner, state, |label, next_state| {
                 key_buf.clear();
-                if full_state {
-                    key_buf.extend_from_slice(next_state);
-                } else {
-                    for &pos in write_positions {
-                        key_buf.push(next_state[pos]);
+                match effect {
+                    OwnedStateEffect::Positions(positions) => {
+                        debug_assert!(
+                            positional_effect_holds(state, next_state, positions),
+                            "summand claims StateEffect::Positions but changed a position outside it, \
+                             or changed the state length; replaying this from the cache would produce \
+                             a wrong next state"
+                        );
+                        for &pos in positions {
+                            key_buf.push(next_state[pos]);
+                        }
                     }
+                    OwnedStateEffect::Opaque => key_buf.extend_from_slice(next_state),
                 }
                 let tree = forest.insert_with(key_buf, forest_context);
                 captured.push((label.clone(), tree));
@@ -440,7 +455,20 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
         &self.read_positions
     }
 
-    fn write_positions(&self) -> &[usize] {
-        &self.write_positions
+    fn effect(&self) -> StateEffect<'_> {
+        self.effect.borrow()
     }
+}
+
+/// Checks the [`StateEffect::Positions`] contract for one enumerated transition.
+///
+/// Only called from a `debug_assert!`, since it costs `O(state.len())` per
+/// transition. A violation is otherwise silent: the transition itself is reported
+/// correctly, and only a later cache *hit* replays it onto the wrong source state.
+fn positional_effect_holds<V: PartialEq>(state: &[V], next_state: &[V], write_positions: &[usize]) -> bool {
+    if state.len() != next_state.len() {
+        return false;
+    }
+
+    (0..state.len()).all(|pos| write_positions.contains(&pos) || state[pos] == next_state[pos])
 }
