@@ -135,10 +135,70 @@ pub trait Summand {
     /// the guard or the written values must be listed.
     fn read_positions(&self) -> &[usize];
 
-    /// Returns the indices into the state vector that this summand may change.
-    /// Every position *not* in this set is passed through unchanged from the
-    /// source state to each enumerated next state.
+    /// Describes how this summand's next states relate to its source state.
     ///
-    /// This is also a *correctness* contract under caching.
-    fn write_positions(&self) -> &[usize];
+    /// This is a *correctness* contract, not a hint: [`crate::CacheLPS`] replays
+    /// cached transitions according to it, so a summand that claims
+    /// [`StateEffect::Positions`] while violating it yields wrong next states on a
+    /// cache hit.
+    fn effect(&self) -> StateEffect<'_>;
+}
+
+/// How a [`Summand`]'s next states relate to the state they were enumerated from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StateEffect<'a> {
+    /// Every next state has the same length as the source state and agrees with
+    /// it at every position *outside* this set.
+    ///
+    /// Consumers may therefore store just these positions and scatter them onto a
+    /// live source state, which is what makes enumeration caching and symbolic
+    /// transition relations possible.
+    Positions(&'a [usize]),
+
+    /// The next states cannot be described positionally: they may differ from the
+    /// source state in length, or a position may not mean the same thing in both.
+    ///
+    /// A parity game generated from a PBES is the motivating case, where a single
+    /// summand can emit a full parameter vector, a length-1 sink, or an auxiliary
+    /// vertex. Consumers that require a positional effect (symbolic exploration)
+    /// must reject this variant rather than guess.
+    Opaque,
+}
+
+impl StateEffect<'_> {
+    /// Returns the written positions, or `None` for [`StateEffect::Opaque`].
+    pub fn positions(&self) -> Option<&[usize]> {
+        match self {
+            StateEffect::Positions(positions) => Some(positions),
+            StateEffect::Opaque => None,
+        }
+    }
+
+    /// Copies this effect into an owned value.
+    pub fn to_owned(self) -> OwnedStateEffect {
+        match self {
+            StateEffect::Positions(positions) => OwnedStateEffect::Positions(positions.to_vec()),
+            StateEffect::Opaque => OwnedStateEffect::Opaque,
+        }
+    }
+}
+
+/// Owned counterpart of [`StateEffect`], for implementors and wrappers that store
+/// their effect rather than borrowing it from somewhere else.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OwnedStateEffect {
+    /// See [`StateEffect::Positions`].
+    Positions(Vec<usize>),
+    /// See [`StateEffect::Opaque`].
+    Opaque,
+}
+
+impl OwnedStateEffect {
+    /// Borrows this effect for returning from [`Summand::effect`].
+    pub fn borrow(&self) -> StateEffect<'_> {
+        match self {
+            OwnedStateEffect::Positions(positions) => StateEffect::Positions(positions),
+            OwnedStateEffect::Opaque => StateEffect::Opaque,
+        }
+    }
 }

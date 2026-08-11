@@ -23,6 +23,8 @@ pub use explore::ExplorationStrategy;
 pub use explore::explore;
 pub use explore::explore_parallel;
 pub use lps::LPS;
+pub use lps::OwnedStateEffect;
+pub use lps::StateEffect;
 pub use lps::Summand;
 pub use sequence_forest::Slot;
 pub use thread_affinity::configure_rayon_thread_pool;

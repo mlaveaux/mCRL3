@@ -114,8 +114,9 @@ unsafe impl Send for PbesSrfContext {}
 /// `equation_index` is a flat index into [`SrfPbes::equations`] and each
 /// `param_i` is an index into the shared [`ValueMapping`].
 pub(crate) struct PbesSrfLps {
-    /// The unified SRF PBES; retained so summand pointers stay alive.
-    _srf: SrfPbes,
+    /// The unified SRF PBES; retained so summand pointers stay alive, and read
+    /// back by [`PbesSrfLps::parameters`].
+    srf: SrfPbes,
 
     /// Data specification used to build each per-thread [`PbesSrfContext`].
     data_spec: DataSpecification,
@@ -325,7 +326,7 @@ impl PbesSrfLps {
         }
 
         Ok(Self {
-            _srf: srf,
+            srf,
             data_spec,
             summands,
             equation_summands,
@@ -339,6 +340,12 @@ impl PbesSrfLps {
 
     pub(crate) fn num_params(&self) -> usize {
         self.num_params
+    }
+
+    /// The unified data parameters, in state-vector order: entry `i` occupies
+    /// state position `1 + i`.
+    pub(crate) fn parameters(&self) -> Vec<DataVariable> {
+        self.srf.equations()[0].variable().parameters().iter().collect()
     }
 }
 
