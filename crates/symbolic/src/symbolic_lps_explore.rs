@@ -73,8 +73,18 @@ impl<L: LPS> SymbolicLps<L> {
         // Build one symbolic group per summand.
         let mut groups = Vec::with_capacity(lps.summands().len());
         for (index, summand) in lps.summands().iter().enumerate() {
+            // A symbolic transition relation is inherently positional: it stores
+            // only the read and write columns, so there is no encoding for a
+            // summand whose next states change shape.
+            let effect = summand.effect();
+            let write_positions = effect.positions().ok_or_else(|| {
+                MercError::from(format!(
+                    "summand {index} has an opaque state effect, which symbolic exploration cannot encode"
+                ))
+            })?;
+
             let mut read_indices: Vec<Value> = summand.read_positions().iter().map(|&p| p as Value).collect();
-            let mut write_indices: Vec<Value> = summand.write_positions().iter().map(|&p| p as Value).collect();
+            let mut write_indices: Vec<Value> = write_positions.iter().map(|&p| p as Value).collect();
             // The short-vector encoding requires sorted read/write indices.
             read_indices.sort_unstable();
             write_indices.sort_unstable();

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use merc_explore::LPS;
+use merc_explore::StateEffect;
 use merc_explore::Summand;
 use merc_utilities::MercError;
 
@@ -213,7 +214,7 @@ impl Summand for MockSummand {
         &self.read_positions
     }
 
-    fn write_positions(&self) -> &[usize] {
-        &self.write_positions
+    fn effect(&self) -> StateEffect<'_> {
+        StateEffect::Positions(&self.write_positions)
     }
 }
