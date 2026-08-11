@@ -7,6 +7,7 @@ use clap::Parser;
 use clap::Subcommand;
 use log::debug;
 use log::info;
+use log::warn;
 
 use mcrl2::Pbes;
 use mcrl2::set_reporting_level;
@@ -19,11 +20,16 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use crate::bsgs::Bsgs;
+use crate::explore_common::ParameterLayout;
+use crate::explore_common::PbesVertex;
+use crate::explore_common::check_parameter_basis;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
+use crate::explore_common::symmetry_parameter_basis;
 use crate::explore_pbes::PbesLps;
 use crate::explore_pbes::explore_pbes;
 use crate::explore_pbes::explore_pbes_parallel;
+use crate::explore_srf::PbesSrfLps;
 use crate::explore_srf::explore_srf_pbes;
 use crate::explore_srf::explore_srf_pbes_parallel;
 use crate::explore_symbolic_srf::explore_pbes_symbolic;
@@ -37,6 +43,7 @@ use crate::symmetry::SymmetryAlgorithm;
 use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
+use merc_explore::Summand;
 use merc_vpg::PG;
 use merc_vpg::Player;
 use merc_vpg::Solver;
@@ -348,10 +355,10 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> 
     let pbes = read_pbes(&args.filename, args.format.clone())?;
     let game = if !args.quotient.is_empty() {
         let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
     } else if args.symmetry {
         let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
     } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else if args.threads > 1 {
@@ -400,8 +407,7 @@ fn build_bsgs_from_user_generators(pbes: &Pbes, strs: &[String], gap_path: &str)
         dump_script: None,
     };
     let generators = parse_generators(strs)?;
-    let lps = PbesLps::new(pbes.clone())?;
-    let n = lps.num_params();
+    let n = symmetry_parameter_basis(pbes)?.len();
 
     // Reject out-of-range points here: converting to a dense permutation would
     // silently truncate them to `0..n`, producing a mapping that is no longer a
@@ -434,28 +440,69 @@ fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str) -> Result<Arc<Bsgs>, MercErr
         dump_script: None,
     };
     let sym_result = graph_symmetries(pbes, &config)?;
-    let lps = PbesLps::new(pbes.clone())?;
-    let n = lps.num_params();
+    let n = symmetry_parameter_basis(pbes)?.len();
     let bsgs = Arc::new(Bsgs::from_generators(&sym_result.generators, n, &config)?);
     info!("|G| = {} ({} generator(s))", bsgs.order(), sym_result.generators.len());
+
+    // The two orders are computed by entirely separate routes — GAP's
+    // `Size(Stabilizer(...))` on the detection graph versus the product of the
+    // transversal sizes of the stabilizer chain built from the rendered
+    // generators — so a disagreement means a generator was rendered, parsed or
+    // truncated wrongly somewhere in between. The quotient stays sound either
+    // way (canonicalization only ever uses the chain), so warn rather than fail.
+    if bsgs.order() != sym_result.symmetry_group_order {
+        warn!(
+            "symmetry group order mismatch: graph symmetry detection reports |Sym(pbes)| = {}, \
+             but the BSGS built from its generators has order {}; the quotient will reduce by \
+             the smaller group",
+            sym_result.symmetry_group_order,
+            bsgs.order()
+        );
+    }
     Ok(bsgs)
 }
 
 /// Explore `pbes` into a parity game, canonicalizing every next-state via `bsgs`.
 fn explore_with_symmetry(
     pbes: &Pbes,
+    srf: bool,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
     threads: usize,
     pinned: bool,
     bsgs: Arc<Bsgs>,
 ) -> Result<merc_vpg::ParityGame, MercError> {
-    let lps = PbesLps::new(pbes.clone())?;
+    if srf {
+        let lps = PbesSrfLps::new(pbes)?;
+        check_parameter_basis(&symmetry_parameter_basis(pbes)?, &lps.parameters(), "SRF")?;
+        quotient_explore(&lps, strategy, caching, threads, pinned, bsgs)
+    } else {
+        // `PbesLps::new` unifies with the same flags as `symmetry_parameter_basis`
+        // and keeps that vector, so its layout is the generator basis by
+        // construction and needs no check.
+        let lps = PbesLps::new(pbes.clone())?;
+        quotient_explore(&lps, strategy, caching, threads, pinned, bsgs)
+    }
+}
+
+/// Explore `lps` into a parity game, canonicalizing every next-state via `bsgs`.
+fn quotient_explore<P>(
+    lps: &P,
+    strategy: ExplorationStrategy,
+    caching: CachingStrategy,
+    threads: usize,
+    pinned: bool,
+    bsgs: Arc<Bsgs>,
+) -> Result<merc_vpg::ParityGame, MercError>
+where
+    P: ParameterLayout<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
+    <P::Summand as Summand>::Context: Send,
+{
     let timing = Timing::new();
 
     match caching {
         CachingStrategy::None => {
-            let qlps = QuotientLps::new(&lps, bsgs, 1);
+            let qlps = QuotientLps::new(lps, bsgs, 1);
             if threads > 1 {
                 explore_pbes_parallel_impl(&qlps, threads, pinned)
             } else {
@@ -466,13 +513,14 @@ fn explore_with_symmetry(
             // The cache sits *inside* the quotient (see [`QuotientLps`]) so the
             // keys stay the narrow read-position projections of the raw states
             // instead of covering every parameter touched by canonicalization.
-            let cached = CacheLPS::new(&lps, caching);
+            let cached = CacheLPS::new(lps, caching);
             let qlps = QuotientLps::new(&cached, bsgs, 1);
             let game = if threads > 1 {
                 explore_pbes_parallel_impl(&qlps, threads, pinned)
             } else {
                 explore_pbes_impl(&qlps, strategy, &timing)
             }?;
+            drop(qlps);
             debug!("{}", cached.metrics());
             Ok(game)
         }
@@ -485,10 +533,10 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format.clone())?;
     let game = if !args.quotient.is_empty() {
         let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
     } else if args.symmetry {
         let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
     } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else if args.threads > 1 {

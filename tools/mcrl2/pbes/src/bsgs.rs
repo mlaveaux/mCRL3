@@ -627,10 +627,14 @@ fn schreier_generators(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::OnceLock;
+
     use crate::bsgs::DensePermutation;
+    use crate::bsgs::bsgs_from_gap;
     use crate::bsgs::bsgs_schreier_sims;
     use crate::bsgs::parse_gap_perm;
     use crate::bsgs::permutation_to_gap_cycles;
+    use crate::graph_symmetry::GapConfig;
     use crate::permutation::Permutation;
 
     fn s3_generators() -> (Vec<Permutation>, usize) {
@@ -787,6 +791,72 @@ mod tests {
         let state = vec![42usize, 2, 0, 1];
         let canon = bsgs.canonicalize(&state, 1);
         assert_eq!(canon[0], 42, "equation index must not be permuted");
+    }
+
+    /// Returns `true` when a GAP that can run the `ExplicitBSGS` script is on the
+    /// path. Cached so the probe runs at most once per test process.
+    ///
+    /// Unlike graph symmetry detection this needs no Digraphs package — only
+    /// core GAP's `StabChain` — so it probes for plain GAP.
+    fn gap_available() -> bool {
+        static AVAILABLE: OnceLock<bool> = OnceLock::new();
+        *AVAILABLE.get_or_init(|| {
+            duct::cmd("gap", ["-q", "-A", "-r", "--quitonbreak"])
+                .stdin_bytes("QUIT_GAP(0);;")
+                .stdout_null()
+                .stderr_null()
+                .unchecked()
+                .run()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+    }
+
+    /// `Bsgs::from_generators` silently falls back to the local Schreier–Sims
+    /// when GAP fails, so every other test in this module exercises the fallback
+    /// even on a machine that has GAP. This one calls [`bsgs_from_gap`] directly,
+    /// which is the path the tool actually takes, and checks that GAP's chain
+    /// describes the same group and canonicalizes identically.
+    #[test]
+    fn bsgs_from_gap_agrees_with_schreier_sims() {
+        if !gap_available() {
+            return;
+        }
+
+        for (gens, n) in [s3_generators(), alloc3_generators()] {
+            let gap = bsgs_from_gap(&gens, n, &GapConfig::default()).expect("GAP is available");
+            let local = bsgs_schreier_sims(&gens, n).unwrap();
+
+            assert_eq!(gap.order(), local.order(), "GAP and Schreier–Sims disagree on |G|");
+            assert_eq!(gap.n, n);
+
+            // A different base gives a different chain, so the chains themselves
+            // need not match; what has to match is the representative each one
+            // picks. Binary vectors cover the repeated values that a wrong coset
+            // factorisation gets wrong.
+            for mask in 0..(1u32 << n) {
+                let params: Vec<usize> = (0..n).map(|i| ((mask >> i) & 1) as usize).collect();
+                let state: Vec<usize> = std::iter::once(3).chain(params).collect();
+                assert_eq!(
+                    gap.canonicalize(&state, 1),
+                    local.canonicalize(&state, 1),
+                    "GAP and Schreier–Sims canonicalize {state:?} differently (n = {n})"
+                );
+            }
+        }
+    }
+
+    /// The alloc3 generators generate a group of order 6, as GAP itself reports
+    /// for that PBES (`|Sym(pbes)| = 6`).
+    #[test]
+    fn bsgs_from_gap_order_alloc3() {
+        if !gap_available() {
+            return;
+        }
+
+        let (gens, n) = alloc3_generators();
+        let bsgs = bsgs_from_gap(&gens, n, &GapConfig::default()).expect("GAP is available");
+        assert_eq!(bsgs.order(), 6);
     }
 
     #[test]
