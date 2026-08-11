@@ -168,6 +168,16 @@ impl Permutation {
     pub(crate) fn is_identity(&self) -> bool {
         self.mapping.iter().all(|(d, v)| d == v)
     }
+
+    /// Returns the largest point this permutation mentions, or `None` when it
+    /// moves nothing.
+    ///
+    /// Used to reject a generator whose points fall outside the parameter range
+    /// before it reaches [`crate::bsgs::DensePermutation`], which silently
+    /// truncates to the group's degree.
+    pub(crate) fn max_point(&self) -> Option<usize> {
+        self.mapping.iter().map(|&(d, v)| d.max(v)).max()
+    }
 }
 
 /// Checks whether the mapping represents a valid permutation
