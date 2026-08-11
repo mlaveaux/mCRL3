@@ -402,6 +402,22 @@ fn build_bsgs_from_user_generators(pbes: &Pbes, strs: &[String], gap_path: &str)
     let generators = parse_generators(strs)?;
     let lps = PbesLps::new(pbes.clone())?;
     let n = lps.num_params();
+
+    // Reject out-of-range points here: converting to a dense permutation would
+    // silently truncate them to `0..n`, producing a mapping that is no longer a
+    // permutation and panics when inverted.
+    for (generator, text) in generators.iter().zip(strs) {
+        if let Some(max_point) = generator.max_point()
+            && max_point >= n
+        {
+            return Err(MercError::from(format!(
+                "generator '{}' mentions parameter {max_point}, but the PBES has {n} parameter(s) (0..{})",
+                text.trim(),
+                n.saturating_sub(1)
+            )));
+        }
+    }
+
     let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &config)?);
     info!(
         "User-supplied generators: |G| = {} ({} generator(s))",
