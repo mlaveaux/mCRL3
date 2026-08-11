@@ -34,16 +34,11 @@ impl DensePermutation {
         self.images[x]
     }
 
-    /// Returns the image of each element in `v` under this permutation, i.e.
-    /// the vector `[π(v[0]), π(v[1]), ...]`.
-    pub(crate) fn apply_pointwise(&self, v: &[usize]) -> Vec<usize> {
-        v.iter().map(|&x| self.apply(x)).collect()
-    }
-
     /// Returns the result of permuting the *positions* of `v`, i.e.
     /// `result[π(i)] = v[i]`  ↔  `result[i] = v[π⁻¹(i)]`.
     ///
     /// This matches Definition 5 of the paper: π(v)[i] = v[π⁻¹(i)].
+    #[cfg(test)]
     pub(crate) fn apply_to_vec(&self, v: &[usize]) -> Vec<usize> {
         debug_assert_eq!(v.len(), self.images.len(), "permutation degree must match vector length");
         let n = v.len();
@@ -127,6 +122,10 @@ impl Bsgs {
     }
 
     /// BFS over the vector orbit; O(|orbit| · n) per call.
+    ///
+    /// Kept as the brute-force oracle that [`Bsgs::canonicalize`] is tested
+    /// against; the tool itself always uses the pruned walk.
+    #[cfg(test)]
     pub(crate) fn canonicalize_naive(&self, state: &[usize], param_offset: usize) -> Vec<usize> {
         if self.chain.is_empty() {
             return state.to_vec();
@@ -196,7 +195,7 @@ impl Bsgs {
         debug_assert_eq!(
             params.len(),
             self.n,
-            "canonicalize requires a full parameter block; sinks and auxiliary states have none"
+            "canonicalize requires a full parameter block; sinks and subformula states have none"
         );
         debug_assert!(
             self.chain.windows(2).all(|w| w[0].base_point < w[1].base_point),
@@ -249,7 +248,8 @@ impl Bsgs {
         result
     }
 
-    /// Flat list of all generators appearing across all levels (for Stage A BFS).
+    /// Flat list of all generators appearing across all levels.
+    #[cfg(test)]
     fn all_generators(&self) -> Vec<DensePermutation> {
         let mut gens: HashSet<DensePermutation> = HashSet::new();
         for level in &self.chain {
