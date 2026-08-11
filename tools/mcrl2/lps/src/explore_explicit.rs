@@ -26,6 +26,7 @@ use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
+use merc_explore::StateEffect;
 use merc_explore::Summand;
 use merc_explore::configure_rayon_thread_pool;
 use merc_explore::explore;
@@ -662,8 +663,8 @@ impl Summand for ExplicitSummand {
         &self.read_indices
     }
 
-    fn write_positions(&self) -> &[usize] {
-        &self.write_indices
+    fn effect(&self) -> StateEffect<'_> {
+        StateEffect::Positions(&self.write_indices)
     }
 
     fn enumerate<F>(&self, context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
