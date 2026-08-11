@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -9,11 +10,9 @@ use mcrl2::DataExpressionRef;
 use mcrl2::DataSpecification;
 use mcrl2::DataVariable;
 use mcrl2::Pbes;
-use mcrl2::PbesAndRef;
 use mcrl2::PbesExpression;
 use mcrl2::PbesExpressionRef;
 use mcrl2::PbesExpressionVisitor;
-use mcrl2::PbesOrRef;
 use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::PbesRewriteContext;
 use mcrl2::Protected;
@@ -30,6 +29,8 @@ use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
+use merc_explore::OwnedStateEffect;
+use merc_explore::StateEffect;
 use merc_explore::Summand;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
@@ -38,6 +39,11 @@ use merc_vpg::ParityGame;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 
+use crate::explore_common::ParameterLayout;
+use crate::explore_common::PbesVertex;
+use crate::explore_common::PbesVertexKind;
+use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
+use crate::explore_common::UNIFY_RESET_PARAMETERS;
 use crate::explore_common::compute_priorities;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
@@ -50,27 +56,26 @@ const TAG_MASK: usize = 0xF << (usize::BITS - 4);
 const TRUE_SINK: usize = 0x1 << (usize::BITS - 4);
 /// Source state is a false-sink (self-loop, Odd wins).
 const FALSE_SINK: usize = 0x2 << (usize::BITS - 4);
-/// Source state is an auxiliary AND node; full state: `[AND_OP, priority, aux_idx]`.
+/// Source state is a subformula AND node; full state: `[AND_OP, priority, subformula_idx]`.
 const AND_OP: usize = 0x3 << (usize::BITS - 4);
-/// Source state is an auxiliary OR node; full state: `[OR_OP, priority, aux_idx]`.
+/// Source state is a subformula OR node; full state: `[OR_OP, priority, subformula_idx]`.
 const OR_OP: usize = 0x4 << (usize::BITS - 4);
 
 type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
-type AuxMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
+type SubformulaMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
 
 /// Parity-game LPS that directly explores a PBES without converting to SRF.
 ///
 /// Applies the `enumerate_quantifiers_rewriter` on-the-fly to instantiate each
 /// equation's right-hand side, then walks the resulting PBES expression to find
-/// immediate successor states.  The method is equivalent to `pbesinst_lazy` /
-/// the mCRL2 structure-graph algorithm.
+/// immediate successor states.
 ///
 /// State layout:
 /// - PVI state:  `[eq_idx, intern(v0), …, intern(vn)]` — length `1 + num_params`
-/// - TRUE sink:  `[TRUE_SINK]`  — length 1
-/// - FALSE sink: `[FALSE_SINK]` — length 1
-/// - Aux AND:    `[AND_OP, priority, aux_idx]` — length 3
-/// - Aux OR:     `[OR_OP,  priority, aux_idx]` — length 3
+/// - TRUE sink:  `[TRUE_SINK]`
+/// - FALSE sink: `[FALSE_SINK]`
+/// - Subformula AND: `[AND_OP, priority, subformula_idx]`
+/// - Subformula OR:  `[OR_OP,  priority, subformula_idx]`
 pub(crate) struct PbesLps {
     /// The unified PBES; retained so the terms borrowed by the summands stay alive.
     _pbes: Pbes,
@@ -78,7 +83,7 @@ pub(crate) struct PbesLps {
     /// Data specification used to build each per-thread [`PbesContext`].
     data_spec: DataSpecification,
 
-    /// Flat list of summands: one per equation, plus the sink and aux summands.
+    /// Flat list of summands: one per equation, plus the sink and subformula summands.
     summands: Vec<PbesSummand>,
 
     /// For each equation index, the indices into [`PbesLps::summands`] of the
@@ -92,8 +97,8 @@ pub(crate) struct PbesLps {
     /// Indices into [`PbesLps::summands`] of the summands fired by a false sink state.
     false_sink_summands: Vec<usize>,
 
-    /// Indices into [`PbesLps::summands`] of the summands fired by an aux node state.
-    aux_summands: Vec<usize>,
+    /// Indices into [`PbesLps::summands`] of the summands fired by a subformula node.
+    subformula_summands: Vec<usize>,
 
     /// The initial state vector.
     initial_state: Vec<usize>,
@@ -114,8 +119,8 @@ pub(crate) struct PbesLps {
     /// Interning table for enumerated parameter values, shared with the summands.
     value_mapping: Protected<ValueMapping>,
 
-    /// Interning table for auxiliary (and/or) sub-formulas, shared with the summands.
-    aux_mapping: Protected<AuxMapping>,
+    /// Interning table for nested (and/or) sub-formulas, shared with the summands.
+    subformula_mapping: Protected<SubformulaMapping>,
 }
 
 // SAFETY: after construction, PbesLps is immutable except for the two
@@ -138,8 +143,8 @@ enum PbesSummandKind {
     /// The false sink, which has itself as its only successor.
     FalseSink,
 
-    /// Expands an interned auxiliary sub-formula into its operands.
-    AuxNode,
+    /// Expands an interned nested sub-formula into its operands.
+    Subformula,
 }
 
 /// A single summand of a [`PbesLps`], pre-bound to the state shape it fires on.
@@ -151,8 +156,8 @@ pub(crate) struct PbesSummand {
     /// next-state values from any worker thread.
     value_mapping: Arc<ValueMapping>,
 
-    /// Handle to the enclosing LPS's auxiliary formula interning.
-    aux_mapping: Arc<AuxMapping>,
+    /// Handle to the enclosing LPS's sub-formula interning.
+    subformula_mapping: Arc<SubformulaMapping>,
 
     /// Maps a propositional variable name to its equation index.
     name_to_eq: Arc<HashMap<String, usize>>,
@@ -163,17 +168,17 @@ pub(crate) struct PbesSummand {
     /// Positions of the source state read by this summand.
     read_positions: Vec<usize>,
 
-    /// Positions of the next state written by this summand.
-    write_positions: Vec<usize>,
+    /// How this summand's next states relate to its source state.
+    effect: OwnedStateEffect,
 }
 
 /// The lookup tables needed to encode a PBES sub-formula as a parity-game state: equation
-/// names to indices, plus the interning tables for parameter values and auxiliary formulas.
+/// names to indices, plus the interning tables for parameter values and sub-formulas.
 #[derive(Clone, Copy)]
 struct TargetTables<'a> {
     name_to_eq: &'a HashMap<String, usize>,
     value_mapping: &'a ValueMapping,
-    aux_mapping: &'a AuxMapping,
+    subformula_mapping: &'a SubformulaMapping,
 }
 
 /// Per-thread enumeration context for a [`PbesLps`].
@@ -205,7 +210,7 @@ unsafe impl Send for PbesContext {}
 
 impl PbesLps {
     pub(crate) fn new(mut pbes: Pbes) -> Result<Self, MercError> {
-        pbes.unify_parameters(false, true)?;
+        pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
 
         let equations = pbes.equations();
         let num_equations = equations.len();
@@ -234,7 +239,7 @@ impl PbesLps {
             .collect();
 
         let value_mapping = Protected::new(ValueMapping::new());
-        let aux_mapping = Protected::new(AuxMapping::new());
+        let subformula_mapping = Protected::new(SubformulaMapping::new());
         let data_spec = pbes.data_specification();
 
         // Building a rewriter normalises the data specification *in place*: it
@@ -264,57 +269,58 @@ impl PbesLps {
 
         let true_summand_idx = num_equations;
         let false_summand_idx = num_equations + 1;
-        let aux_summand_idx = num_equations + 2;
+        let subformula_summand_idx = num_equations + 2;
 
         let mut summands: Vec<PbesSummand> = Vec::with_capacity(num_equations + 3);
 
         for (eq_idx, eq) in equations.iter().enumerate() {
             let formula = eq.formula();
-            let (read_positions, write_positions) = formula_positions(&formula, &process_parameters);
+            let (read_positions, effect) = formula_positions(&formula, &process_parameters);
             summands.push(PbesSummand {
                 kind: PbesSummandKind::Equation {
                     formula,
                     priority: priorities[eq_idx],
                 },
                 value_mapping: value_mapping.handle(),
-                aux_mapping: aux_mapping.handle(),
+                subformula_mapping: subformula_mapping.handle(),
                 name_to_eq: name_to_eq.clone(),
                 num_params,
                 read_positions,
-                // Empty write_positions signals full-state caching to CacheLPS
-                // (equation summands can produce PVI, sink, or aux-node outputs
-                // with different lengths).
-                write_positions,
+                effect,
             });
         }
 
         summands.push(PbesSummand {
             kind: PbesSummandKind::TrueSink,
             value_mapping: value_mapping.handle(),
-            aux_mapping: aux_mapping.handle(),
+            subformula_mapping: subformula_mapping.handle(),
             name_to_eq: name_to_eq.clone(),
             num_params,
             read_positions: vec![0],
-            write_positions: vec![0],
+            // A sink's only transition is the self-loop, so nothing changes.
+            effect: OwnedStateEffect::Positions(vec![]),
         });
         summands.push(PbesSummand {
             kind: PbesSummandKind::FalseSink,
             value_mapping: value_mapping.handle(),
-            aux_mapping: aux_mapping.handle(),
+            subformula_mapping: subformula_mapping.handle(),
             name_to_eq: name_to_eq.clone(),
             num_params,
             read_positions: vec![0],
-            write_positions: vec![0],
+            // A sink's only transition is the self-loop, so nothing changes.
+            effect: OwnedStateEffect::Positions(vec![]),
         });
         summands.push(PbesSummand {
-            kind: PbesSummandKind::AuxNode,
+            kind: PbesSummandKind::Subformula,
             value_mapping: value_mapping.handle(),
-            aux_mapping: aux_mapping.handle(),
+            subformula_mapping: subformula_mapping.handle(),
             name_to_eq: name_to_eq.clone(),
             num_params,
             read_positions: vec![0, 1, 2],
-            // Empty: aux→PVI/sink transitions change all positions.
-            write_positions: vec![],
+            // A subformula vertex expands into propositional variable
+            // instantiations, sinks or further subformula vertices, all of
+            // different lengths.
+            effect: OwnedStateEffect::Opaque,
         });
 
         let equation_summands: Vec<Vec<usize>> = (0..num_equations).map(|i| vec![i]).collect();
@@ -326,14 +332,14 @@ impl PbesLps {
             equation_summands,
             true_sink_summands: vec![true_summand_idx],
             false_sink_summands: vec![false_summand_idx],
-            aux_summands: vec![aux_summand_idx],
+            subformula_summands: vec![subformula_summand_idx],
             initial_state,
             process_parameters,
             num_params,
             num_equations,
             name_to_eq,
             value_mapping,
-            aux_mapping,
+            subformula_mapping,
         })
     }
     pub(crate) fn num_params(&self) -> usize {
@@ -344,7 +350,7 @@ impl PbesLps {
 impl LPS for PbesLps {
     type Value = usize;
     type Label = ();
-    type StateInfo = (Player, Priority);
+    type StateInfo = PbesVertex;
     type Summand = PbesSummand;
 
     fn initial_state(&self) -> Vec<usize> {
@@ -373,7 +379,7 @@ impl LPS for PbesLps {
         } else if tag == FALSE_SINK {
             self.false_sink_summands.iter().copied()
         } else if tag == AND_OP || tag == OR_OP {
-            self.aux_summands.iter().copied()
+            self.subformula_summands.iter().copied()
         } else {
             debug_assert!(tag == 0, "unexpected state tag {tag:#x}");
             let eq_idx = state[0];
@@ -409,20 +415,34 @@ impl LPS for PbesLps {
         }
     }
 
-    fn state_info(&self, state: &[usize], context: &PbesContext) -> (Player, Priority) {
+    fn state_info(&self, state: &[usize], context: &PbesContext) -> PbesVertex {
         let tag = state[0] & TAG_MASK;
         if tag == TRUE_SINK {
-            (Player::Even, Priority::new(0))
+            PbesVertex::new(Player::Even, Priority::new(0), PbesVertexKind::Sink)
         } else if tag == FALSE_SINK {
-            (Player::Odd, Priority::new(1))
+            PbesVertex::new(Player::Odd, Priority::new(1), PbesVertexKind::Sink)
         } else if tag == AND_OP {
-            (Player::Odd, Priority::new(state[1]))
+            PbesVertex::new(Player::Odd, Priority::new(state[1]), PbesVertexKind::Subformula)
         } else if tag == OR_OP {
-            (Player::Even, Priority::new(state[1]))
+            PbesVertex::new(Player::Even, Priority::new(state[1]), PbesVertexKind::Subformula)
         } else {
-            context
+            let (player, priority) = context
                 .player_priority
-                .expect("prepare must be called before state_info")
+                .expect("prepare must be called before state_info");
+            PbesVertex::instantiation(player, priority)
+        }
+    }
+}
+
+impl ParameterLayout for PbesLps {
+    fn parameter_range(&self, state: &[usize]) -> Option<Range<usize>> {
+        // Every tagged state (sink or subformula vertex) stores something other
+        // than parameters; an untagged state[0] is an equation index.
+        if state[0] & TAG_MASK == 0 {
+            debug_assert_eq!(state.len(), 1 + self.num_params);
+            Some(1..1 + self.num_params)
+        } else {
+            None
         }
     }
 }
@@ -446,7 +466,7 @@ impl PbesSummand {
         TargetTables {
             name_to_eq: &self.name_to_eq,
             value_mapping: &self.value_mapping,
-            aux_mapping: &self.aux_mapping,
+            subformula_mapping: &self.subformula_mapping,
         }
     }
 }
@@ -460,8 +480,8 @@ impl Summand for PbesSummand {
         &self.read_positions
     }
 
-    fn write_positions(&self) -> &[usize] {
-        &self.write_positions
+    fn effect(&self) -> StateEffect<'_> {
+        self.effect.borrow()
     }
 
     fn enumerate<F>(&self, context: &mut PbesContext, state: &[usize], mut report: F) -> Result<(), MercError>
@@ -488,10 +508,13 @@ impl Summand for PbesSummand {
                 let children_buf = &mut context.flat_children;
                 enumerate_formula_children(formula, priority, self.tables(), children_buf, buf, &mut report)
             }
-            PbesSummandKind::AuxNode => {
-                let aux_idx = state[2];
+            PbesSummandKind::Subformula => {
+                let subformula_idx = state[2];
                 let priority = state[1];
-                let pbes_ref = self.aux_mapping.get_by_index(aux_idx).expect("aux index must be valid");
+                let pbes_ref = self
+                    .subformula_mapping
+                    .get_by_index(subformula_idx)
+                    .expect("subformula index must be valid");
                 let formula = pbes_ref.copy();
                 let buf = &mut context.next_state_buf;
                 let children_buf = &mut context.flat_children;
@@ -515,8 +538,8 @@ fn player_of(psi: &mcrl2::PbesExpression) -> Player {
 /// Emits successor states for the given PBES formula.
 ///
 /// AND/OR chains are flattened (like mCRL2's `split_and`/`split_or`) so that
-/// `(A && B) && (C && D)` emits 4 direct edges instead of 2 aux nodes.
-/// Cross-operator nesting still produces aux nodes via [`emit_as_target`].
+/// `(A && B) && (C && D)` emits 4 direct edges instead of 2 subformula vertices.
+/// Cross-operator nesting still produces subformula vertices via [`emit_as_target`].
 /// `children_buf` is a reusable scratch buffer owned by the per-thread context.
 fn enumerate_formula_children<F>(
     formula: PbesExpressionRef<'_>,
@@ -547,7 +570,7 @@ where
 /// Emits a transition to the parity-game state corresponding to `expr`.
 ///
 /// PVI → concrete PVI state `[eq_idx, arg0, …]`.
-/// AND/OR sub-formula → aux node `[AUX_AND/OR, priority, aux_idx]`.
+/// AND/OR sub-formula → subformula vertex `[AND_OP/OR_OP, priority, subformula_idx]`.
 /// `true` / `false` → respective sink state.
 fn emit_as_target<F>(
     expr: PbesExpressionRef<'_>,
@@ -577,21 +600,21 @@ where
         report(&(), buf)
     } else if is_pbes_and(&expr.copy()) {
         // SAFETY: term is a sub-expression of the rewritten psi still in context;
-        // the aux_mapping (Protected) keeps it alive via GC marking.
-        let (aux_idx, _) = tables
-            .aux_mapping
+        // the subformula_mapping (Protected) keeps it alive via GC marking.
+        let (subformula_idx, _) = tables
+            .subformula_mapping
             .insert(unsafe { PbesExpressionRef::from_address(expr.address()) });
         buf.clear();
-        buf.extend([AND_OP, priority, aux_idx]);
+        buf.extend([AND_OP, priority, subformula_idx]);
         report(&(), buf)
     } else if is_pbes_or(&expr.copy()) {
         // SAFETY: term is a sub-expression of the rewritten psi still in context;
-        // the aux_mapping (Protected) keeps it alive via GC marking.
-        let (aux_idx, _) = tables
-            .aux_mapping
+        // the subformula_mapping (Protected) keeps it alive via GC marking.
+        let (subformula_idx, _) = tables
+            .subformula_mapping
             .insert(unsafe { PbesExpressionRef::from_address(expr.address()) });
         buf.clear();
-        buf.extend([OR_OP, priority, aux_idx]);
+        buf.extend([OR_OP, priority, subformula_idx]);
         report(&(), buf)
     } else if is_pbes_true(&expr.copy()) {
         buf.clear();
@@ -647,46 +670,49 @@ pub(crate) fn explore_pbes_parallel(
     }
 }
 
-/// Computes read and write position vectors for an equation summand.
+/// Computes the read positions and the state effect of an equation summand.
 ///
-/// `read_positions`: `{0}` ∪ `{k+1 | param[k]` appears anywhere in `formula`}.
-/// `write_positions`: `{0}` ∪ `{k+1 | some PVI argument at position k is not identity}`.
-/// Returns empty `write_positions` when the formula contains AND/OR, signalling
-/// `CacheLPS` to use full-state capture (equation summands can produce outputs of
-/// different lengths: PVI, sink, or aux-node states).
-fn formula_positions(formula: &mcrl2::PbesExpression, params: &[*const _aterm]) -> (Vec<usize>, Vec<usize>) {
-    // Single-pass visitor: collect read-variable addresses and write-position
+/// The effect is [`StateEffect::Positions`] only when the right-hand side is a
+/// bare propositional variable instantiation. Such an equation always produces
+/// exactly one next state, of the same length as the source, so the written
+/// positions describe it exactly.
+///
+/// Every other shape is [`StateEffect::Opaque`]. It is not enough to look for a
+/// syntactic `&&`/`||`: the right-hand side is rewritten with quantifier
+/// enumeration before it is explored, and that turns a `forall`/`exists` into an
+/// and/or chain (a subformula vertex, length 3) and can collapse a `val(...)` to
+/// `true`/`false` (a sink, length 1). Neither has the length of the source state,
+/// so no set of write positions can describe them.
+///
+/// `read_positions` is `{0}` ∪ `{k+1 | param[k]` occurs in `formula}`. Identity
+/// arguments (`X(..., d_k, ...)` passing `d_k` straight through) only count under
+/// an opaque effect: there the whole next state is captured, so a passed-through
+/// value has to be part of the cache key, whereas a positional effect replays it
+/// from the live source state.
+fn formula_positions(
+    formula: &mcrl2::PbesExpression,
+    params: &[*const _aterm],
+) -> (Vec<usize>, OwnedStateEffect) {
+    // Single-pass visitor: collect read-variable addresses and the write-position
     // mask simultaneously, visiting each PVI argument exactly once.
     struct FormulaPositions<'p> {
+        /// Variables occurring anywhere other than as an identity PVI argument.
         var_addrs: HashSet<*const _aterm>,
+        /// Parameters passed straight through by some PVI argument.
+        identity_var_addrs: HashSet<*const _aterm>,
+        /// Parameter positions some PVI argument writes a non-identity value to.
         write_mask: Vec<bool>,
-        has_aux_outputs: bool,
         params: &'p [*const _aterm],
     }
 
     impl PbesExpressionVisitor for FormulaPositions<'_> {
-        fn visit_and(&mut self, and: &PbesAndRef<'_>) -> Option<mcrl2::PbesExpression> {
-            self.has_aux_outputs = true;
-            self.visit(&and.lhs());
-            self.visit(&and.rhs());
-            None
-        }
-
-        fn visit_or(&mut self, or: &PbesOrRef<'_>) -> Option<mcrl2::PbesExpression> {
-            self.has_aux_outputs = true;
-            self.visit(&or.lhs());
-            self.visit(&or.rhs());
-            None
-        }
-
         fn visit_propositional_variable_instantiation(
             &mut self,
             inst: &PbesPropositionalVariableInstantiationRef<'_>,
         ) -> Option<mcrl2::PbesExpression> {
             for (k, (arg, &param_addr)) in inst.arguments().iter().zip(self.params.iter()).enumerate() {
-                // Skip identity pass-throughs: the replay already handles them,
-                // so they don't need to be part of the cache key.
                 if is_variable(&arg.copy()) && arg.address() == param_addr {
+                    self.identity_var_addrs.insert(param_addr);
                     continue;
                 }
                 for v in variable_occurrences_data_expression(&arg.copy()) {
@@ -707,32 +733,37 @@ fn formula_positions(formula: &mcrl2::PbesExpression, params: &[*const _aterm]) 
 
     let mut collector = FormulaPositions {
         var_addrs: HashSet::new(),
+        identity_var_addrs: HashSet::new(),
         write_mask: vec![false; params.len()],
-        has_aux_outputs: false,
         params,
     };
     collector.visit(&formula.copy());
 
-    // Position 0 (eq_idx) is always read/written.
+    // Rewriting a propositional variable instantiation rewrites its arguments but
+    // cannot change its shape, so this is the one case with a positional effect.
+    let is_bare_instantiation = is_pbes_propositional_variable_instantiation(&formula.copy());
+
+    // Position 0 (the equation index) is always read and always written.
     let mut read_positions = vec![0usize];
     for (k, &param_addr) in params.iter().enumerate() {
-        if collector.var_addrs.contains(&param_addr) {
+        let read = collector.var_addrs.contains(&param_addr)
+            || (!is_bare_instantiation && collector.identity_var_addrs.contains(&param_addr));
+        if read {
             read_positions.push(k + 1);
         }
     }
 
-    // Empty write_positions signals CacheLPS to use full-state capture.
-    let write_positions = if collector.has_aux_outputs {
-        vec![]
-    } else {
+    let effect = if is_bare_instantiation {
         let mut write_positions = vec![0usize];
         for (k, &written) in collector.write_mask.iter().enumerate() {
             if written {
                 write_positions.push(k + 1);
             }
         }
-        write_positions
+        OwnedStateEffect::Positions(write_positions)
+    } else {
+        OwnedStateEffect::Opaque
     };
 
-    (read_positions, write_positions)
+    (read_positions, effect)
 }

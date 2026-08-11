@@ -1,7 +1,9 @@
 use std::cell::Cell;
+use std::ops::Range;
 
 use log::info;
 
+use merc_explore::CacheLPS;
 use merc_explore::LPS;
 use merc_explore::Summand;
 use merc_explore::configure_rayon_thread_pool;
@@ -19,30 +21,165 @@ use merc_vpg::VertexIndex;
 
 use merc_explore::ExplorationStrategy;
 
+/// Whether counter-example equations are excluded when unifying parameters.
+///
+/// Part of [`UNIFY_RESET_PARAMETERS`]'s contract: every caller must pass the same
+/// pair of flags.
+pub(crate) const UNIFY_IGNORE_CE_EQUATIONS: bool = false;
+
+/// Whether a parameter that an equation does not declare is reset to a default
+/// value rather than copied through.
+///
+/// Symmetry detection and exploration must unify parameters with *identical*
+/// flags. This one changes the right-hand sides (see mCRL2's
+/// `unify_parameters_replace_function`), so detecting symmetries on one PBES and
+/// applying them while exploring a differently unified one is unsound.
+pub(crate) const UNIFY_RESET_PARAMETERS: bool = true;
+
+/// An [`LPS`] whose state vectors may carry a block of permutable data parameters.
+///
+/// Exploring a PBES into a parity game produces states of several shapes: a
+/// propositional variable instantiation carries the parameter vector, while sinks
+/// and subformula vertices carry a priority and an interned formula index instead.
+/// A symmetry group acts on the parameters only, so a layer that permutes state
+/// vectors has to be able to tell the shapes apart — permuting a subformula
+/// vertex's payload silently corrupts it.
+pub(crate) trait ParameterLayout: LPS {
+    /// Returns the positions of `state` holding data parameters, or `None` when
+    /// this state has no parameter block.
+    fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>>;
+}
+
+impl<P: ParameterLayout> ParameterLayout for CacheLPS<P> {
+    fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>> {
+        self.inner().parameter_range(state)
+    }
+}
+
+impl<P: ParameterLayout> ParameterLayout for &P {
+    fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>> {
+        (**self).parameter_range(state)
+    }
+}
+
+/// What a parity-game vertex was created for.
+///
+/// mCRL2's `pbesinst_structure_graph` draws the same distinction: `SG0` creates
+/// one vertex per propositional variable instantiation — the number its verbose
+/// output reports as "Generated N BES equations" — while `SG1` creates an extra
+/// vertex for every nested subformula that is not itself an instantiation. Both
+/// kinds are vertices of the structure graph, so the total vertex count of the
+/// generated parity game exceeds the equation count.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PbesVertexKind {
+    /// A propositional variable instantiation, i.e. one BES equation.
+    Instantiation,
+
+    /// A nested and/or subformula that needs a vertex of its own because a
+    /// parity-game vertex has a single owner, so a disjunction occurring under a
+    /// conjunction (or vice versa) cannot be merged into its parent.
+    Subformula,
+
+    /// One of the two `true` / `false` sink vertices.
+    Sink,
+}
+
+/// Owner, priority and provenance of a parity-game vertex, produced by
+/// [`LPS::state_info`] of the PBES explorers.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct PbesVertex {
+    /// The player owning the vertex.
+    pub(crate) player: Player,
+
+    /// The vertex priority.
+    pub(crate) priority: Priority,
+
+    /// What the vertex was created for.
+    pub(crate) kind: PbesVertexKind,
+}
+
+impl PbesVertex {
+    pub(crate) fn new(player: Player, priority: Priority, kind: PbesVertexKind) -> Self {
+        PbesVertex { player, priority, kind }
+    }
+
+    /// Shorthand for a vertex standing for a propositional variable instantiation.
+    pub(crate) fn instantiation(player: Player, priority: Priority) -> Self {
+        PbesVertex::new(player, priority, PbesVertexKind::Instantiation)
+    }
+}
+
+/// Tally of the generated parity-game vertices, broken down by [`PbesVertexKind`].
+#[derive(Clone, Copy, Default)]
+pub(crate) struct VertexCounts {
+    /// Vertices for propositional variable instantiations (BES equations).
+    instantiations: usize,
+
+    /// Vertices for nested subformulas.
+    subformulas: usize,
+
+    /// The `true` / `false` sink vertices, at most two.
+    sinks: usize,
+}
+
+impl VertexCounts {
+    /// Returns these counts with `kind` added.
+    fn with(mut self, kind: PbesVertexKind) -> Self {
+        match kind {
+            PbesVertexKind::Instantiation => self.instantiations += 1,
+            PbesVertexKind::Subformula => self.subformulas += 1,
+            PbesVertexKind::Sink => self.sinks += 1,
+        }
+        self
+    }
+
+    /// Total number of vertices, i.e. the size of the structure graph.
+    fn total(&self) -> usize {
+        self.instantiations + self.subformulas + self.sinks
+    }
+}
+
+/// Logs the final vertex breakdown, reporting the instantiation count (directly
+/// comparable to mCRL2's "Generated N BES equations") separately from the
+/// structure-graph vertices that surround it.
+fn report_counts(counts: VertexCounts, edges: usize) {
+    info!(
+        "Exploration complete: {} BES equations, {} subformula vertices, {} sinks ({} vertices, {edges} edges)",
+        counts.instantiations,
+        counts.subformulas,
+        counts.sinks,
+        counts.total(),
+    );
+}
+
 /// Periodic progress reporter for PBES exploration.
-pub(crate) fn bes_progress() -> TimeProgress<(usize, usize)> {
+pub(crate) fn bes_progress() -> TimeProgress<(VertexCounts, usize)> {
     TimeProgress::new(
-        |(equations, edges): (usize, usize)| {
-            info!("Explored {equations} BES equations, {edges} edges...");
+        |(counts, edges): (VertexCounts, usize)| {
+            info!(
+                "Explored {} BES equations, {} vertices, {edges} edges...",
+                counts.instantiations,
+                counts.total(),
+            );
         },
         1,
     )
 }
 
 /// Builds a [`ParityGame`] by exploring any LPS that produces unit labels and
-/// `(Player, Priority)` state info (i.e. a parity game vertex description).
+/// [`PbesVertex`] state info (i.e. a parity game vertex description).
 pub(crate) fn explore_pbes_impl<M>(
     lps: &M,
     strategy: ExplorationStrategy,
     timing: &Timing,
 ) -> Result<ParityGame, MercError>
 where
-    M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)>,
+    M: LPS<Value = usize, Label = (), StateInfo = PbesVertex>,
 {
     let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
 
     let progress = bes_progress();
-    let equations = Cell::new(0usize);
+    let counts = Cell::new(VertexCounts::default());
     let edges = Cell::new(0usize);
 
     let _initial = explore(
@@ -50,23 +187,19 @@ where
         strategy,
         timing,
         &mut builder,
-        |b: &mut ParityGameBuilder, state: StateIndex, info: &(Player, Priority)| {
-            equations.set(equations.get() + 1);
-            b.add_vertex(VertexIndex::new(state.value()), info.0, info.1);
+        |b: &mut ParityGameBuilder, state: StateIndex, info: &PbesVertex| {
+            counts.set(counts.get().with(info.kind));
+            b.add_vertex(VertexIndex::new(state.value()), info.player, info.priority);
             Ok(())
         },
         |b: &mut ParityGameBuilder, from: StateIndex, _label: &(), to: StateIndex| {
             edges.set(edges.get() + 1);
-            progress.print((equations.get(), edges.get()));
+            progress.print((counts.get(), edges.get()));
             b.add_edge(VertexIndex::new(from.value()), VertexIndex::new(to.value()));
             Ok(())
         },
     )?;
-    info!(
-        "Exploration complete: {} BES equations, {} edges",
-        equations.get(),
-        edges.get(),
-    );
+    report_counts(counts.get(), edges.get());
 
     Ok(builder.finish(true, true))
 }
@@ -74,8 +207,8 @@ where
 /// Per-worker output partition for parallel parity-game exploration.
 #[derive(Default)]
 pub(crate) struct PbesPartition {
-    /// Vertices discovered by this worker, with their owner and priority.
-    pub(crate) vertices: Vec<(VertexIndex, Player, Priority)>,
+    /// Vertices discovered by this worker, with their owner, priority and kind.
+    pub(crate) vertices: Vec<(VertexIndex, PbesVertex)>,
 
     /// Edges discovered by this worker, as `(source, target)` pairs.
     pub(crate) edges: Vec<(VertexIndex, VertexIndex)>,
@@ -84,7 +217,7 @@ pub(crate) struct PbesPartition {
 /// Builds a [`ParityGame`] by exploring any sync-safe LPS in parallel.
 pub(crate) fn explore_pbes_parallel_impl<M>(lps: &M, threads: usize, pinned: bool) -> Result<ParityGame, MercError>
 where
-    M: LPS<Value = usize, Label = (), StateInfo = (Player, Priority)> + Sync,
+    M: LPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <M::Summand as Summand>::Context: Send,
 {
     let pool = configure_rayon_thread_pool(threads, pinned)?;
@@ -95,10 +228,8 @@ where
             explore_parallel(
                 lps,
                 PbesPartition::default,
-                |partition: &mut PbesPartition, state: StateIndex, info: &(Player, Priority)| {
-                    partition
-                        .vertices
-                        .push((VertexIndex::new(state.value()), info.0, info.1));
+                |partition: &mut PbesPartition, state: StateIndex, info: &PbesVertex| {
+                    partition.vertices.push((VertexIndex::new(state.value()), *info));
                     Ok(())
                 },
                 |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
@@ -111,14 +242,17 @@ where
         })
     })?;
 
-    let total_equations: usize = partitions.iter().map(|p| p.vertices.len()).sum();
+    let counts = partitions
+        .iter()
+        .flat_map(|p| p.vertices.iter())
+        .fold(VertexCounts::default(), |counts, (_, vertex)| counts.with(vertex.kind));
     let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
-    info!("Exploration complete: {total_equations} BES equations, {total_edges} edges");
+    report_counts(counts, total_edges);
 
     let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
     for partition in &partitions {
-        for &(vertex, player, priority) in &partition.vertices {
-            builder.add_vertex(vertex, player, priority);
+        for &(index, vertex) in &partition.vertices {
+            builder.add_vertex(index, vertex.player, vertex.priority);
         }
     }
     for partition in &partitions {
