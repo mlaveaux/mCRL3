@@ -15,6 +15,8 @@ thread_local! {
 /// Defines default symbols and terms for data elements.
 ///
 /// These mirror the mCRL2 definitions since that is convenient for loading the mCRL2 binary formats.
+/// The set is kept complete on purpose, so some symbols are declared here before anything reads
+/// them; those carry an `allow(dead_code)`.
 ///
 /// All `Symbol` fields are wrapped in `ManuallyDrop` so that their destructors never run at thread
 /// exit.
@@ -38,13 +40,19 @@ pub(crate) struct DataSymbols {
     pub fbag_container_symbol: ManuallyDrop<Symbol>,
 
     // Data expressions that are abstractions
-    pub data_binder_symbol: ManuallyDrop<Symbol>,
-    pub data_lambda_symbol: ManuallyDrop<Symbol>,
-    pub data_exists_symbol: ManuallyDrop<Symbol>,
-    pub data_forall_symbol: ManuallyDrop<Symbol>,
-    pub data_set_comprehension_symbol: ManuallyDrop<Symbol>,
-    pub data_bag_comprehension_symbol: ManuallyDrop<Symbol>,
-    pub data_untyped_set_bag_comprehension_symbol: ManuallyDrop<Symbol>,
+    pub(crate) data_binder_symbol: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
+    pub(crate) data_lambda_symbol: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
+    pub(crate) data_exists_symbol: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
+    pub(crate) data_forall_symbol: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
+    pub(crate) data_set_comprehension_symbol: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
+    pub(crate) data_bag_comprehension_symbol: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
+    pub(crate) data_untyped_set_bag_comprehension_symbol: ManuallyDrop<Symbol>,
 
     // Data expressions
     pub data_function_symbol: ManuallyDrop<Symbol>,

@@ -245,7 +245,10 @@ mod inner {
     }
 }
 
-pub use inner::*;
+pub use inner::BasicSort;
+pub use inner::BasicSortRef;
+pub use inner::SortExpression;
+pub use inner::SortExpressionRef;
 
 #[cfg(test)]
 mod tests {

@@ -640,7 +640,15 @@ mod inner {
     }
 }
 
-pub use inner::*;
+pub use inner::DataApplication;
+pub use inner::DataApplicationRef;
+pub use inner::DataExpression;
+pub use inner::DataExpressionRef;
+pub use inner::DataFunctionSymbol;
+pub use inner::DataFunctionSymbolRef;
+pub use inner::DataVariable;
+pub use inner::DataVariableRef;
+pub use inner::MachineNumberRef;
 
 /// Returns the number of leading `ATerm` arguments that are *not* data sub-expressions and
 /// must therefore be skipped by `data_arguments`, or `None` for binders/where clauses which
