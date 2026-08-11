@@ -8,6 +8,7 @@ mod tests {
     use merc_explore::ExplorationStrategy;
     use merc_io::temp_dir;
     use merc_io::traced_command;
+    use merc_vpg::PG;
     use merc_vpg::solve_zielonka;
 
     use crate::explore_pbes::explore_pbes;
@@ -146,13 +147,35 @@ mod tests {
         let game_cached = explore_pbes(normalised, ExplorationStrategy::Bfs, CachingStrategy::Local)
             .expect("cached exploration failed");
 
+        // The games must be *identical* in size, not merely have the same winner.
+        // A summand that mis-declares its state effect mints spurious vertices
+        // whose winner often still agrees, which hides the defect.
+        assert_eq!(
+            game_uncached.num_of_vertices(),
+            game_cached.num_of_vertices(),
+            "caching changed the number of vertices"
+        );
+        assert_eq!(
+            game_uncached.num_of_edges(),
+            game_cached.num_of_edges(),
+            "caching changed the number of edges"
+        );
+
         let (sol_uncached, _) = solve_zielonka(&game_uncached, false);
         let (sol_cached, _) = solve_zielonka(&game_cached, false);
 
+        // Both runs explore in the same order from the same initial state, so
+        // vertex indices line up and the winning sets must agree everywhere, not
+        // just at the initial vertex.
         assert_eq!(
-            sol_uncached[0][0], sol_cached[0][0],
-            "cached and uncached explorers disagree on initial-vertex winner"
+            sol_uncached, sol_cached,
+            "cached and uncached explorers disagree on the winner of some vertex"
         );
+    }
+
+    fn assert_cached_matches_uncached_from_text(text: &str) {
+        let pbes = Pbes::from_text(text).expect("Failed to parse PBES");
+        assert_cached_matches_uncached(&pbes);
     }
 
     #[test]
@@ -167,6 +190,48 @@ mod tests {
         let pbes =
             Pbes::from_text("pbes mu X = Y || Z; mu Y = val(false); mu Z = val(false); init X;").expect("parse failed");
         assert_cached_matches_uncached(&pbes);
+    }
+
+    /// An equation whose right-hand side rewrites to `val(true)` emits a sink,
+    /// which is shorter than its source state. Replaying that from the cache by
+    /// scattering write positions onto the source produces a padded, bogus sink.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_cached_equation_collapsing_to_a_sink() {
+        assert_cached_matches_uncached_from_text(
+            "pbes
+nu X(n: Nat) = val(n == 3) || (Y(n) && X(n + 1));
+nu Y(n: Nat) = val(true);
+init X(0);",
+        );
+    }
+
+    /// A quantifier carries no syntactic `&&`/`||`, but the rewriter expands it
+    /// into one, so the equation can emit a subformula vertex whose length
+    /// differs from the source state.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_cached_quantifier_expands_to_subformula() {
+        assert_cached_matches_uncached_from_text(
+            "pbes
+nu X(n: Nat) = forall m: Nat . val(m > 2) || Y(n);
+nu Y(n: Nat) = val(n == 0) || X(n + 1);
+init X(0);",
+        );
+    }
+
+    /// An equation that passes every parameter through unchanged still depends on
+    /// those parameters: under an opaque effect the whole next state is cached, so
+    /// a passed-through value has to be part of the cache key.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_cached_identity_arguments_are_part_of_the_key() {
+        assert_cached_matches_uncached_from_text(
+            "pbes
+nu X(m: Nat, n: Nat) = Y(m, n) || val(m == n);
+nu Y(m: Nat, n: Nat) = val(m == 2) || X(m + 1, n);
+init X(0, 1);",
+        );
     }
 
     /// Explores `pbes` with the parallel explorer under every caching strategy
