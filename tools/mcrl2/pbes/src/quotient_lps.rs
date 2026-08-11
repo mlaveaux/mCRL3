@@ -292,6 +292,49 @@ init X(0, 1);"#;
         Ok(())
     }
 
+    /// The SRF backend must reduce and preserve the winner just like the general
+    /// one — `--srf --symmetry` layers the quotient over [`PbesSrfLps`].
+    ///
+    /// The two games are not the same size: SRF normalisation rewrites the
+    /// right-hand sides, so this compares the SRF game against its own quotient
+    /// rather than against the general explorer's.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn quotient_over_srf_preserves_winner_and_reduces_the_game() -> Result<(), MercError> {
+        let pbes = mcrl2::Pbes::from_text(SYMMETRIC_PBES)?;
+        let timing = Timing::new();
+
+        let plain = explore_pbes_impl(&PbesSrfLps::new(&pbes)?, ExplorationStrategy::Bfs, &timing)?;
+
+        let lps = PbesSrfLps::new(&pbes)?;
+        assert_eq!(
+            lps.num_params(),
+            2,
+            "the generator below is a transposition of the whole parameter vector"
+        );
+        // Both parameters have the same sort, so the transposition is `(0 1)`
+        // whichever of the two orders `unify_parameters` happened to produce.
+        let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
+        let bsgs = Arc::new(Bsgs::from_generators(&generators, lps.num_params(), &gap_config())?);
+        let quotient = explore_pbes_impl(&QuotientLps::new(lps, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
+
+        assert!(
+            quotient.num_of_vertices() < plain.num_of_vertices(),
+            "swapping the two parameters is a symmetry, so the quotient must be smaller \
+             (plain {} vertices, quotient {})",
+            plain.num_of_vertices(),
+            quotient.num_of_vertices()
+        );
+
+        let (plain_solution, _) = solve_zielonka(&plain, false);
+        let (quotient_solution, _) = solve_zielonka(&quotient, false);
+        assert_eq!(
+            plain_solution[0][0], quotient_solution[0][0],
+            "the quotient changed the winner of the initial vertex"
+        );
+        Ok(())
+    }
+
     /// The same reduction must survive a cache layer underneath the quotient.
     #[test]
     #[cfg_attr(miri, ignore)]
