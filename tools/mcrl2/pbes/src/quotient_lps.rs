@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use merc_explore::LPS;
+use merc_explore::StateEffect;
 use merc_explore::Summand;
 use merc_utilities::MercError;
 
 use crate::bsgs::Bsgs;
+use crate::explore_common::ParameterLayout;
 
 /// Wraps any `LPS<Value = usize>` and canonicalizes every enumerated next-state
 /// to the lexicographically smallest orbit representative before passing it to
@@ -23,7 +25,7 @@ use crate::bsgs::Bsgs;
 /// ```
 /// This keeps cache keys narrow (raw, un-canonicalized write positions) and avoids
 /// forcing the cache to track all parameters as written.
-pub(crate) struct QuotientLps<P: LPS<Value = usize>> {
+pub(crate) struct QuotientLps<P: ParameterLayout<Value = usize>> {
     inner: Arc<P>,
     bsgs: Arc<Bsgs>,
     summands: Vec<QuotientSummand<P>>,
@@ -34,20 +36,16 @@ pub(crate) struct QuotientLps<P: LPS<Value = usize>> {
 ///
 /// Delegates enumeration to the corresponding inner summand and canonicalizes
 /// each next-state before reporting it.
-pub(crate) struct QuotientSummand<P: LPS<Value = usize>> {
+pub(crate) struct QuotientSummand<P: ParameterLayout<Value = usize>> {
     index: usize,
     inner: Arc<P>,
     bsgs: Arc<Bsgs>,
     param_offset: usize,
     read_positions: Vec<usize>,
-    /// Widened to cover all positions in the state vector: canonicalization can
-    /// permute any parameter, so a cache layer above must treat every position as
-    /// a potential write.
-    write_positions: Vec<usize>,
 }
 
 /// Per-thread enumeration context for a [`QuotientLps`].
-pub(crate) struct QuotientContext<P: LPS<Value = usize>> {
+pub(crate) struct QuotientContext<P: ParameterLayout<Value = usize>> {
     inner: <P::Summand as Summand>::Context,
 }
 
@@ -59,12 +57,12 @@ pub(crate) struct QuotientContext<P: LPS<Value = usize>> {
 // last Arc being dropped on a foreign thread, but `QuotientLps` is not `Send`,
 // so that case cannot arise. `Arc<Bsgs>` is unconditionally fine because `Bsgs`
 // contains only `usize`, `Vec`, and `HashMap` of plain data, all auto-`Sync`.
-unsafe impl<P: LPS<Value = usize> + Sync> Sync for QuotientLps<P> {}
-unsafe impl<P: LPS<Value = usize> + Sync> Sync for QuotientSummand<P> {}
+unsafe impl<P: ParameterLayout<Value = usize> + Sync> Sync for QuotientLps<P> {}
+unsafe impl<P: ParameterLayout<Value = usize> + Sync> Sync for QuotientSummand<P> {}
 
 impl<P> QuotientLps<P>
 where
-    P: LPS<Value = usize>,
+    P: ParameterLayout<Value = usize>,
 {
     /// Wraps `inner` in a canonicalizing quotient layer.
     ///
@@ -73,8 +71,6 @@ where
     /// equation index).
     pub(crate) fn new(inner: P, bsgs: Arc<Bsgs>, param_offset: usize) -> Self {
         let inner = Arc::new(inner);
-        let state_len = param_offset + bsgs.n;
-        let all_write_positions: Vec<usize> = (0..state_len).collect();
 
         let summands = inner
             .summands()
@@ -86,7 +82,6 @@ where
                 bsgs: Arc::clone(&bsgs),
                 param_offset,
                 read_positions: s.read_positions().to_vec(),
-                write_positions: all_write_positions.clone(),
             })
             .collect();
 
@@ -101,7 +96,7 @@ where
 
 impl<P> LPS for QuotientLps<P>
 where
-    P: LPS<Value = usize>,
+    P: ParameterLayout<Value = usize>,
 {
     type Value = usize;
     type Label = P::Label;
@@ -138,7 +133,7 @@ where
 
 impl<P> Summand for QuotientSummand<P>
 where
-    P: LPS<Value = usize>,
+    P: ParameterLayout<Value = usize>,
 {
     type Value = usize;
     type Label = P::Label;
@@ -148,8 +143,10 @@ where
         &self.read_positions
     }
 
-    fn write_positions(&self) -> &[usize] {
-        &self.write_positions
+    fn effect(&self) -> StateEffect<'_> {
+        // Canonicalization can move a value to any parameter position, and the
+        // states it passes through unchanged are of other lengths entirely.
+        StateEffect::Opaque
     }
 
     fn enumerate<F>(&self, context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
@@ -157,10 +154,21 @@ where
         F: FnMut(&Self::Label, &[usize]) -> Result<(), MercError>,
     {
         let bsgs = &self.bsgs;
+        let inner = &*self.inner;
         let param_offset = self.param_offset;
         self.inner.summands()[self.index].enumerate(&mut context.inner, state, |label, next| {
-            let canon = bsgs.canonicalize(next, param_offset);
-            report(label, &canon)
+            match inner.parameter_range(next) {
+                Some(range) => {
+                    debug_assert_eq!(range.start, param_offset, "the parameter block must start where the group acts");
+                    debug_assert_eq!(range.len(), bsgs.n, "the group must act on the whole parameter block");
+                    let canon = bsgs.canonicalize(next, param_offset);
+                    report(label, &canon)
+                }
+                // Sinks and subformula vertices carry no data parameters, so the
+                // group does not act on them; permuting their payload would
+                // corrupt a priority or an interned formula index.
+                None => report(label, next),
+            }
         })
     }
 }
@@ -175,11 +183,11 @@ mod tests {
     use merc_utilities::MercError;
     use merc_utilities::Timing;
     use merc_vpg::PG;
-    use merc_vpg::Player;
-    use merc_vpg::Priority;
+    use merc_vpg::solve_zielonka;
 
     use crate::bsgs::Bsgs;
     use crate::explore_common::explore_pbes_impl;
+    use crate::explore_pbes::PbesLps;
     use crate::explore_srf::PbesSrfLps;
     use crate::graph_symmetry::GapConfig;
     use crate::permutation::Permutation;
@@ -238,6 +246,70 @@ init X(true);"#;
         let timing = Timing::new();
         let game = explore_pbes_impl(&qlps, ExplorationStrategy::Bfs, &timing)?;
         assert!(game.num_of_vertices() > 0);
+        Ok(())
+    }
+
+    /// A PBES whose two parameters are interchangeable, explored with the general
+    /// (non-SRF) explorer so the game also contains sink and subformula vertices.
+    ///
+    /// Those carry a priority and an interned formula index where a propositional
+    /// variable instantiation carries parameters, so a quotient that permutes them
+    /// unconditionally corrupts them — the interned index in particular becomes a
+    /// formula that does not exist.
+    const SYMMETRIC_PBES: &str = r#"pbes
+nu X(m: Nat, n: Nat) = X(m, n) && (Y(n, m) || Y((m + 1) mod 2, n));
+mu Y(m: Nat, n: Nat) = X(m, n) || Y((n + 1) mod 2, m);
+init X(0, 1);"#;
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn quotient_preserves_winner_and_reduces_the_game() -> Result<(), MercError> {
+        let pbes = mcrl2::Pbes::from_text(SYMMETRIC_PBES)?;
+        let timing = Timing::new();
+
+        let plain = explore_pbes_impl(&PbesLps::new(pbes.clone())?, ExplorationStrategy::Bfs, &timing)?;
+
+        let lps = PbesLps::new(pbes)?;
+        let n = lps.num_params();
+        let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
+        let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &gap_config())?);
+        let quotient = explore_pbes_impl(&QuotientLps::new(lps, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
+
+        assert!(
+            quotient.num_of_vertices() < plain.num_of_vertices(),
+            "swapping the two parameters is a symmetry, so the quotient must be smaller \
+             (plain {} vertices, quotient {})",
+            plain.num_of_vertices(),
+            quotient.num_of_vertices()
+        );
+
+        let (plain_solution, _) = solve_zielonka(&plain, false);
+        let (quotient_solution, _) = solve_zielonka(&quotient, false);
+        assert_eq!(
+            plain_solution[0][0], quotient_solution[0][0],
+            "the quotient changed the winner of the initial vertex"
+        );
+        Ok(())
+    }
+
+    /// The same reduction must survive a cache layer underneath the quotient.
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn quotient_over_cache_agrees_with_quotient_alone() -> Result<(), MercError> {
+        let pbes = mcrl2::Pbes::from_text(SYMMETRIC_PBES)?;
+        let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
+        let timing = Timing::new();
+
+        let lps = PbesLps::new(pbes.clone())?;
+        let n = lps.num_params();
+        let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &gap_config())?);
+        let uncached = explore_pbes_impl(&QuotientLps::new(lps, Arc::clone(&bsgs), 1), ExplorationStrategy::Bfs, &timing)?;
+
+        let cached = CacheLPS::new(PbesLps::new(pbes)?, CachingStrategy::Local);
+        let cached = explore_pbes_impl(&QuotientLps::new(cached, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
+
+        assert_eq!(uncached.num_of_vertices(), cached.num_of_vertices());
+        assert_eq!(uncached.num_of_edges(), cached.num_of_edges());
         Ok(())
     }
 }

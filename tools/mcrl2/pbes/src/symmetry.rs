@@ -33,6 +33,8 @@ use merc_io::TimeProgress;
 use merc_utilities::MercError;
 
 use crate::clone_iterator::CloneIterator;
+use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
+use crate::explore_common::UNIFY_RESET_PARAMETERS;
 use crate::permutation::Permutation;
 use crate::permutation::permutation_group;
 use crate::permutation::permutation_group_size;
@@ -674,7 +676,7 @@ fn preprocess_symmetry(
     print_srf: bool,
 ) -> Result<(SrfPbes, Vec<DataVariable>, PbesStategraph), MercError> {
     let mut srf = SrfPbes::from(pbes)?;
-    srf.unify_parameters(false, false)?;
+    srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
     if print_srf {
         info!("==== SRF PBES ====");
         info!("{}", srf.to_pbes());

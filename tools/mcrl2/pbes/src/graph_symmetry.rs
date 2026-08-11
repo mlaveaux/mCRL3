@@ -52,6 +52,8 @@ use mcrl2::is_where_clause;
 use mcrl2::pbes_expression_pvi;
 use merc_utilities::MercError;
 
+use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
+use crate::explore_common::UNIFY_RESET_PARAMETERS;
 use crate::permutation::Permutation;
 
 /// Binary function symbols treated as commutative; listing a non-commutative one unsoundly widens the symmetry group.
@@ -1261,7 +1263,7 @@ pub(crate) struct GraphSymmetryResult {
 pub(crate) fn graph_symmetries(pbes: &Pbes, config: &GapConfig) -> Result<GraphSymmetryResult, MercError> {
     // Unify parameters here so build_sdg works on the original PBES structure.
     let mut pbes = Pbes::from_text(&pbes.to_string())?;
-    pbes.unify_parameters(false, false)?;
+    pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
     let sdg = build_sdg(&pbes)?;
     info!(
         "SDG: {} vertices, {} edges, {} parameters",
