@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Arc;
 
 use log::debug;
@@ -22,6 +23,7 @@ use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
+use merc_explore::StateEffect;
 use merc_explore::Summand;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
@@ -30,6 +32,10 @@ use merc_vpg::ParityGame;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 
+use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
+use crate::explore_common::UNIFY_RESET_PARAMETERS;
+use crate::explore_common::ParameterLayout;
+use crate::explore_common::PbesVertex;
 use crate::explore_common::compute_priorities;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
@@ -125,8 +131,9 @@ pub(crate) struct PbesSrfLps {
     /// The initial state vector.
     initial_state: Vec<usize>,
 
-    /// Per-equation (Player, Priority) used by [`LPS::state_info`].
-    state_info: Vec<(Player, Priority)>,
+    /// Per-equation vertex description used by [`LPS::state_info`]. Every SRF
+    /// state stands for a propositional variable instantiation.
+    state_info: Vec<PbesVertex>,
 
     /// Cached data-parameter variables (length `num_params`). All equations
     /// share the same parameter list after [`SrfPbes::unify_parameters`].
@@ -194,7 +201,7 @@ impl PbesSrfLps {
     /// unifying the parameter lists.
     pub(crate) fn new(pbes: &Pbes) -> Result<Self, MercError> {
         let mut srf = SrfPbes::from(pbes)?;
-        srf.unify_parameters(false, true)?;
+        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
 
         if srf.equations().is_empty() {
             return Err("PBES has no equations".into());
@@ -214,13 +221,13 @@ impl PbesSrfLps {
 
         // (Player, Priority) per equation. PBES convention: conjunctive (∧)
         // is owned by ∀ (Odd), disjunctive (∨) is owned by ∃ (Even).
-        let state_info: Vec<(Player, Priority)> = srf
+        let state_info: Vec<PbesVertex> = srf
             .equations()
             .iter()
             .enumerate()
             .map(|(i, eq)| {
                 let player = if eq.is_conjunctive() { Player::Odd } else { Player::Even };
-                (player, Priority::new(priorities[i]))
+                PbesVertex::instantiation(player, Priority::new(priorities[i]))
             })
             .collect();
 
@@ -338,7 +345,7 @@ impl PbesSrfLps {
 impl LPS for PbesSrfLps {
     type Value = usize;
     type Label = ();
-    type StateInfo = (Player, Priority);
+    type StateInfo = PbesVertex;
     type Summand = PbesSrfSummand;
 
     fn initial_state(&self) -> Vec<usize> {
@@ -392,6 +399,14 @@ impl LPS for PbesSrfLps {
     }
 }
 
+impl ParameterLayout for PbesSrfLps {
+    fn parameter_range(&self, state: &[usize]) -> Option<Range<usize>> {
+        // Every SRF state is `[equation_index, params...]`.
+        debug_assert_eq!(state.len(), 1 + self.num_params());
+        Some(1..1 + self.num_params())
+    }
+}
+
 impl Summand for PbesSrfSummand {
     type Value = usize;
     type Label = ();
@@ -401,8 +416,10 @@ impl Summand for PbesSrfSummand {
         &self.read_positions
     }
 
-    fn write_positions(&self) -> &[usize] {
-        &self.write_positions
+    fn effect(&self) -> StateEffect<'_> {
+        // An SRF summand always emits `[target_equation, params...]`, which has
+        // the same length as every source state.
+        StateEffect::Positions(&self.write_positions)
     }
 
     fn enumerate<F>(&self, context: &mut Self::Context, state: &[usize], mut report: F) -> Result<(), MercError>
