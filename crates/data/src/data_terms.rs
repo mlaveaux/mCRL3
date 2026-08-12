@@ -91,10 +91,10 @@ impl DataSymbols {
             data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 2)),
             data_function_symbol_no_index: ManuallyDrop::new(Symbol::new("OpIdNoIndex", 2)),
             data_variable: ManuallyDrop::new(Symbol::new("DataVarId", 2)),
-            data_where_clause: ManuallyDrop::new(Symbol::new("Where", 2)),
+            data_where_clause: ManuallyDrop::new(Symbol::new("Whr", 2)),
             data_untyped_identifier_clause: ManuallyDrop::new(Symbol::new("UntypedIdentifier", 1)),
             data_equation_symbol: ManuallyDrop::new(Symbol::new("DataEqn", 4)),
-            data_whr_decl_symbol: ManuallyDrop::new(Symbol::new("WhrDecl", 2)),
+            data_whr_decl_symbol: ManuallyDrop::new(Symbol::new("DataVarIdInit", 2)),
 
             data_appl: Vec::new(),
         }
@@ -194,7 +194,7 @@ impl DataSymbols {
         term.get_head_symbol() == self.data_equation_symbol.copy()
     }
 
-    /// Returns true iff the given term is a where-clause assignment (`WhrDecl`).
+    /// Returns true iff the given term is a where-clause assignment (`DataVarIdInit`).
     pub(crate) fn is_data_whr_decl<'a, 'b, T: Term<'a, 'b>>(&self, term: &'b T) -> bool {
         term.get_head_symbol() == self.data_whr_decl_symbol.copy()
     }

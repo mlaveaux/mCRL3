@@ -418,6 +418,7 @@ pub(crate) fn lower_equation(
         names,
         next_id: 0,
         encoding,
+        literals: HashMap::new(),
     };
     let condition = match condition {
         Some(condition) => Some(walker.lower(condition)?),
@@ -437,8 +438,8 @@ pub(crate) fn lower_equation(
     let rhs_sort = sorts[*rhs_id];
     let (lhs, rhs) = match ctx.sorts.partial_cmp(lhs_sort, rhs_sort)? {
         Ordering::Equal => (lhs, rhs),
-        Ordering::Less => (walker.coerce(lhs, lhs_sort, rhs_sort)?, rhs),
-        Ordering::Greater => (lhs, walker.coerce(rhs, rhs_sort, lhs_sort)?),
+        Ordering::Less => (walker.coerce(lhs_id, lhs, lhs_sort, rhs_sort)?, rhs),
+        Ordering::Greater => (lhs, walker.coerce(rhs_id, rhs, rhs_sort, lhs_sort)?),
     };
 
     Some(LoweredEquation { condition, lhs, rhs })
@@ -468,6 +469,7 @@ pub(crate) fn lower_expression(
         names,
         next_id: 0,
         encoding,
+        literals: HashMap::new(),
     }
     .lower(expr)
 }
@@ -483,6 +485,10 @@ struct Lowering<'a> {
     next_id: usize,
     /// How numeric literals and numeric coercions are represented.
     encoding: NumberEncoding,
+    /// The decimal text of every bare `Number` node walked so far, keyed by its
+    /// [ExprId], so [Self::coerce] can rebuild a widened literal at its target
+    /// sort instead of wrapping it (see there).
+    literals: HashMap<ExprId, String>,
 }
 
 impl Lowering<'_> {
@@ -496,7 +502,10 @@ impl Lowering<'_> {
 
         match &expr.node {
             DataExprKind::Id(name) => self.lower_id(id, name, sort),
-            DataExprKind::Number(value) => self.lower_number(sort, value),
+            DataExprKind::Number(value) => {
+                self.literals.insert(id, value.clone());
+                self.lower_number(sort, value)
+            }
             DataExprKind::Bool(value) => Some(lower_bool_literal(*value)),
             DataExprKind::Application { function, arguments } => self.lower_application(sort, function, arguments),
             DataExprKind::EmptyList => Some(self.lower_empty_container(sort, ComplexSort::List)),
@@ -517,15 +526,33 @@ impl Lowering<'_> {
         }
     }
 
-    /// Widens `term` from `from` to `to` along the sub-sort lattice, inserting
-    /// the constructor chain (`@cNat`/`@cInt`/`@cReal` composed for the number
-    /// lattice, `@set(@false_, _)`/`@bag(@zero_, _)` for the container lattice
-    /// — see [numeric_coerce]/[container_coerce]) — or returning `term`
-    /// unchanged when the two sorts already coincide. Returns `None` unless
-    /// `from` is `to` or a strict subsort of it (checked via
+    /// Widens the term lowered from node `id` from `from` to `to` along the
+    /// sub-sort lattice, inserting the constructor chain (`@cNat`/`@cInt`/
+    /// `@cReal` composed for the number lattice, `@set(@false_, _)`/
+    /// `@bag(@zero_, _)` for the container lattice — see
+    /// [numeric_coerce]/[container_coerce]) — or returning `term` unchanged
+    /// when the two sorts already coincide. Returns `None` unless `from` is
+    /// `to` or a strict subsort of it (checked via
     /// [crate::SortInterner::partial_cmp]); a `Def` sort has no coercion either
     /// way.
-    fn coerce(&self, term: DataExpression, from: ResolvedSortId, to: ResolvedSortId) -> Option<DataExpression> {
+    ///
+    /// A bare number literal is the exception: rather than widening the term it
+    /// already produced, the literal is *rebuilt* at `to` (see
+    /// [lower_number_literal]), because that is the term the mCRL2 toolset's own
+    /// type checker produces — it types a numeral directly at the sort its
+    /// context expects instead of upcasting the minimal one. The two agree
+    /// under [`NumberEncoding::Binary`], where the widening chain is literally
+    /// how a wider literal is built (`@cNat(@c1)` either way), but not under
+    /// [`NumberEncoding::MachineWord`], where a digit chain has no `@cNat`
+    /// constructor and the coercion would emit a `Pos2Nat` *mapping* call
+    /// around a `Pos` chain instead of the `Nat` chain the literal denotes.
+    fn coerce(
+        &self,
+        id: ExprId,
+        term: DataExpression,
+        from: ResolvedSortId,
+        to: ResolvedSortId,
+    ) -> Option<DataExpression> {
         if from == to {
             return Some(term);
         }
@@ -534,6 +561,10 @@ impl Lowering<'_> {
         }
 
         match (self.ctx.sorts.get(from), self.ctx.sorts.get(to)) {
+            (ResolvedSort::Primitive(_), ResolvedSort::Primitive(to_sort)) if self.literals.contains_key(&id) => {
+                let decimal = &self.literals[&id];
+                Some(lower_number_literal(decimal, *to_sort, self.encoding))
+            }
             (ResolvedSort::Primitive(from_sort), ResolvedSort::Primitive(to_sort)) => {
                 Some(numeric_coerce(term, *from_sort, *to_sort, self.encoding))
             }
@@ -570,9 +601,13 @@ impl Lowering<'_> {
         arguments: &[DataExpr],
     ) -> Option<DataExpression> {
         // Arguments before the applied function, matching generation order.
+        // Each argument's own id is captured before lowering it, so `coerce`
+        // can tell a bare number literal from a term that merely has its sort.
         let mut argument_terms = Vec::with_capacity(arguments.len());
         let mut argument_sorts = Vec::with_capacity(arguments.len());
+        let mut argument_ids = Vec::with_capacity(arguments.len());
         for argument in arguments {
+            argument_ids.push(ExprId::new(self.next_id));
             argument_sorts.push(self.sorts[self.next_id]);
             argument_terms.push(self.lower(argument)?);
         }
@@ -592,8 +627,13 @@ impl Lowering<'_> {
         let domain = domain.clone();
 
         let mut coerced_terms = Vec::with_capacity(argument_terms.len());
-        for ((term, arg_sort), &dom_sort) in argument_terms.into_iter().zip(argument_sorts).zip(domain.iter()) {
-            coerced_terms.push(self.coerce(term, arg_sort, dom_sort)?);
+        for (((term, arg_sort), arg_id), &dom_sort) in argument_terms
+            .into_iter()
+            .zip(argument_sorts)
+            .zip(argument_ids)
+            .zip(domain.iter())
+        {
+            coerced_terms.push(self.coerce(arg_id, term, arg_sort, dom_sort)?);
         }
 
         Some(DataApplication::with_args(&function_term, &coerced_terms).into())
@@ -635,13 +675,14 @@ impl Lowering<'_> {
         let empty: DataExpression = DataFunctionSymbol::with_sort("{}", fset.copy()).into();
         let mut lowered = Vec::with_capacity(members.len());
         for member in members {
+            let member_id = ExprId::new(self.next_id);
             let member_sort = self.sorts[self.next_id];
             let member_term = self.lower(member)?;
-            lowered.push((member_term, member_sort));
+            lowered.push((member_id, member_term, member_sort));
         }
         let mut result = empty;
-        for (member_term, member_sort) in lowered.into_iter().rev() {
-            let coerced = self.coerce(member_term, member_sort, element_id)?;
+        for (member_id, member_term, member_sort) in lowered.into_iter().rev() {
+            let coerced = self.coerce(member_id, member_term, member_sort, element_id)?;
             result = DataApplication::with_args(&fset_insert, &[coerced, result]).into();
         }
         Some(result)
@@ -669,16 +710,18 @@ impl Lowering<'_> {
         let empty: DataExpression = DataFunctionSymbol::with_sort("{:}", fbag.copy()).into();
         let mut lowered = Vec::with_capacity(members.len());
         for member in members {
+            let elem_id = ExprId::new(self.next_id);
             let elem_sort = self.sorts[self.next_id];
             let elem_term = self.lower(&member.expr)?;
+            let mult_id = ExprId::new(self.next_id);
             let mult_sort = self.sorts[self.next_id];
             let mult_term = self.lower(&member.multiplicity)?;
-            lowered.push((elem_term, elem_sort, mult_term, mult_sort));
+            lowered.push((elem_id, elem_term, elem_sort, mult_id, mult_term, mult_sort));
         }
         let mut result = empty;
-        for (elem_term, elem_sort, mult_term, mult_sort) in lowered.into_iter().rev() {
-            let coerced_elem = self.coerce(elem_term, elem_sort, element_id)?;
-            let coerced_mult = self.coerce(mult_term, mult_sort, nat_id)?;
+        for (elem_id, elem_term, elem_sort, mult_id, mult_term, mult_sort) in lowered.into_iter().rev() {
+            let coerced_elem = self.coerce(elem_id, elem_term, elem_sort, element_id)?;
+            let coerced_mult = self.coerce(mult_id, mult_term, mult_sort, nat_id)?;
             result = DataApplication::with_args(&fbag_cinsert, &[coerced_elem, coerced_mult, result]).into();
         }
         Some(result)
@@ -711,6 +754,20 @@ impl Lowering<'_> {
         Some(DataAbstraction::new(binder, &vars, body).into())
     }
 
+    /// Lowers `{ x: S | e }` to the `Set`/`Bag` constructor applied to the
+    /// characteristic function `lambda x: S. e` and the empty finite
+    /// set/bag — `@set(lambda x: S. e, {})` / `@bag(lambda x: S. e, {:})`.
+    ///
+    /// This is the form the mCRL2 toolset's type checker produces: a `Set(S)`
+    /// *is* a `(S -> Bool) # FSet(S)` pair (`set.mcrl2`), so a comprehension has
+    /// no representation of its own in the lowered term — the dedicated
+    /// `SetComp`/`BagComp` binder kinds exist in the aterm schema but are not
+    /// what a checked specification holds.
+    ///
+    /// A bag comprehension's body counts multiplicities, so a `Pos` body is
+    /// widened to the `Nat` the `@bag` multiplicity function requires (the two
+    /// readings of a comprehension are what `Comprehension` in `inference.rs`
+    /// resolves).
     fn lower_setbagcomp(
         &mut self,
         sort: ResolvedSortId,
@@ -721,17 +778,50 @@ impl Lowering<'_> {
             ResolvedSort::Generic { op, subsort } => (*op, *subsort),
             _ => unreachable!("SetBagComp always infers to Set or Bag"),
         };
-        let binder_type = match op {
-            ComplexSort::Set => BinderType::SetComp,
-            ComplexSort::Bag => BinderType::BagComp,
+        let element = lower_sort(self.ctx, self.spec, self.system, element_id);
+        let var = DataVariable::with_sort(variable.identifier.as_str(), element.copy());
+
+        let body_id = ExprId::new(self.next_id);
+        let body_sort = self.sorts[self.next_id];
+        let body = self.lower(predicate)?;
+
+        let (body, range) = match op {
+            ComplexSort::Set => (body, bool_sort()),
+            ComplexSort::Bag => (
+                self.coerce(body_id, body, body_sort, self.ctx.sorts.nat_sort())?,
+                nat_sort(),
+            ),
             _ => unreachable!("SetBagComp infers only to Set or Bag"),
         };
-        let var = DataVariable::with_sort(
-            variable.identifier.as_str(),
-            lower_sort(self.ctx, self.spec, self.system, element_id).copy(),
+        let characteristic: DataExpression = DataAbstraction::new(BinderType::Lambda, &[var], body).into();
+
+        let container: DataSortExpression = SortCons::new(container_kind(op), element.clone()).into();
+        let finite_kind = match op {
+            ComplexSort::Set => ContainerSortKind::FSet,
+            ComplexSort::Bag => ContainerSortKind::FBag,
+            _ => unreachable!("SetBagComp infers only to Set or Bag"),
+        };
+        let finite: DataSortExpression = SortCons::new(finite_kind, element.clone()).into();
+        let empty: DataExpression = DataFunctionSymbol::with_sort(
+            match op {
+                ComplexSort::Set => "{}",
+                _ => "{:}",
+            },
+            finite.copy(),
+        )
+        .into();
+
+        let function_sort: DataSortExpression = SortArrow::new(&[element], range).into();
+        let constructor = function_symbol(
+            match op {
+                ComplexSort::Set => "@set",
+                _ => "@bag",
+            },
+            &[function_sort, finite],
+            container,
         );
-        let body = self.lower(predicate)?;
-        Some(DataAbstraction::new(binder_type, &[var], body).into())
+
+        Some(DataApplication::with_args(&constructor, &[characteristic, empty]).into())
     }
 
     fn lower_whr(&mut self, expr: &DataExpr, assignments: &[merc_syntax::Assignment]) -> Option<DataExpression> {
@@ -1399,20 +1489,41 @@ mod tests {
 
     #[test]
     fn test_setcomp_lowers() {
+        // A comprehension becomes the `Set` constructor applied to its
+        // characteristic function, not a `SetComp` binder — see
+        // `Lowering::lower_setbagcomp`.
         let equation = lower("map s: Set(Nat); eqn s = { x: Nat | x == 0 };").expect("set comprehension lowers");
-        assert!(
-            is_data_binder(&equation.rhs),
-            "rhs should be a binder: {}",
+        assert_eq!(
+            equation.rhs.to_string(),
+            "@set(Binder(Lambda, [DataVarId(x, SortId(Nat))], DataAppl(OpIdNoIndex(==, SortArrow([SortId(Nat),SortId(Nat)], SortId(Bool))), DataVarId(x, SortId(Nat)), OpIdNoIndex(@c0, SortId(Nat)))), {})",
+            "{}",
             equation.rhs
         );
     }
 
     #[test]
     fn test_bagcomp_lowers() {
+        // The body counts multiplicities, so it is widened to `Nat`; `x + 0`
+        // is already `Nat` here, and the empty finite bag completes the pair.
         let equation = lower("map b: Bag(Nat); eqn b = { x: Nat | x + 0 };").expect("bag comprehension lowers");
-        assert!(
-            is_data_binder(&equation.rhs),
-            "rhs should be a binder: {}",
+        assert_eq!(
+            equation.rhs.to_string(),
+            "@bag(Binder(Lambda, [DataVarId(x, SortId(Nat))], DataAppl(OpIdNoIndex(+, SortArrow([SortId(Nat),SortId(Nat)], SortId(Nat))), DataVarId(x, SortId(Nat)), OpIdNoIndex(@c0, SortId(Nat)))), {:})",
+            "{}",
+            equation.rhs
+        );
+    }
+
+    #[test]
+    fn test_bagcomp_widens_a_positive_body_to_nat() {
+        // A `Pos` body cannot be the multiplicity function `@bag` requires, so
+        // the literal is rebuilt at `Nat` (the same rule `coerce` applies to
+        // any bare literal).
+        let equation = lower("map b: Bag(Nat); eqn b = { x: Nat | 1 };").expect("bag comprehension lowers");
+        assert_eq!(
+            equation.rhs.to_string(),
+            "@bag(Binder(Lambda, [DataVarId(x, SortId(Nat))], DataAppl(OpIdNoIndex(@cNat, SortArrow([SortId(Pos)], SortId(Nat))), OpIdNoIndex(@c1, SortId(Pos)))), {:})",
+            "{}",
             equation.rhs
         );
     }

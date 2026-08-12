@@ -405,7 +405,7 @@ impl DataSpecification {
     ///
     /// Panics if the expression type checks but Phase-4 lowering cannot render
     /// it — an internal inconsistency between the two phases, treated the same
-    /// way as for a user equation in [`lower_data_specification`].
+    /// way as for a user equation in [`Self::lower_data_specification`].
     pub fn typecheck_expression(&mut self, expr: &DataExpr) -> Result<DataExpression, InferenceError> {
         // The built-in operator nodes (`x + y`, `[x, y]`, `f[x -> y]`) become
         // applications first, exactly as `from_untyped_with` does for the

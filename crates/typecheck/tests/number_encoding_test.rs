@@ -121,22 +121,25 @@ fn test_literals_lower_to_the_selected_representation() {
         "@most_significant_digitNat(0)"
     );
 
-    // A positive literal infers as `Pos` and is widened to `Nat`, so both
-    // results carry the encoding's Pos-to-Nat conversion around a `Pos` literal:
-    // a bit chain of `@c1`/`@cDub` versus a base-2^64 digit chain.
+    // A positive literal infers as `Pos`, but a *bare* literal widened to `Nat`
+    // is rebuilt at `Nat` rather than wrapped in the encoding's Pos-to-Nat
+    // conversion — the term the mCRL2 toolset's own type checker produces (see
+    // `Lowering::coerce`). Under the binary encoding the two coincide, since
+    // `@cNat` is literally how a `Nat` literal is built; under the machine-word
+    // encoding it is the `Nat` digit chain, not `Pos2Nat` around a `Pos` one.
     assert_eq!(
         lowered_rhs("5", "Nat", NumberEncoding::Binary),
         "@cNat(@cDub(true, @cDub(false, @c1)))"
     );
     assert_eq!(
         lowered_rhs("5", "Nat", NumberEncoding::MachineWord),
-        "Pos2Nat(@most_significant_digit(5))"
+        "@most_significant_digitNat(5)"
     );
 
     // 2^64 is the first literal needing two digits.
     assert_eq!(
         lowered_rhs("18446744073709551616", "Nat", NumberEncoding::MachineWord),
-        "Pos2Nat(@concat_digit(@most_significant_digit(1), 0))"
+        "@concat_digit(@most_significant_digitNat(1), 0)"
     );
 }
 
