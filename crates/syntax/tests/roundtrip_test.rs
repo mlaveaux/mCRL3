@@ -11,6 +11,7 @@ use merc_syntax::ProcExprBinaryOp;
 use merc_syntax::ProcessExprKind;
 use merc_syntax::Span;
 use merc_syntax::StateFrmKind;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedPres;
@@ -20,10 +21,7 @@ use merc_syntax::line_column;
 use merc_syntax::make_process_specification;
 use merc_syntax::random_lps;
 use merc_syntax::random_pbes;
-use merc_syntax::visit_statefrm;
 use merc_utilities::random_test;
-
-// --- Regression tests for the review fixes -------------------------------------------------------
 
 /// PBES quantifiers used to panic because `forall`/`exists` were registered as
 /// prefix operators but only handled in the postfix closure.
@@ -113,15 +111,14 @@ fn visitor_breaks_from_nested_node() {
     // The `Y` identifier only appears below the top-level conjunction.
     let spec = UntypedStateFrmSpec::parse("true && (mu X. (X && Y))").unwrap();
 
-    let found = visit_statefrm(&spec.formula, |frm| {
+    let found = spec.formula.visit(|frm| {
         if let StateFrmKind::Id(name, _) = &frm.node
             && name == "Y"
         {
-            return Ok(ControlFlow::Break(name.clone()));
+            return ControlFlow::Break(name.clone());
         }
-        Ok(ControlFlow::Continue(()))
-    })
-    .unwrap();
+        ControlFlow::Continue(())
+    });
 
     assert_eq!(found.as_deref(), Some("Y"), "Break value from a nested node was lost");
 }
@@ -199,8 +196,6 @@ fn act_decl_with_args_prints_colon_hash() {
     );
     UntypedProcessSpecification::parse(&printed).expect("printed form must reparse");
 }
-
-// --- Randomized print/parse round-trip properties ------------------------------------------------
 
 /// Property: for every generated AST, the printed form parses, and printing the
 /// reparsed AST yields exactly the same string (a fixpoint of `parse ∘ display`).

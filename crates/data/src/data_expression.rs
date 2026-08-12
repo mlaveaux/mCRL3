@@ -640,14 +640,19 @@ mod inner {
     }
 }
 
+pub use inner::DataAbstraction;
 pub use inner::DataApplication;
 pub use inner::DataApplicationRef;
+pub use inner::DataEquation;
 pub use inner::DataExpression;
 pub use inner::DataExpressionRef;
 pub use inner::DataFunctionSymbol;
 pub use inner::DataFunctionSymbolRef;
 pub use inner::DataVariable;
 pub use inner::DataVariableRef;
+pub use inner::DataWhereClause;
+pub use inner::DataWhrDecl;
+pub use inner::MachineNumber;
 pub use inner::MachineNumberRef;
 
 /// Returns the number of leading `ATerm` arguments that are *not* data sub-expressions and

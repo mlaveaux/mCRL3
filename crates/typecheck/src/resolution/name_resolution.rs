@@ -1,6 +1,4 @@
 use std::collections::HashSet;
-use std::convert::Infallible;
-use std::ops::ControlFlow;
 
 use log::debug;
 
@@ -15,9 +13,8 @@ use merc_syntax::EquationId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::apply_sort_expression;
-use merc_syntax::try_visit_data_expr_mut;
 
 use crate::WellTypedError;
 
@@ -128,7 +125,7 @@ fn apply_sorts_in_data_expr<E, F>(expr: &mut DataExpr, f: &mut F) -> Result<(), 
 where
     F: FnMut(&SortExpression) -> Result<SortExpression, E>,
 {
-    let _: Option<Infallible> = try_visit_data_expr_mut(expr, |expr| {
+    expr.try_transform(&mut |expr| {
         match &mut expr.node {
             DataExprKind::Lambda { variables, body: _ }
             | DataExprKind::Quantifier {
@@ -145,16 +142,14 @@ where
             }
             _ => {}
         }
-        Ok(ControlFlow::Continue(()))
-    })?;
-
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Rewrites every `Reference` node of `sort` to `Resolved(name, DefId)` using
 /// the sort-name index built by [resolve_names], or fails on an undeclared name.
 fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Result<SortExpression, WellTypedError> {
-    apply_sort_expression(sort.clone(), |expr| {
+    sort.clone().apply(|expr| {
         if let SortExpressionKind::Reference(name) = &expr.node {
             if let Some(id) = resolved.index(name) {
                 return Ok(Some(SortExpressionKind::Resolved(name.clone(), DefId::new(*id)).into()));

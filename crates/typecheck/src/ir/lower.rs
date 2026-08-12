@@ -6,9 +6,8 @@ use merc_syntax::DataExpr;
 use merc_syntax::DataExprBinaryOp;
 use merc_syntax::DataExprKind;
 use merc_syntax::Span;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::map_data_expr;
-use merc_syntax::visit_data_expr;
 
 /// The Appendix-B name of the function update operation, see
 /// `crates/syntax/spec/function_update.mcrl2`.
@@ -53,10 +52,11 @@ pub(crate) fn lower_data_expressions(spec: &mut UntypedDataSpecification) {
 /// kept as dedicated nodes: sort inference treats them specially, constraining
 /// their sort structurally instead of through a declared symbol. The result
 /// satisfies [is_lowered]; lowering is idempotent.
-pub(crate) fn lower_data_expr(expr: DataExpr) -> DataExpr {
-    map_data_expr(expr, |expr| {
-        let DataExpr { node, span } = expr;
-        match node {
+pub(crate) fn lower_data_expr(mut expr: DataExpr) -> DataExpr {
+    expr.transform(|expr| {
+        // The node is taken out so that its parts can be moved into the replacement.
+        let DataExpr { node, span } = std::mem::replace(expr, DataExprKind::EmptyList.into());
+        *expr = match node {
             DataExprKind::Binary { op, lhs, rhs } => apply(op.to_string(), vec![*lhs, *rhs], span),
             DataExprKind::Unary { op, expr } => apply(op.to_string(), vec![*expr], span),
             DataExprKind::List(elements) => elements
@@ -71,15 +71,17 @@ pub(crate) fn lower_data_expr(expr: DataExpr) -> DataExpr {
                 span,
             ),
             node => node.spanned(span),
-        }
-    })
+        };
+    });
+
+    expr
 }
 
 /// Returns true when the expression contains none of the nodes that
 /// [lower_data_expr] rewrites; the postcondition of lowering and the
 /// precondition of Phase-3 sort inference.
 pub(crate) fn is_lowered(expr: &DataExpr) -> bool {
-    visit_data_expr(expr, |expr| match &expr.node {
+    expr.visit(|expr| match &expr.node {
         DataExprKind::Binary { .. }
         | DataExprKind::Unary { .. }
         | DataExprKind::List(_)

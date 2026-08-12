@@ -15,9 +15,8 @@ use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
 use merc_syntax::Span;
 use merc_syntax::Spanned;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::apply_sort_expression;
-use merc_syntax::map_data_expr;
 
 /// Hoists every anonymous structured sort (a `struct` occurring inside another
 /// sort expression rather than as the body of a sort declaration) into a fresh
@@ -96,40 +95,22 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
 /// binder over an anonymous `struct` would be left with an unresolvable sort
 /// and its equation rejected rather than type checked.
 fn hoist_binder_sorts_in_place(hoister: &mut Hoister, expr: &mut DataExpr) {
-    let owned = std::mem::replace(expr, DataExprKind::EmptyList.into());
-    *expr = hoist_binder_sorts(hoister, owned);
-}
-
-fn hoist_binder_sorts(hoister: &mut Hoister, expr: DataExpr) -> DataExpr {
-    map_data_expr(expr, |expr| {
-        let DataExpr { node, span } = expr;
-        match node {
-            DataExprKind::SetBagComp {
-                mut variable,
-                predicate,
-            } => {
-                variable.sort = hoister.hoist_non_decl(variable.sort);
-                DataExprKind::SetBagComp { variable, predicate }.spanned(span)
-            }
-            DataExprKind::Lambda { mut variables, body } => {
-                for variable in &mut variables {
-                    variable.sort = hoister.hoist_non_decl(variable.sort.clone());
-                }
-                DataExprKind::Lambda { variables, body }.spanned(span)
-            }
-            DataExprKind::Quantifier {
-                op,
-                mut variables,
-                body,
-            } => {
-                for variable in &mut variables {
-                    variable.sort = hoister.hoist_non_decl(variable.sort.clone());
-                }
-                DataExprKind::Quantifier { op, variables, body }.spanned(span)
-            }
-            node => node.spanned(span),
+    expr.transform(|expr| match &mut expr.node {
+        DataExprKind::SetBagComp { variable, predicate: _ } => {
+            variable.sort = hoister.hoist_non_decl(variable.sort.clone());
         }
-    })
+        DataExprKind::Lambda { variables, body: _ }
+        | DataExprKind::Quantifier {
+            op: _,
+            variables,
+            body: _,
+        } => {
+            for variable in variables {
+                variable.sort = hoister.hoist_non_decl(variable.sort.clone());
+            }
+        }
+        _ => {}
+    });
 }
 
 struct Hoister {
@@ -148,7 +129,7 @@ impl Hoister {
     /// named sort declaration's constructor arguments (the only positions that
     /// should expose global constructors).
     fn hoist(&mut self, sort: SortExpression) -> SortExpression {
-        apply_sort_expression(sort, |expr| -> Result<Option<SortExpression>, Infallible> {
+        sort.apply(|expr| -> Result<Option<SortExpression>, Infallible> {
             if let SortExpressionKind::Struct { inner } = &expr.node {
                 // Hoist the constructor arguments first, so identical structs
                 // have identical bodies regardless of nesting.
@@ -181,7 +162,7 @@ impl Hoister {
     /// declaration-position occurrence, the existing name (with its full body)
     /// is reused, preserving the constructor visibility of that declaration.
     fn hoist_non_decl(&mut self, sort: SortExpression) -> SortExpression {
-        apply_sort_expression(sort, |expr| -> Result<Option<SortExpression>, Infallible> {
+        sort.apply(|expr| -> Result<Option<SortExpression>, Infallible> {
             if let SortExpressionKind::Struct { inner } = &expr.node {
                 let mut inner = inner.clone();
                 for constructor in &mut inner {

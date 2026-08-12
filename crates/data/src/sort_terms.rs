@@ -247,6 +247,10 @@ mod inner {
 
 pub use inner::BasicSort;
 pub use inner::BasicSortRef;
+pub use inner::ContainerSortKind;
+pub use inner::SortAlias;
+pub use inner::SortArrow;
+pub use inner::SortCons;
 pub use inner::SortExpression;
 pub use inner::SortExpressionRef;
 

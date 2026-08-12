@@ -417,9 +417,10 @@ impl ControlFlowGraphVertex {
 
     /// Construct a new vertex and retrieve its edges as well.
     /// TODO: This should probably be private.
-    pub fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, cfg: usize, vertex: usize) -> Self {
-        let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, cfg);
-        let vertex = mcrl2_local_control_flow_graph_vertex(cfg, vertex);
+    pub(crate) fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, cfg: usize, vertex: usize) -> Self {
+        let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, cfg).expect("cfg index is in range");
+        // Only ever called with an index from `0..mcrl2_local_control_flow_graph_vertices`.
+        let vertex = mcrl2_local_control_flow_graph_vertex(cfg, vertex).expect("vertex index is in range");
         let outgoing_edges_ffi = mcrl2_local_control_flow_graph_vertex_outgoing_edges(vertex);
 
         let outgoing_edges = outgoing_edges_ffi

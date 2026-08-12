@@ -18,6 +18,7 @@ mod sharded_counter;
 mod tagged_index;
 mod test_logger;
 mod timing;
+mod traversal;
 
 pub(crate) use fixed_cache_policy::*;
 
@@ -36,6 +37,8 @@ pub use tagged_index::TagIndex;
 pub use test_logger::test_logger;
 pub use test_logger::test_threads;
 pub use timing::Timing;
+pub use traversal::Step;
+pub use traversal::Visit;
 
 #[cfg(kani)]
 pub use kani_rng::*;

@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 
-mod builder;
 mod consume;
 mod counterexample_formula;
 mod parse;
@@ -12,15 +11,12 @@ pub mod random_pbes;
 mod spanned;
 mod syntax_tree;
 mod syntax_tree_display;
-mod visitor;
+mod traverse;
 
 pub(crate) use consume::*;
 pub(crate) use precedence::*;
 pub(crate) use syntax_tree::*;
 
-pub use builder::apply_sort_expression;
-pub use builder::apply_statefrm;
-pub use builder::map_data_expr;
 pub use counterexample_formula::generate_distinguishing_formula;
 pub use counterexample_formula::generate_refinement_formula;
 pub use parse::Mcrl2Parser;
@@ -83,11 +79,5 @@ pub use syntax_tree::UntypedPres;
 pub use syntax_tree::UntypedProcessSpecification;
 pub use syntax_tree::UntypedStateFrmSpec;
 pub use syntax_tree_display::line_column;
-pub use visitor::SortDescend;
-pub use visitor::try_visit_data_expr_mut;
-pub use visitor::try_visit_sort_expr_with;
-pub use visitor::visit_action_formula;
-pub use visitor::visit_data_expr;
-pub use visitor::visit_regular_formula;
-pub use visitor::visit_sort_expr;
-pub use visitor::visit_statefrm;
+pub use traverse::Recursion;
+pub use traverse::Traverse;
