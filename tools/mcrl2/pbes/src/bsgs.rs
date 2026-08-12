@@ -50,19 +50,6 @@ impl DensePermutation {
         result
     }
 
-    /// Returns `π⁻¹` applied to the positions of `v`, i.e. `result[i] = v[π(i)]`.
-    ///
-    /// Gathering by `π` avoids materialising [`DensePermutation::inverse`] just to
-    /// scatter with it, which is the hot path of [`Bsgs::canonicalize`].
-    pub(crate) fn apply_inverse_to_vec(&self, v: &[usize]) -> Vec<usize> {
-        debug_assert_eq!(
-            v.len(),
-            self.images.len(),
-            "permutation degree must match vector length"
-        );
-        self.images.iter().map(|&i| v[i]).collect()
-    }
-
     /// Compose: returns the permutation `α ∘ β` where `β` is applied first.
     /// `compose(α, β).apply(x) == α.apply(β.apply(x))`.
     pub(crate) fn compose(alpha: &DensePermutation, beta: &DensePermutation) -> Self {
@@ -90,9 +77,41 @@ pub(crate) struct SchreierLevel {
     /// The point β fixed by the stabilizer at this level.
     pub(crate) base_point: usize,
 
-    /// Maps orbit point `x` to the unique coset representative `u` with
-    /// `u(base_point) == x`.
-    pub(crate) transversal: HashMap<usize, DensePermutation>,
+    /// The coset representatives as `(x, u)` pairs, where `x` is an orbit point
+    /// and `u` the unique representative with `u(base_point) == x`.
+    ///
+    /// A flat vector rather than a map because canonicalization only ever scans
+    /// it in order, and needs `x` alongside `u` to score a candidate.
+    pub(crate) transversal: Vec<(usize, DensePermutation)>,
+}
+
+impl SchreierLevel {
+    /// Builds a level from a transversal keyed on orbit point.
+    fn new(base_point: usize, transversal: HashMap<usize, DensePermutation>) -> Self {
+        SchreierLevel {
+            base_point,
+            transversal: transversal.into_iter().collect(),
+        }
+    }
+}
+
+/// Reusable buffers owned by the caller, so that canonicalizing a state
+/// allocates nothing.
+#[derive(Default)]
+pub(crate) struct CanonicalizeContext {
+    /// The candidate prefixes of the current level, concatenated as image
+    /// vectors: candidate `k` is `current[k * n..(k + 1) * n]`.
+    current: Vec<usize>,
+
+    /// The same arena for the level being built; swapped with `current` per level.
+    next: Vec<usize>,
+
+    /// Indices `(candidate, transversal slot)` of the pairs that achieve the
+    /// level's best value.
+    survivors: Vec<(usize, usize)>,
+
+    /// The lex-least full image found in the final comparison.
+    best: Vec<usize>,
 }
 
 /// A base and strong generating set, stored as a stabilizer chain.
@@ -193,16 +212,34 @@ impl Bsgs {
     /// is fixed by the whole group at that level, hence contributes the same value
     /// to every candidate.
     ///
-    /// Cost: Σ |U_i| permutation compositions, versus |orbit|·n for the naive BFS.
+    /// Cost: Σ |U_i| transversal scans and one composition per surviving candidate,
+    /// versus |orbit|·n for the naive BFS.
     pub(crate) fn canonicalize(&self, state: &[usize], param_offset: usize) -> Vec<usize> {
+        let mut out = Vec::with_capacity(state.len());
+        self.canonicalize_into(state, param_offset, &mut CanonicalizeContext::default(), &mut out);
+        out
+    }
+
+    /// [`Bsgs::canonicalize`] writing into `out` and borrowing `scratch`, so that
+    /// a call costs no allocation. Both are cleared first; reuse them across calls.
+    pub(crate) fn canonicalize_into(
+        &self,
+        state: &[usize],
+        param_offset: usize,
+        scratch: &mut CanonicalizeContext,
+        out: &mut Vec<usize>,
+    ) {
+        out.clear();
         if self.chain.is_empty() {
-            return state.to_vec();
+            out.extend_from_slice(state);
+            return;
         }
 
+        let n = self.n;
         let params: &[usize] = &state[param_offset..];
         debug_assert_eq!(
             params.len(),
-            self.n,
+            n,
             "canonicalize requires a full parameter block; sinks and subformula states have none"
         );
         debug_assert!(
@@ -210,50 +247,63 @@ impl Bsgs {
             "the greedy relies on a strictly increasing base"
         );
 
+        let CanonicalizeContext {
+            current,
+            next,
+            survivors,
+            best,
+        } = scratch;
+
         // Candidate prefixes `u_1 ∘ … ∘ u_i` that all achieve the lex-min entries
-        // at base points β_1, …, β_i decided so far.
-        let mut current: Vec<DensePermutation> = vec![DensePermutation::identity(self.n)];
+        // at base points β_1, …, β_i decided so far, as concatenated image vectors.
+        current.clear();
+        current.extend(0..n); // the identity, the empty product
 
         for level in &self.chain {
-            let base_point = level.base_point;
-            let mut next_current: Vec<DensePermutation> = Vec::new();
+            // Score every extension without building it. Extending on the right
+            // gives `(prefix ∘ u)(β_i) = prefix(u(β_i))`, and `u(β_i)` is exactly
+            // the orbit point the transversal entry is paired with, so the image
+            // entry `w[β_i] = params[(prefix ∘ u)(β_i)]` is one lookup away.
+            survivors.clear();
             let mut best_value = usize::MAX;
-
-            for prefix in &current {
-                for u in level.transversal.values() {
-                    // Extend the factorisation on the right: `u` is applied first,
-                    // so this builds `u_1 ∘ … ∘ u_{i-1} ∘ u_i`.
-                    let extended = DensePermutation::compose(prefix, u);
-
-                    // The image entry at this base point, `w[β_i] = params[σ(β_i)]`.
-                    let value = params[extended.apply(base_point)];
+            for (p, prefix) in current.chunks_exact(n).enumerate() {
+                for (u_idx, &(orbit_point, _)) in level.transversal.iter().enumerate() {
+                    let value = params[prefix[orbit_point]];
 
                     if value < best_value {
                         best_value = value;
-                        next_current.clear();
-                        next_current.push(extended);
+                        survivors.clear();
+                        survivors.push((p, u_idx));
                     } else if value == best_value {
-                        next_current.push(extended);
+                        survivors.push((p, u_idx));
                     }
                 }
             }
 
-            current = next_current;
+            // Only now compose, and only for the extensions that survived.
+            next.clear();
+            for &(p, u_idx) in survivors.iter() {
+                let prefix = &current[p * n..(p + 1) * n];
+                let u = &level.transversal[u_idx].1;
+                next.extend(u.images.iter().map(|&x| prefix[x]));
+            }
+
+            std::mem::swap(current, next);
         }
 
         // The surviving candidates agree on every base point but may still differ
-        // on positions the base does not cover, so compare the full images.
-        let mut min_params: Option<Vec<usize>> = None;
-        for sigma in &current {
-            let candidate = sigma.apply_inverse_to_vec(params);
-            if min_params.as_ref().is_none_or(|m| candidate < *m) {
-                min_params = Some(candidate);
+        // on positions the base does not cover, so compare the full images
+        // `w[i] = params[σ(i)]`, which `cmp` does without building them.
+        best.clear();
+        for sigma in current.chunks_exact(n) {
+            if best.is_empty() || sigma.iter().map(|&i| params[i]).cmp(best.iter().copied()).is_lt() {
+                best.clear();
+                best.extend(sigma.iter().map(|&i| params[i]));
             }
         }
 
-        let mut result = state[..param_offset].to_vec();
-        result.extend_from_slice(min_params.as_deref().unwrap_or(params));
-        result
+        out.extend_from_slice(&state[..param_offset]);
+        out.extend_from_slice(if best.is_empty() { params } else { best });
     }
 
     /// Flat list of all generators appearing across all levels.
@@ -263,7 +313,7 @@ impl Bsgs {
 
         let mut gens: HashSet<DensePermutation> = HashSet::new();
         for level in &self.chain {
-            for u in level.transversal.values() {
+            for (_, u) in &level.transversal {
                 gens.insert(u.clone());
                 gens.insert(u.inverse());
             }
@@ -436,10 +486,7 @@ fn parse_schreier_level(s: &str, n: usize) -> Result<SchreierLevel, MercError> {
     let transversal_str = transversal_str.ok_or_else(|| MercError::from("Missing 'transversal' in rec"))?;
 
     let transversal = parse_transversal_list(&transversal_str, base_point, n)?;
-    Ok(SchreierLevel {
-        base_point,
-        transversal,
-    })
+    Ok(SchreierLevel::new(base_point, transversal))
 }
 
 /// Parse `[ perm, perm, ... ]` where the i-th perm maps `base_point` to
@@ -567,10 +614,7 @@ fn schreier_sims_chain(gens: &[DensePermutation], n: usize) -> Vec<SchreierLevel
     // Compute Schreier generators for the stabilizer Stab(base_point).
     let stab_gens = schreier_generators(gens, &transversal, base_point);
 
-    let mut chain = vec![SchreierLevel {
-        base_point,
-        transversal,
-    }];
+    let mut chain = vec![SchreierLevel::new(base_point, transversal)];
 
     if !stab_gens.is_empty() {
         let mut sub = schreier_sims_chain(&stab_gens, n);

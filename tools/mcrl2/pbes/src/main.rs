@@ -17,9 +17,9 @@ use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
 use merc_tools::report_error;
+use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use merc_unsafety::print_allocator_metrics;
 
 use crate::bsgs::Bsgs;
 use crate::explore_common::ParameterLayoutLPS;

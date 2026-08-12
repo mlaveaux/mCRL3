@@ -36,6 +36,23 @@ mod inner {
 pub use inner::ATermString;
 pub use inner::ATermStringRef;
 
+impl ATermStringRef<'static> {
+    /// Creates a reference to the maximally shared aterm_string at `term`.
+    ///
+    /// Two occurrences of the same name are the same term, so the resulting
+    /// reference can be used as a hash key that identifies a name without
+    /// rendering it to a `String`.
+    ///
+    /// # Safety
+    ///
+    /// The term at `term` must stay live for the whole of `'static`, i.e. for as
+    /// long as the returned reference is reachable; see [`crate::ATermRef`].
+    pub unsafe fn from_address(term: *const crate::_aterm) -> ATermStringRef<'static> {
+        // SAFETY: the caller upholds that the term stays live for `'static`.
+        ATermStringRef::new(unsafe { ATermRef::new(term) })
+    }
+}
+
 impl fmt::Display for ATermString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.str())

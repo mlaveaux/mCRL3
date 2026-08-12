@@ -6,6 +6,7 @@ use merc_explore::Summand;
 use merc_utilities::MercError;
 
 use crate::bsgs::Bsgs;
+use crate::bsgs::CanonicalizeContext;
 use crate::explore_common::ParameterLayoutLPS;
 
 /// Wraps any `LPS<Value = usize>` and canonicalizes every enumerated next-state
@@ -47,6 +48,13 @@ pub(crate) struct QuotientSummand<P: ParameterLayoutLPS<Value = usize>> {
 /// Per-thread enumeration context for a [`QuotientLps`].
 pub(crate) struct QuotientContext<P: ParameterLayoutLPS<Value = usize>> {
     inner: <P::Summand as Summand>::Context,
+
+    /// Working buffers of [`Bsgs::canonicalize_into`], so that canonicalizing a
+    /// next state costs no allocation.
+    scratch: CanonicalizeContext,
+
+    /// The canonicalized next state handed to the caller's callback.
+    canonical: Vec<usize>,
 }
 
 // SAFETY: Neither struct has interior mutability of its own (no UnsafeCell /
@@ -114,6 +122,8 @@ where
     fn create_context(&self) -> QuotientContext<P> {
         QuotientContext {
             inner: self.inner.create_context(),
+            scratch: CanonicalizeContext::default(),
+            canonical: Vec::new(),
         }
     }
 
@@ -151,7 +161,16 @@ where
         let bsgs = &self.bsgs;
         let inner = &*self.inner;
         let param_offset = self.param_offset;
-        self.inner.summands()[self.index].enumerate(&mut context.inner, state, |label, next| {
+
+        // Destructured so the closure can borrow the canonicalization buffers
+        // while the inner summand holds its own context.
+        let QuotientContext {
+            inner: inner_context,
+            scratch,
+            canonical,
+        } = context;
+
+        self.inner.summands()[self.index].enumerate(inner_context, state, |label, next| {
             match inner.parameter_range(next) {
                 Some(range) => {
                     debug_assert_eq!(
@@ -159,8 +178,8 @@ where
                         "the parameter block must start where the group acts"
                     );
                     debug_assert_eq!(range.len(), bsgs.n, "the group must act on the whole parameter block");
-                    let canon = bsgs.canonicalize(next, param_offset);
-                    report(label, &canon)
+                    bsgs.canonicalize_into(next, param_offset, scratch, canonical);
+                    report(label, canonical)
                 }
                 // Sinks and subformula vertices carry no data parameters, so the
                 // group does not act on them; permuting their payload would
