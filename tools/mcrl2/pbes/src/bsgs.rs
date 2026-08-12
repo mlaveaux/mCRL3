@@ -1,6 +1,5 @@
 /// Authors: Menno Bartels and Maurice Laveaux
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::collections::hash_map::Entry;
 
@@ -36,11 +35,13 @@ impl DensePermutation {
 
     /// Returns the result of permuting the *positions* of `v`, i.e.
     /// `result[π(i)] = v[i]`  ↔  `result[i] = v[π⁻¹(i)]`.
-    ///
-    /// This matches Definition 5 of the paper: π(v)[i] = v[π⁻¹(i)].
     #[cfg(test)]
     pub(crate) fn apply_to_vec(&self, v: &[usize]) -> Vec<usize> {
-        debug_assert_eq!(v.len(), self.images.len(), "permutation degree must match vector length");
+        debug_assert_eq!(
+            v.len(),
+            self.images.len(),
+            "permutation degree must match vector length"
+        );
         let n = v.len();
         let mut result = vec![0usize; n];
         for i in 0..n {
@@ -54,7 +55,11 @@ impl DensePermutation {
     /// Gathering by `π` avoids materialising [`DensePermutation::inverse`] just to
     /// scatter with it, which is the hot path of [`Bsgs::canonicalize`].
     pub(crate) fn apply_inverse_to_vec(&self, v: &[usize]) -> Vec<usize> {
-        debug_assert_eq!(v.len(), self.images.len(), "permutation degree must match vector length");
+        debug_assert_eq!(
+            v.len(),
+            self.images.len(),
+            "permutation degree must match vector length"
+        );
         self.images.iter().map(|&i| v[i]).collect()
     }
 
@@ -75,7 +80,7 @@ impl DensePermutation {
         DensePermutation { images: inv }
     }
 
-    pub(crate) fn n(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.images.len()
     }
 }
@@ -127,6 +132,8 @@ impl Bsgs {
     /// against; the tool itself always uses the pruned walk.
     #[cfg(test)]
     pub(crate) fn canonicalize_naive(&self, state: &[usize], param_offset: usize) -> Vec<usize> {
+        use std::collections::HashSet;
+
         if self.chain.is_empty() {
             return state.to_vec();
         }
@@ -148,8 +155,9 @@ impl Bsgs {
             if current < min_params {
                 min_params = current.clone();
             }
+
             for g in &generators {
-                debug_assert_eq!(g.n(), n);
+                debug_assert_eq!(g.len(), n);
                 let next = g.apply_to_vec(&current);
                 if visited.insert(next.clone()) {
                     queue.push_back(next);
@@ -251,6 +259,8 @@ impl Bsgs {
     /// Flat list of all generators appearing across all levels.
     #[cfg(test)]
     fn all_generators(&self) -> Vec<DensePermutation> {
+        use std::collections::HashSet;
+
         let mut gens: HashSet<DensePermutation> = HashSet::new();
         for level in &self.chain {
             for u in level.transversal.values() {
@@ -314,17 +324,21 @@ fn permutation_to_gap_cycles(perm: &Permutation, n: usize) -> String {
             visited[start] = true;
             continue;
         }
+
         result.push('(');
         let mut current = start;
         let mut first = true;
+
         loop {
             if !first {
                 result.push(',');
             }
+
             first = false;
             result.push_str(&(current + 1).to_string()); // 1-based
             visited[current] = true;
             current = dense.apply(current);
+
             if current == start {
                 break;
             }
@@ -577,7 +591,7 @@ fn compute_orbit_transversal(
     let mut transversal: HashMap<usize, DensePermutation> = HashMap::new();
     let mut queue: VecDeque<usize> = VecDeque::new();
 
-    transversal.insert(base_point, DensePermutation::identity(gens[0].n()));
+    transversal.insert(base_point, DensePermutation::identity(gens[0].len()));
     queue.push_back(base_point);
 
     while let Some(x) = queue.pop_front() {
@@ -612,7 +626,7 @@ fn schreier_generators(
             let schr = DensePermutation::compose(&u_sx_inv, &DensePermutation::compose(s, u_x));
 
             // Keep only non-identity Schreier generators.
-            let id: Vec<usize> = (0..schr.n()).collect();
+            let id: Vec<usize> = (0..schr.len()).collect();
             if schr.images != id {
                 result.push(schr);
             }

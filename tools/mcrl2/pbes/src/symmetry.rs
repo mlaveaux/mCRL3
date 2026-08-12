@@ -803,7 +803,9 @@ fn apply_permutation(expression: &PbesExpression, parameters: &[DataVariable], p
     let result = substitute_data_expressions(expression, sigma);
 
     let pi = (0..parameters.len()).map(|i| pi.value(i)).collect::<Vec<usize>>();
-    reorder_propositional_variables(&result, &pi)
+    // `pi` comes from a Permutation over the parameter positions, so it is a
+    // permutation of 0..parameters.len() by construction.
+    reorder_propositional_variables(&result, &pi).expect("pi is a permutation of the parameters")
 }
 
 #[cfg(test)]

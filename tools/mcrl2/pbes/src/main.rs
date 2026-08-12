@@ -20,7 +20,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use crate::bsgs::Bsgs;
-use crate::explore_common::ParameterLayout;
+use crate::explore_common::ParameterLayoutLPS;
 use crate::explore_common::PbesVertex;
 use crate::explore_common::check_parameter_basis;
 use crate::explore_common::explore_pbes_impl;
@@ -355,10 +355,26 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> 
     let pbes = read_pbes(&args.filename, args.format.clone())?;
     let game = if !args.quotient.is_empty() {
         let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(
+            &pbes,
+            args.srf,
+            args.strategy,
+            args.caching,
+            args.threads,
+            args.pinned,
+            bsgs,
+        )?
     } else if args.symmetry {
         let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(
+            &pbes,
+            args.srf,
+            args.strategy,
+            args.caching,
+            args.threads,
+            args.pinned,
+            bsgs,
+        )?
     } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else if args.threads > 1 {
@@ -472,15 +488,19 @@ fn explore_with_symmetry(
     pinned: bool,
     bsgs: Arc<Bsgs>,
 ) -> Result<merc_vpg::ParityGame, MercError> {
+    // Both explorers unify with the same flags as `symmetry_parameter_basis`, so
+    // they are expected to agree with it; SRF normalisation is the one that could
+    // still add or reorder parameters on the way, since it introduces equations
+    // of its own. Checking both keeps the guarantee where it can be seen.
+    let basis = symmetry_parameter_basis(pbes)?;
+
     if srf {
         let lps = PbesSrfLps::new(pbes)?;
-        check_parameter_basis(&symmetry_parameter_basis(pbes)?, &lps.parameters(), "SRF")?;
+        check_parameter_basis(&basis, &lps.parameters(), "SRF")?;
         quotient_explore(&lps, strategy, caching, threads, pinned, bsgs)
     } else {
-        // `PbesLps::new` unifies with the same flags as `symmetry_parameter_basis`
-        // and keeps that vector, so its layout is the generator basis by
-        // construction and needs no check.
         let lps = PbesLps::new(pbes.clone())?;
+        check_parameter_basis(&basis, &lps.parameters(), "structure-graph")?;
         quotient_explore(&lps, strategy, caching, threads, pinned, bsgs)
     }
 }
@@ -495,7 +515,7 @@ fn quotient_explore<P>(
     bsgs: Arc<Bsgs>,
 ) -> Result<merc_vpg::ParityGame, MercError>
 where
-    P: ParameterLayout<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
+    P: ParameterLayoutLPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <P::Summand as Summand>::Context: Send,
 {
     let timing = Timing::new();
@@ -520,7 +540,6 @@ where
             } else {
                 explore_pbes_impl(&qlps, strategy, &timing)
             }?;
-            drop(qlps);
             debug!("{}", cached.metrics());
             Ok(game)
         }
@@ -533,10 +552,26 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
     let pbes = read_pbes(&args.filename, args.format.clone())?;
     let game = if !args.quotient.is_empty() {
         let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(
+            &pbes,
+            args.srf,
+            args.strategy,
+            args.caching,
+            args.threads,
+            args.pinned,
+            bsgs,
+        )?
     } else if args.symmetry {
         let bsgs = build_bsgs_for_pbes(&pbes, &args.gap_path)?;
-        explore_with_symmetry(&pbes, args.srf, args.strategy, args.caching, args.threads, args.pinned, bsgs)?
+        explore_with_symmetry(
+            &pbes,
+            args.srf,
+            args.strategy,
+            args.caching,
+            args.threads,
+            args.pinned,
+            bsgs,
+        )?
     } else if args.threads > 1 && args.srf {
         explore_srf_pbes_parallel(&pbes, args.threads, args.caching, args.pinned)?
     } else if args.threads > 1 {

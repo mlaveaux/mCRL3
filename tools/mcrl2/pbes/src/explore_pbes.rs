@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::ops::Range;
 use std::collections::HashSet;
+use std::ops::Range;
 use std::sync::Arc;
 
 use log::debug;
@@ -39,7 +39,7 @@ use merc_vpg::ParityGame;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 
-use crate::explore_common::ParameterLayout;
+use crate::explore_common::ParameterLayoutLPS;
 use crate::explore_common::PbesVertex;
 use crate::explore_common::PbesVertexKind;
 use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
@@ -77,8 +77,9 @@ type SubformulaMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
 /// - Subformula AND: `[AND_OP, priority, subformula_idx]`
 /// - Subformula OR:  `[OR_OP,  priority, subformula_idx]`
 pub(crate) struct PbesLps {
-    /// The unified PBES; retained so the terms borrowed by the summands stay alive.
-    _pbes: Pbes,
+    /// The unified PBES; retained so the terms borrowed by the summands stay
+    /// alive, and read back by [`PbesLps::parameters`].
+    pbes: Pbes,
 
     /// Data specification used to build each per-thread [`PbesContext`].
     data_spec: DataSpecification,
@@ -249,7 +250,7 @@ impl PbesLps {
         // one thread's pool and relocated by another), so normalise once here on
         // the constructing thread. Afterwards `create_context` only reads the
         // specification and workers can build their rewriters concurrently.
-        drop(PbesRewriteContext::from_data_spec(&data_spec));
+        drop(PbesRewriteContext::from_data_spec(&data_spec)?);
 
         let initial_pvi = pbes.initial_state();
         let initial_eq_name = initial_pvi.name().to_string();
@@ -326,7 +327,7 @@ impl PbesLps {
         let equation_summands: Vec<Vec<usize>> = (0..num_equations).map(|i| vec![i]).collect();
 
         Ok(PbesLps {
-            _pbes: pbes,
+            pbes,
             data_spec,
             summands,
             equation_summands,
@@ -342,8 +343,23 @@ impl PbesLps {
             subformula_mapping,
         })
     }
+
+    /// Only used to size the group in tests; the tool derives the degree from
+    /// [`crate::explore_common::symmetry_parameter_basis`] instead, which does
+    /// not need a constructed LPS.
+    #[cfg(test)]
     pub(crate) fn num_params(&self) -> usize {
         self.num_params
+    }
+
+    /// The unified data parameters, in state-vector order: entry `i` occupies
+    /// state position `1 + i` of a propositional variable instantiation.
+    ///
+    /// This is the vector [`crate::explore_common::symmetry_parameter_basis`]
+    /// returns, since both unify with the same flags, but a caller that permutes
+    /// parameter positions should check rather than assume that.
+    pub(crate) fn parameters(&self) -> Vec<DataVariable> {
+        self.pbes.equations()[0].variable().parameters().iter().collect()
     }
 }
 
@@ -363,7 +379,11 @@ impl LPS for PbesLps {
 
     fn create_context(&self) -> PbesContext {
         PbesContext {
-            rewrite: PbesRewriteContext::from_data_spec(&self.data_spec),
+            // The data specification was already accepted (and normalised) when
+            // this explorer was constructed, so building another rewriter for it
+            // cannot fail here.
+            rewrite: PbesRewriteContext::from_data_spec(&self.data_spec)
+                .expect("the data specification was already accepted during construction"),
             parameter_values: Vec::with_capacity(self.num_params),
             next_state_buf: Vec::new(),
             flat_children: Vec::new(),
@@ -404,7 +424,8 @@ impl LPS for PbesLps {
                 context
                     .rewrite
                     .rewrite_formula(self.summands[eq_idx].formula().unwrap())
-            };
+            }
+            .expect("the rewriter cannot evaluate the right-hand side of this equation");
 
             let priority = self.summands[eq_idx].priority().unwrap();
             let player = player_of(&psi);
@@ -434,7 +455,7 @@ impl LPS for PbesLps {
     }
 }
 
-impl ParameterLayout for PbesLps {
+impl ParameterLayoutLPS for PbesLps {
     fn parameter_range(&self, state: &[usize]) -> Option<Range<usize>> {
         // Every tagged state (sink or subformula vertex) stores something other
         // than parameters; an untagged state[0] is an equation index.
@@ -689,10 +710,7 @@ pub(crate) fn explore_pbes_parallel(
 /// an opaque effect: there the whole next state is captured, so a passed-through
 /// value has to be part of the cache key, whereas a positional effect replays it
 /// from the live source state.
-fn formula_positions(
-    formula: &mcrl2::PbesExpression,
-    params: &[*const _aterm],
-) -> (Vec<usize>, OwnedStateEffect) {
+fn formula_positions(formula: &mcrl2::PbesExpression, params: &[*const _aterm]) -> (Vec<usize>, OwnedStateEffect) {
     // Single-pass visitor: collect read-variable addresses and the write-position
     // mask simultaneously, visiting each PVI argument exactly once.
     struct FormulaPositions<'p> {
