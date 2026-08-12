@@ -527,23 +527,32 @@ impl DataExpressionRef<'static> {
     }
 }
 
+/// Converts a substitution into the pairs of raw term addresses that the FFI
+/// expects.
+///
+/// The pairs only borrow the terms, so `sigma` must be kept alive for the
+/// duration of the call that consumes the result.
+pub(crate) fn to_assignment_pairs(sigma: &[(DataExpression, DataExpression)]) -> Vec<assignment_pair> {
+    sigma
+        .iter()
+        .map(|(lhs, rhs)| assignment_pair {
+            lhs: lhs.address(),
+            rhs: rhs.address(),
+        })
+        .collect()
+}
+
 /// Substitutes variables in a data expression according to the given substitution sigma.
 pub fn substitute_variables(
     data_expression: &DataExpressionRef,
     sigma: Vec<(DataExpression, DataExpression)>,
 ) -> DataExpression {
     // Do not into_iter here, as we need to keep sigma alive for the call.
-    let sigma: Vec<assignment_pair> = sigma
-        .iter()
-        .map(|(lhs, rhs)| assignment_pair {
-            lhs: lhs.address(),
-            rhs: rhs.address(),
-        })
-        .collect();
+    let pairs = to_assignment_pairs(&sigma);
 
     DataExpression::new(ATerm::from_unique_ptr(mcrl2_data_expression_replace_variables(
         data_expression.get(),
-        &sigma,
+        &pairs,
     )))
 }
 

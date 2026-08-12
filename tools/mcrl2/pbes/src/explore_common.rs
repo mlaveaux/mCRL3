@@ -52,7 +52,9 @@ pub(crate) fn symmetry_parameter_basis(pbes: &Pbes) -> Result<Vec<DataVariable>,
     pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
 
     let equations = pbes.equations();
-    let first = equations.first().ok_or_else(|| MercError::from("PBES has no equations"))?;
+    let first = equations
+        .first()
+        .ok_or_else(|| MercError::from("PBES has no equations"))?;
     Ok(first.variable().parameters().iter().collect())
 }
 
@@ -88,19 +90,19 @@ pub(crate) fn check_parameter_basis(
 /// A symmetry group acts on the parameters only, so a layer that permutes state
 /// vectors has to be able to tell the shapes apart — permuting a subformula
 /// vertex's payload silently corrupts it.
-pub(crate) trait ParameterLayout: LPS {
+pub(crate) trait ParameterLayoutLPS: LPS {
     /// Returns the positions of `state` holding data parameters, or `None` when
     /// this state has no parameter block.
     fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>>;
 }
 
-impl<P: ParameterLayout> ParameterLayout for CacheLPS<P> {
+impl<P: ParameterLayoutLPS> ParameterLayoutLPS for CacheLPS<P> {
     fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>> {
         self.inner().parameter_range(state)
     }
 }
 
-impl<P: ParameterLayout> ParameterLayout for &P {
+impl<P: ParameterLayoutLPS> ParameterLayoutLPS for &P {
     fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>> {
         (**self).parameter_range(state)
     }
