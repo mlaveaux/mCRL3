@@ -5,19 +5,21 @@ use std::sync::Arc;
 
 use log::debug;
 use mcrl2::_aterm;
+use mcrl2::ATermStringRef;
 use mcrl2::DataExpression;
 use mcrl2::DataExpressionRef;
 use mcrl2::DataSpecification;
 use mcrl2::DataVariable;
 use mcrl2::Pbes;
+use mcrl2::PbesConnective;
 use mcrl2::PbesExpression;
 use mcrl2::PbesExpressionRef;
 use mcrl2::PbesExpressionVisitor;
+use mcrl2::PbesFlattenIter;
+use mcrl2::PbesFlattenStack;
 use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::PbesRewriteContext;
 use mcrl2::Protected;
-use mcrl2::flatten_pbes_and_into;
-use mcrl2::flatten_pbes_or_into;
 use mcrl2::is_pbes_and;
 use mcrl2::is_pbes_false;
 use mcrl2::is_pbes_or;
@@ -79,6 +81,24 @@ const SUBFORMULA_PRIORITY: usize = 0;
 type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 type SubformulaMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
 
+/// Maps a propositional variable name to the index of the equation defining it.
+///
+/// Keyed on the name term rather than on a `String`: names are maximally shared,
+/// so a lookup is a pointer hash, where rendering the name costs two `String`
+/// allocations per edge.
+type NameMapping = HashMap<ATermStringRef<'static>, usize>;
+
+/// The key of a [`NameMapping`], for a name read off a live term.
+///
+/// # Safety
+///
+/// The name must be a subterm of a term that stays alive for as long as the
+/// mapping is used.
+unsafe fn name_key(name: ATermStringRef<'_>) -> ATermStringRef<'static> {
+    // SAFETY: the caller upholds that the name stays live.
+    unsafe { ATermStringRef::from_address(name.address()) }
+}
+
 /// Parity-game LPS that directly explores a PBES without converting to SRF.
 ///
 /// Applies the `enumerate_quantifiers_rewriter` on-the-fly to instantiate each
@@ -130,7 +150,7 @@ pub(crate) struct PbesLps {
     num_equations: usize,
 
     /// Maps a propositional variable name to its equation index.
-    name_to_eq: Arc<HashMap<String, usize>>,
+    name_to_eq: Arc<NameMapping>,
 
     /// Interning table for enumerated parameter values, shared with the summands.
     value_mapping: Protected<ValueMapping>,
@@ -176,7 +196,7 @@ pub(crate) struct PbesSummand {
     subformula_mapping: Arc<SubformulaMapping>,
 
     /// Maps a propositional variable name to its equation index.
-    name_to_eq: Arc<HashMap<String, usize>>,
+    name_to_eq: Arc<NameMapping>,
 
     /// Number of data parameters shared by every equation.
     num_params: usize,
@@ -192,7 +212,7 @@ pub(crate) struct PbesSummand {
 /// names to indices, plus the interning tables for parameter values and sub-formulas.
 #[derive(Clone, Copy)]
 struct TargetTables<'a> {
-    name_to_eq: &'a HashMap<String, usize>,
+    name_to_eq: &'a NameMapping,
     value_mapping: &'a ValueMapping,
     subformula_mapping: &'a SubformulaMapping,
 }
@@ -208,8 +228,8 @@ pub(crate) struct PbesContext {
     /// Scratch buffer for the next state reported to the callback.
     next_state_buf: Vec<usize>,
 
-    /// Scratch buffer for the flattened operands of an and/or chain.
-    flat_children: Vec<PbesExpression>,
+    /// Scratch worklist for walking the operands of an and/or chain.
+    chain_stack: PbesFlattenStack,
 
     /// The instantiated right-hand side of the last explored state.
     psi: Option<mcrl2::PbesExpression>,
@@ -238,10 +258,12 @@ impl PbesLps {
         let is_mu: Vec<bool> = equations.iter().map(|e| e.is_mu()).collect();
         let priorities = compute_priorities(&is_mu);
 
-        let name_to_eq: HashMap<String, usize> = equations
+        // SAFETY: every name is a subterm of an equation of `pbes`, which this
+        // explorer retains for as long as the mapping is used.
+        let name_to_eq: NameMapping = equations
             .iter()
             .enumerate()
-            .map(|(i, eq)| (eq.variable().name().to_string(), i))
+            .map(|(i, eq)| (unsafe { name_key(eq.variable().name().copy()) }, i))
             .collect();
         let name_to_eq = Arc::new(name_to_eq);
 
@@ -260,19 +282,10 @@ impl PbesLps {
 
         // Building a rewriter normalises the data specification *in place*: it
         // imports the system-defined sorts and appends their constructors, which
-        // reallocates vectors of aterms. Doing that from several rayon workers at
-        // once corrupts the term-protection sets (the aterms are registered in
-        // one thread's pool and relocated by another), so normalise once here on
-        // the constructing thread. Afterwards `create_context` only reads the
-        // specification and workers can build their rewriters concurrently.
+        // reallocates vectors of aterms.
         let rewriter = PbesRewriteContext::from_data_spec(&data_spec)?;
 
-        // Rewrite the initial state before interning it, as mCRL2's pbesinst
-        // does. Every later state is a rewritten term, so an initial argument
-        // left in a non-normal form (`X(1 + 1)`) is a value no successor ever
-        // equals: the initial vertex gets its own state and the first rewrite
-        // trips over the unevaluated term. `instantiate_global_variables`
-        // readily produces such arguments, which is how this surfaces.
+        // Rewrite the initial state before interning it.
         let initial_expr = PbesExpression::from(pbes.initial_state());
         // SAFETY: `initial_expr` owns a protected term read from the live PBES.
         let initial_rewritten = unsafe { rewriter.rewrite_formula(&initial_expr) }?;
@@ -284,10 +297,10 @@ impl PbesLps {
         }
         let initial_pvi = PbesPropositionalVariableInstantiationRef::from(initial_rewritten.copy());
 
-        let initial_eq_name = initial_pvi.name().to_string();
+        // SAFETY: the name is a subterm of `initial_rewritten`, still in scope.
         let initial_eq_idx = *name_to_eq
-            .get(&initial_eq_name)
-            .ok_or_else(|| MercError::from(format!("Unknown initial equation: {initial_eq_name}")))?;
+            .get(&unsafe { name_key(initial_pvi.name()) })
+            .ok_or_else(|| MercError::from(format!("Unknown initial equation: {}", initial_pvi.name())))?;
 
         let mut initial_state = Vec::with_capacity(1 + num_params);
         initial_state.push(initial_eq_idx);
@@ -417,8 +430,8 @@ impl LPS for PbesLps {
             rewrite: PbesRewriteContext::from_data_spec(&self.data_spec)
                 .expect("the data specification was already accepted during construction"),
             parameter_values: Vec::with_capacity(self.num_params),
-            next_state_buf: Vec::new(),
-            flat_children: Vec::new(),
+            next_state_buf: Vec::with_capacity(1 + self.num_params),
+            chain_stack: PbesFlattenStack::new(),
             psi: None,
             player_priority: None,
         }
@@ -563,10 +576,13 @@ impl Summand for PbesSummand {
             PbesSummandKind::Equation { .. } => {
                 let psi = context.psi.as_ref().expect("prepare must precede enumerate");
                 let formula = psi.copy();
-                // Split borrows: formula from context.psi, buf and children_buf from separate fields.
-                let buf = &mut context.next_state_buf;
-                let children_buf = &mut context.flat_children;
-                enumerate_formula_children(formula, self.tables(), children_buf, buf, &mut report)
+                enumerate_formula_children(
+                    formula,
+                    self.tables(),
+                    &mut context.chain_stack,
+                    &mut context.next_state_buf,
+                    &mut report,
+                )
             }
             PbesSummandKind::Subformula => {
                 let subformula_idx = state[1];
@@ -575,9 +591,13 @@ impl Summand for PbesSummand {
                     .get_by_index(subformula_idx)
                     .expect("subformula index must be valid");
                 let formula = pbes_ref.copy();
-                let buf = &mut context.next_state_buf;
-                let children_buf = &mut context.flat_children;
-                enumerate_formula_children(formula, self.tables(), children_buf, buf, &mut report)
+                enumerate_formula_children(
+                    formula,
+                    self.tables(),
+                    &mut context.chain_stack,
+                    &mut context.next_state_buf,
+                    &mut report,
+                )
             }
         }
     }
@@ -599,29 +619,29 @@ fn player_of(psi: &mcrl2::PbesExpression) -> Player {
 /// AND/OR chains are flattened (like mCRL2's `split_and`/`split_or`) so that
 /// `(A && B) && (C && D)` emits 4 direct edges instead of 2 subformula vertices.
 /// Cross-operator nesting still produces subformula vertices via [`emit_as_target`].
-/// `children_buf` is a reusable scratch buffer owned by the per-thread context.
 fn enumerate_formula_children<F>(
     formula: PbesExpressionRef<'_>,
     tables: TargetTables<'_>,
-    children_buf: &mut Vec<PbesExpression>,
+    stack: &mut PbesFlattenStack,
     buf: &mut Vec<usize>,
     report: &mut F,
 ) -> Result<(), MercError>
 where
     F: FnMut(&(), &[usize]) -> Result<(), MercError>,
 {
-    children_buf.clear();
-    if is_pbes_and(&formula.copy()) {
-        flatten_pbes_and_into(formula, children_buf);
-    } else if is_pbes_or(&formula.copy()) {
-        flatten_pbes_or_into(formula, children_buf);
+    // Only the chain's own operator is flattened: a nested operand of the other
+    // one becomes a subformula vertex in `emit_as_target`, and a leaf (a PVI,
+    // `true` or `false`) is a chain of one that comes back unchanged.
+    let connective = if is_pbes_or(&formula.copy()) {
+        PbesConnective::Or
     } else {
-        // Single leaf (PVI, true, false): emit directly without buffering.
-        return emit_as_target(formula, tables, buf, report);
+        PbesConnective::And
+    };
+
+    for leaf in PbesFlattenIter::new(formula, connective, stack) {
+        emit_as_target(leaf, tables, buf, report)?;
     }
-    for child in children_buf.drain(..) {
-        emit_as_target(child.copy(), tables, buf, report)?;
-    }
+
     Ok(())
 }
 
@@ -647,8 +667,9 @@ where
         let pvi = PbesPropositionalVariableInstantiationRef::from(expr);
         let target_eq = *tables
             .name_to_eq
-            .get(&pvi.name().to_string())
-            .ok_or_else(|| MercError::from("Unknown equation name in PVI"))?;
+            // SAFETY: the name is a subterm of `expr`, which the caller holds live.
+            .get(&unsafe { name_key(pvi.name()) })
+            .ok_or_else(|| MercError::from(format!("Unknown equation name in PVI: {}", pvi.name())))?;
         buf.clear();
         buf.push(target_eq);
         for arg in pvi.arguments().iter() {
