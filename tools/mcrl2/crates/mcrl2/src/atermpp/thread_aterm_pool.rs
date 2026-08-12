@@ -2,8 +2,10 @@ use core::fmt;
 use std::borrow::Borrow;
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::mem::ManuallyDrop;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use log::debug;
 use log::trace;
@@ -15,14 +17,12 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_empty_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_from_string;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
-use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_garbage_collection;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
-use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize_is_needed;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_create;
 use mcrl2_sys::cxx::Exception;
-use mcrl2_sys::cxx::UniquePtr;
 use merc_unsafety::ProtectionIndex;
 use merc_unsafety::ProtectionSet;
 
@@ -37,24 +37,57 @@ use super::global_aterm_pool::ATermPtr;
 use super::global_aterm_pool::GLOBAL_TERM_POOL;
 use super::global_aterm_pool::SharedContainerProtectionSet;
 use super::global_aterm_pool::SharedProtectionSet;
-use super::global_aterm_pool::mark_protection_sets;
-use super::global_aterm_pool::protection_set_size;
-
-/// The number of times before garbage collection is tested again.
-const TEST_GC_INTERVAL: usize = 100;
+use super::global_aterm_pool::num_thread_pools;
+use super::global_aterm_pool::register_mark_callback;
 
 /// The number of terms that the pool must contain before garbage collection is
 /// considered at all, since collecting a small pool is not worth its cost.
 const MIN_TERMS_UNTIL_GC: usize = 1_000_000;
 
-/// Returns the pool size at which the next garbage collection should be
-/// triggered, i.e. when the pool has roughly doubled since the last collection.
+/// The smallest number of terms a thread creates before consulting the shared
+/// budget again, which bounds how much the threads contend on it.
+const MIN_GC_CHUNK: usize = 100;
+
+/// The largest such number. Bounded because the same interval also governs how
+/// long a hash table resize can be postponed, see [`ThreadTermPool::protect_with`].
+const MAX_GC_CHUNK: usize = 10_000;
+
+/// The pool size at which the next garbage collection should be triggered.
 ///
-/// Note that the capacity cannot be used for this, since it sums the capacities
-/// of the storages for every arity while a term only occupies one of them. The
-/// pool size therefore stays well below the capacity and never reaches it.
-fn next_size_until_gc() -> usize {
-    mcrl2_aterm_pool_size().saturating_mul(2).max(MIN_TERMS_UNTIL_GC)
+/// This threshold is global rather than per thread, since a collection performed
+/// by one thread reclaims the garbage of all of them. With a per thread threshold
+/// the collecting thread lowers only its own, after which every other thread still
+/// exceeds its stale threshold and collects the very same (already collected) pool
+/// again in turn.
+static SIZE_UNTIL_GC: AtomicUsize = AtomicUsize::new(MIN_TERMS_UNTIL_GC);
+
+/// The number of terms a single thread may create before it compares the pool size
+/// against [`SIZE_UNTIL_GC`] again, i.e. this thread's share of the budget that is
+/// left until the next collection.
+static GC_CHUNK: AtomicUsize = AtomicUsize::new(MIN_GC_CHUNK);
+
+/// Set while some thread is performing a garbage collection, so that the other
+/// threads skip theirs instead of queueing up behind it.
+static GC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Recomputes the global garbage collection budget from the current pool size,
+/// which is done after every collection.
+fn reset_gc_budget() {
+    let size = mcrl2_aterm_pool_size();
+
+    // Collect again once the pool has roughly doubled.
+    //
+    // Note that the capacity cannot be used for this, since it sums the capacities
+    // of the storages for every arity while a term only occupies one of them. The
+    // pool size therefore stays well below the capacity and never reaches it.
+    let until = size.saturating_mul(2).max(MIN_TERMS_UNTIL_GC);
+    SIZE_UNTIL_GC.store(until, Ordering::Relaxed);
+
+    // Divide the remaining headroom over the registered threads. Every thread
+    // counting down a fixed interval instead would make the threads together
+    // check (and thereby contend on the pool size) a factor `threads` too often.
+    let chunk = until.saturating_sub(size) / num_thread_pools();
+    GC_CHUNK.store(chunk.clamp(MIN_GC_CHUNK, MAX_GC_CHUNK), Ordering::Relaxed);
 }
 
 thread_local! {
@@ -78,26 +111,25 @@ pub(crate) struct ThreadTermPool {
     /// Function symbols to represent 'DataAppl' with any number of arguments.
     data_appl: RefCell<Vec<Symbol>>,
 
-    /// We need to periodically test for garbage collection and this is only
-    /// allowed outside of a shared lock section. Therefore, we count
-    /// (arbitrarily) to reduce the amount of this is checked.
+    /// Counts down this thread's share of the budget until the next garbage
+    /// collection, see [`GC_CHUNK`]. Testing for garbage collection is only allowed
+    /// outside of a shared lock section, and counting keeps the test itself off the
+    /// hot path.
     gc_counter: Cell<usize>,
-
-    /// Keeps track of the maximum size the term pool should reach before
-    /// triggering garbage collection.
-    size_until_gc: Cell<usize>,
 
     /// Temporary storage for arguments when creating terms.
     arguments: RefCell<Vec<*const ffi::_aterm>>,
-
-    /// This is only used to keep the callback alive.
-    _callback: ManuallyDrop<UniquePtr<ffi::tls_callback_container>>,
 }
 
 impl ThreadTermPool {
     pub fn new() -> ThreadTermPool {
-        // Register a protection set into the global set.
+        // Register a protection set into the global set. The lock must be released
+        // again before registering the mark callback below, see
+        // `register_mark_callback`.
         let (protection_set, container_protection_set, index) = GLOBAL_TERM_POOL.lock().register_thread_term_pool();
+
+        // Only the first thread actually registers, the callback is global.
+        register_mark_callback();
 
         ThreadTermPool {
             protection_set,
@@ -106,32 +138,49 @@ impl ThreadTermPool {
             // SAFETY: the FFI returns the live built-in list / empty-list function symbols.
             list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_list_function_symbol()) },
             empty_list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_empty_list_function_symbol()) },
-            gc_counter: Cell::new(TEST_GC_INTERVAL),
-            size_until_gc: Cell::new(next_size_until_gc()),
+            gc_counter: Cell::new(GC_CHUNK.load(Ordering::Relaxed)),
             data_appl: RefCell::new(vec![]),
             arguments: RefCell::new(vec![]),
-            _callback: ManuallyDrop::new(mcrl2_aterm_pool_register_mark_callback(
-                mark_protection_sets,
-                protection_set_size,
-            )),
         }
     }
 
     /// Trigger a garbage collection explicitly.
+    ///
+    /// Note that `mcrl2_aterm_pool_collect_garbage` enables garbage collection for
+    /// the duration of the call, since the pool ignores every collection—including
+    /// explicit ones—while it is disabled (see `aterm_pool::collect_impl`). It is
+    /// disabled in the global term pool to keep the pool from collecting on its own
+    /// from inside a shared section.
     pub fn collect(&self) {
         debug!("Collecting mCRL2 aterm pool garbage");
 
-        // The pool ignores every collection, including this explicit one, while
-        // garbage collection is disabled (see `aterm_pool::collect_impl`). It is
-        // disabled in the global term pool to keep the pool from collecting on its
-        // own from inside a shared section, so enable it for the duration of this
-        // externally scheduled collection and disable it again afterwards.
-        mcrl2_aterm_pool_enable_automatic_garbage_collection(true);
         mcrl2_aterm_pool_collect_garbage();
-        mcrl2_aterm_pool_enable_automatic_garbage_collection(false);
 
-        // Garbage collection was performed, so we can reset the size limit.
-        self.size_until_gc.set(next_size_until_gc());
+        // Garbage collection was performed, so we can reset the budget.
+        reset_gc_budget();
+    }
+
+    /// Performs a garbage collection, unless another thread is already collecting
+    /// or has collected since this thread observed that the pool exceeded
+    /// [`SIZE_UNTIL_GC`].
+    fn collect_if_needed(&self) {
+        // Claim the collection. Threads that lose this race skip their collection
+        // entirely: the one that is running reclaims their garbage as well.
+        if GC_IN_PROGRESS
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+            .is_err()
+        {
+            return;
+        }
+
+        // Acquiring the claim synchronises with the release below, so the threshold
+        // read here is the one stored by the previous collection. That collection
+        // may well have brought the pool back under it.
+        if mcrl2_aterm_pool_size() >= SIZE_UNTIL_GC.load(Ordering::Relaxed) {
+            self.collect();
+        }
+
+        GC_IN_PROGRESS.store(false, Ordering::Release);
     }
 
     /// Creates an ATerm from a string.
@@ -327,13 +376,20 @@ impl ThreadTermPool {
         // `guard.unlock()` returns true only when this leaves the outermost
         // shared section, i.e. the thread is no longer busy.
         if guard.unlock() && counter == 0 {
+            self.gc_counter.set(GC_CHUNK.load(Ordering::Relaxed));
+
             // If garbage collection is necessary according to our requirements.
-            if mcrl2_aterm_pool_size() >= self.size_until_gc.get() {
-                self.collect();
+            if mcrl2_aterm_pool_size() >= SIZE_UNTIL_GC.load(Ordering::Relaxed) {
+                self.collect_if_needed();
             }
 
-            mcrl2_aterm_pool_resize();
-            self.gc_counter.set(TEST_GC_INTERVAL);
+            // Only take the exclusive lock when a storage actually has to grow.
+            // Resizing unconditionally suspends every other thread (the exclusive
+            // lock waits for all of them to leave their shared sections) once per
+            // chunk per thread, which stalls exploration completely.
+            if mcrl2_aterm_pool_resize_is_needed() {
+                mcrl2_aterm_pool_resize();
+            }
         }
 
         result
@@ -354,14 +410,6 @@ impl Drop for ThreadTermPool {
         );
 
         GLOBAL_TERM_POOL.lock().drop_thread_term_pool(self.index);
-
-        // On macOS, thread-local destructors may run after the global aterm pool
-        // has been deallocated, so dropping the FFI callback would access freed
-        // memory. We intentionally leak the callback on macOS to avoid this.
-        #[cfg(not(target_os = "macos"))]
-        unsafe {
-            ManuallyDrop::drop(&mut self._callback);
-        }
     }
 }
 
