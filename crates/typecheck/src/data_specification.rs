@@ -17,8 +17,8 @@ use merc_syntax::EquationId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::apply_sort_expression;
 
 use crate::AliasError;
 use crate::EquationTyping;
@@ -450,7 +450,7 @@ pub(crate) fn argument_sorts(sort: &SortExpression) -> &[SortExpression] {
 /// Rewrites every `Function` node of `sort` into a `FlattenedFunction` whose
 /// domain is the flattened `Product` spine (`(A#B)->C` becomes `A#B->C`).
 fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
-    apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible> {
+    sort.clone().apply(|expr| -> Result<_, Infallible> {
         if let SortExpressionKind::Function { domain, range } = &expr.node {
             let mut flattened_domain = Vec::new();
             flatten_function_domain_rec(domain, &mut flattened_domain);

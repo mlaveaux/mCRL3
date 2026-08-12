@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fmt;
 use std::ops::ControlFlow;
 
@@ -25,10 +26,7 @@ use merc_syntax::StateFrm;
 use merc_syntax::StateFrmKind;
 use merc_syntax::StateFrmOp;
 use merc_syntax::StateVarDecl;
-use merc_syntax::apply_statefrm;
-use merc_syntax::visit_action_formula;
-use merc_syntax::visit_regular_formula;
-use merc_syntax::visit_statefrm;
+use merc_syntax::Traverse;
 use merc_utilities::MercError;
 
 use crate::FreshStateVarGenerator;
@@ -92,11 +90,13 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
 
 /// Produces a warning for each label that is used in the formula but does not correspond to any label in the LTS.
 pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
-    visit_statefrm::<(), _>(formula, |statefrm| {
+    // A traversal covers a single node type, so the modalities, the regular formulas they carry
+    // and the action formulas inside those are three nested traversals.
+    formula.visit::<(), _>(|statefrm| {
         if let StateFrmKind::Modality { formula, .. } = &statefrm.node {
-            visit_regular_formula::<(), _>(formula, |regfrm| {
+            formula.visit::<(), _>(|regfrm| {
                 if let RegFrmKind::Action(act_frm) = &regfrm.node {
-                    visit_action_formula::<(), _>(act_frm, |act_frm| {
+                    act_frm.visit::<(), _>(|act_frm| {
                         if let ActFrmKind::MultAct(action) = &act_frm.node
                             && !labels.contains(action)
                         {
@@ -106,17 +106,16 @@ pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
                             );
                         }
 
-                        Ok(ControlFlow::Continue(()))
-                    })?;
+                        ControlFlow::Continue(())
+                    });
                 }
 
-                Ok(ControlFlow::Continue(()))
-            })?;
+                ControlFlow::Continue(())
+            });
         }
 
-        Ok(ControlFlow::Continue(()))
-    })
-    .expect("Failed to visit state formula");
+        ControlFlow::Continue(())
+    });
 }
 
 /// Translates regular formulas in modalities to fixpoint equations.
@@ -138,7 +137,7 @@ pub fn warn_unknown_action_labels(formula: &StateFrm, labels: &[MultiAction]) {
 /// <a+>phi = <a>(mu I. <a>I || phi)
 /// ```
 pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut FreshStateVarGenerator) -> StateFrm {
-    apply_statefrm(formula, |subformula| {
+    let translated = formula.apply::<Infallible, _>(|subformula| {
         if let StateFrmKind::Modality {
             operator,
             formula,
@@ -213,8 +212,12 @@ pub fn translate_regular_formulas(formula: StateFrm, identifier_generator: &mut 
         }
 
         Ok(None)
-    })
-    .expect("Failed to visit state formula")
+    });
+
+    match translated {
+        Ok(formula) => formula,
+        Err(error) => match error {},
+    }
 }
 
 /// Convert an iteration regular formula to a fixpoint formula

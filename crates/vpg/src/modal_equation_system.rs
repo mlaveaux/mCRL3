@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::fmt;
 use std::ops::ControlFlow;
 
@@ -8,8 +9,7 @@ use merc_syntax::FixedPointOperator;
 use merc_syntax::StateFrm;
 use merc_syntax::StateFrmKind;
 use merc_syntax::StateVarDecl;
-use merc_syntax::apply_statefrm;
-use merc_syntax::visit_statefrm;
+use merc_syntax::Traverse;
 
 /// A fixpoint equation system representing a ranked set of fixpoint equations.
 ///
@@ -127,40 +127,49 @@ impl ModalEquationSystem {
     }
 
     /// Recursive helper function to compute the alternation depth of equation `i`.
+    ///
+    /// # Details
+    ///
+    /// The depth of a formula is the largest depth of the variables occurring in it, so the
+    /// traversal only has to look at the [StateFrmKind::Id] leaves. A variable bound by a later
+    /// equation continues the chain in that equation's body, which is a different formula and
+    /// therefore a nested traversal.
     fn alternation_depth_rec(&self, i: usize, formula: &StateFrm, identifier: &String) -> usize {
         let equation = &self.equations[i];
+        let mut depth = 0;
 
-        match &formula.node {
-            StateFrmKind::Id(id, _) => {
-                if id == identifier {
-                    1
-                } else {
-                    let (j, inner_equation) = self
-                        .find_equation_by_identifier(id)
-                        .expect("Equation not found for identifier");
-                    if j > i {
-                        let depth = self.alternation_depth_rec(j, &inner_equation.rhs, identifier);
-                        depth
-                            + (if inner_equation.operator != equation.operator {
-                                1 // Alternation occurs.
-                            } else {
-                                0
-                            })
+        formula.visit::<(), _>(|formula| {
+            match &formula.node {
+                StateFrmKind::Id(id, _) => {
+                    depth = depth.max(if id == identifier {
+                        1
                     } else {
-                        // Only consider nested equations
-                        0
-                    }
+                        let (j, inner_equation) = self
+                            .find_equation_by_identifier(id)
+                            .expect("Equation not found for identifier");
+
+                        if j > i {
+                            self.alternation_depth_rec(j, &inner_equation.rhs, identifier)
+                                + usize::from(inner_equation.operator != equation.operator)
+                        } else {
+                            // Only consider nested equations
+                            0
+                        }
+                    });
+                }
+                StateFrmKind::Binary { .. }
+                | StateFrmKind::Modality { .. }
+                | StateFrmKind::True
+                | StateFrmKind::False => {}
+                _ => {
+                    unimplemented!("Cannot determine alternation depth of formula {}", formula)
                 }
             }
-            StateFrmKind::Binary { lhs, rhs, .. } => self
-                .alternation_depth_rec(i, lhs, identifier)
-                .max(self.alternation_depth_rec(i, rhs, identifier)),
-            StateFrmKind::Modality { expr, .. } => self.alternation_depth_rec(i, expr, identifier),
-            StateFrmKind::True | StateFrmKind::False => 0,
-            _ => {
-                unimplemented!("Cannot determine alternation depth of formula {}", formula)
-            }
-        }
+
+            ControlFlow::Continue(())
+        });
+
+        depth
     }
 }
 
@@ -189,12 +198,13 @@ fn add_placeholder_operator(formula: StateFrm, identifier_generator: &mut FreshS
 fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
     debug!("Applying E to formula: {}", formula);
 
-    visit_statefrm::<(), _>(formula, |formula| match &formula.node {
-        StateFrmKind::FixedPoint {
+    formula.visit::<(), _>(|formula| {
+        if let StateFrmKind::FixedPoint {
             operator,
             variable,
             body,
-        } => {
+        } = &formula.node
+        {
             debug!("Adding equation for variable {}", variable.identifier);
             // Add the equation with the renamed variable (the span is the same as the original variable).
             equations.push(Equation {
@@ -202,12 +212,10 @@ fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
                 variable: variable.clone(),
                 rhs: rhs(body),
             });
-
-            Ok(ControlFlow::Continue(()))
         }
-        _ => Ok(ControlFlow::Continue(())),
-    })
-    .expect("No error expected during fixpoint equation system construction");
+
+        ControlFlow::Continue(())
+    });
 }
 
 /// Applies `RHS` to the given formula.
@@ -222,7 +230,7 @@ fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
 /// RHS(mu X. f) = X(args)
 /// RHS(nu X. f) = X(args)
 fn rhs(formula: &StateFrm) -> StateFrm {
-    apply_statefrm(formula.clone(), |formula| match &formula.node {
+    let result = formula.clone().apply::<Infallible, _>(|formula| match &formula.node {
         // RHS(mu X. phi) = X(args)
         StateFrmKind::FixedPoint { variable, .. } => Ok(Some(
             StateFrmKind::Id(
@@ -232,8 +240,12 @@ fn rhs(formula: &StateFrm) -> StateFrm {
             .into(),
         )),
         _ => Ok(None),
-    })
-    .expect("No error expected during RHS extraction")
+    });
+
+    match result {
+        Ok(formula) => formula,
+        Err(error) => match error {},
+    }
 }
 
 /// A generator for fresh state variable names.
@@ -249,14 +261,13 @@ impl FreshStateVarGenerator {
     /// Traverses the given formula to collect all used variable names.
     pub fn new(formula: &StateFrm) -> Self {
         let mut used = HashSet::new();
-        visit_statefrm::<(), _>(formula, |subformula| {
+        formula.visit::<(), _>(|subformula| {
             if let StateFrmKind::FixedPoint { variable, .. } = &subformula.node {
                 used.insert(variable.identifier.clone());
             }
 
-            Ok(ControlFlow::Continue(()))
-        })
-        .expect("No error expected during visiting");
+            ControlFlow::Continue(())
+        });
 
         FreshStateVarGenerator { used }
     }

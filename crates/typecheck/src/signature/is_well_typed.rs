@@ -3,13 +3,13 @@ use std::ops::ControlFlow;
 
 use thiserror::Error;
 
-use merc_syntax::SortDescend;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
 use merc_syntax::Span;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::try_visit_sort_expr_with;
 use merc_utilities::MercError;
+use merc_utilities::Step;
 
 use crate::InferenceError;
 use crate::nonempty_sorts;
@@ -172,7 +172,7 @@ impl WellTypedError {
 /// visitor context cannot express (all children receive the same context), so
 /// that case is handled manually and pruned.
 pub(crate) fn check_products_within_domains(sort: &SortExpression) -> Result<(), WellTypedError> {
-    try_visit_sort_expr_with::<WellTypedError, (), (), _>(sort, (), |expr, ()| match &expr.node {
+    sort.visit_with::<(), (), WellTypedError, _>((), |expr, ()| match &expr.node {
         SortExpressionKind::Product { .. } => Err(WellTypedError::ProductSortOutsideFunctionDomain {
             sort: expr.to_string(),
             span: expr.span.clone(),
@@ -180,9 +180,9 @@ pub(crate) fn check_products_within_domains(sort: &SortExpression) -> Result<(),
         SortExpressionKind::Function { domain, range } => {
             check_product_spine(domain)?;
             check_products_within_domains(range)?;
-            Ok(ControlFlow::Continue(SortDescend::Prune))
+            Ok(ControlFlow::Continue(Step::Prune))
         }
-        _ => Ok(ControlFlow::Continue(SortDescend::Descend(()))),
+        _ => Ok(ControlFlow::Continue(Step::Into(()))),
     })
     .map(|_| ())
 }

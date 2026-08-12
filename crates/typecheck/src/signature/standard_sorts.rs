@@ -8,8 +8,8 @@ use merc_syntax::ComplexSort;
 use merc_syntax::ConstructorDecl;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::apply_sort_expression;
 use merc_utilities::MercError;
 
 use crate::BASIC_SORT_NAMES;
@@ -336,7 +336,7 @@ fn replace_sort(spec: &UntypedDataSpecification, identifier: &str, sort: &SortEx
 
 /// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
 fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort: &SortExpression) -> SortExpression {
-    apply_sort_expression(sort.clone(), |expr| -> Result<Option<SortExpression>, Infallible> {
+    sort.clone().apply(|expr| -> Result<Option<SortExpression>, Infallible> {
         if let SortExpressionKind::Reference(id) = &expr.node
             && id == identifier
         {

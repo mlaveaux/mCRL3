@@ -8,9 +8,8 @@ use merc_syntax::DataExpr;
 use merc_syntax::DataExprKind;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::visit_data_expr;
-use merc_syntax::visit_sort_expr;
 
 use crate::NumberEncoding;
 use crate::POLYMORPHIC_SIGNATURE;
@@ -345,7 +344,7 @@ fn collect_system_sorts_in_spec(
 /// [is_supported_binder_sort]) are skipped: inference rejects the constructs
 /// that bind them, so their operators are never looked up.
 fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, include_functions: bool) {
-    visit_data_expr::<(), _>(expr, |expr| {
+    expr.visit::<(), _>(|expr| {
         match &expr.node {
             DataExprKind::SetBagComp { variable, predicate: _ } => {
                 if is_supported_binder_sort(&variable.sort) {
@@ -383,7 +382,7 @@ fn collect_system_sorts_in_expr(expr: &DataExpr, out: &mut Vec<SortExpression>, 
 /// multi-argument domain is passed through as `FlattenedFunction`, which
 /// `standard_sort`'s multi-argument branch consumes directly.
 fn collect_system_sorts(sort: &SortExpression, out: &mut Vec<SortExpression>, include_functions: bool) {
-    visit_sort_expr::<(), _>(sort, |expr| {
+    sort.visit::<(), _>(|expr| {
         match &expr.node {
             SortExpressionKind::Complex(_, _) => out.push(expr.clone()),
             // A user specification carries flattened function sorts; the

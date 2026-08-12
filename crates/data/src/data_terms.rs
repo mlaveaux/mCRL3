@@ -59,6 +59,7 @@ pub(crate) struct DataSymbols {
     pub data_function_symbol_no_index: ManuallyDrop<Symbol>,
     pub data_variable: ManuallyDrop<Symbol>,
     pub data_where_clause: ManuallyDrop<Symbol>,
+    #[allow(dead_code)]
     pub data_untyped_identifier_clause: ManuallyDrop<Symbol>,
 
     /// A data expression, not itself a data expression.

@@ -7,8 +7,8 @@ use merc_syntax::DefId;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
 use merc_syntax::Spanned;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::apply_sort_expression;
 
 use crate::apply_sorts_in_spec;
 
@@ -54,7 +54,7 @@ fn normalize_sort(
     alias_map: &HashMap<DefId, SortExpression>,
     visited: &mut Vec<DefId>,
 ) -> SortExpression {
-    apply_sort_expression(sort.clone(), |expr| -> Result<_, Infallible> {
+    sort.clone().apply(|expr| -> Result<_, Infallible> {
         let SortExpressionKind::Resolved(_, id) = &expr.node else {
             return Ok(None);
         };

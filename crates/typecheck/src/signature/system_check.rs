@@ -6,8 +6,8 @@ use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
-use merc_syntax::visit_sort_expr;
 
 use crate::WellTypedError;
 use crate::builtin_scheme_names;
@@ -169,7 +169,7 @@ impl Checker<'_> {
     /// Checks that a sort of the system specification references only declared
     /// sorts, and places products only in function domains.
     fn check_sort(&self, sort: &SortExpression) -> Result<(), WellTypedError> {
-        let error = visit_sort_expr(sort, |expr| match &expr.node {
+        let error = sort.visit(|expr| match &expr.node {
             SortExpressionKind::Reference(name) if !self.sort_names.contains(name.as_str()) => ControlFlow::Break(
                 format!("the system-defined specification references the undeclared sort '{name}'"),
             ),
