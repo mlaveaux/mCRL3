@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
+use std::convert::Infallible;
 use std::fmt::Debug;
+use std::ops::ControlFlow;
 use std::time::Instant;
 
 use ahash::HashMap;
@@ -9,14 +11,19 @@ use log::log_enabled;
 use log::trace;
 use log::warn;
 use merc_aterm::Term;
+use merc_data::DataApplicationRef;
 use merc_data::DataExpression;
 use merc_data::DataExpressionRef;
+use merc_data::DataExpressionVisitor;
 use merc_data::DataFunctionSymbol;
+use merc_data::DataFunctionSymbolRef;
+use merc_data::MachineNumberRef;
 use merc_data::MachineWordOp;
 use merc_data::is_data_application;
 use merc_data::is_data_function_symbol;
-use merc_data::is_data_machine_number;
 use merc_data::is_data_variable;
+use merc_utilities::Step;
+use merc_utilities::Visit;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use smallvec::smallvec;
@@ -669,24 +676,57 @@ pub fn is_supported_rule(rule: &Rule) -> bool {
 
 /// Finds all data symbols in the term and adds them to the symbol index.
 fn find_symbols(t: &DataExpressionRef<'_>, symbols: &mut HashMap<DataFunctionSymbol, usize>) {
-    if is_data_function_symbol(t) {
-        add_symbol(t.protect().into(), 0, symbols);
-    } else if is_data_application(t) {
-        // REC specifications should never contain this so it can be a debug error.
-        assert!(
-            is_data_function_symbol(&t.data_function_symbol()),
-            "Error in term {t}, higher order term rewrite systems are not supported"
-        );
-
-        add_symbol(t.data_function_symbol().protect(), t.data_arguments().len(), symbols);
-        for arg in t.data_arguments() {
-            find_symbols(&arg, symbols);
-        }
-    } else if is_data_machine_number(t) {
-        // A machine number has no function symbol of its own, so it is
-        // represented by the shared stand-in symbol; see [machine_number_symbol].
-        add_symbol(machine_number_symbol(), 0, symbols);
-    } else if !is_data_variable(t) {
-        panic!("Unexpected term {t:?}");
+    /// Collects the head symbol of every node, with the arity it occurs with.
+    struct FindSymbols<'a> {
+        symbols: &'a mut HashMap<DataFunctionSymbol, usize>,
     }
+
+    impl DataExpressionVisitor for FindSymbols<'_> {
+        type Context = ();
+        type Break = Infallible;
+        type Error = Infallible;
+
+        fn visit_function_symbol(
+            &mut self,
+            function_symbol: &DataFunctionSymbolRef<'_>,
+            context: (),
+        ) -> Visit<Infallible, (), Infallible, Infallible> {
+            add_symbol(function_symbol.protect(), 0, self.symbols);
+            Ok(ControlFlow::Continue(Step::Into(context)))
+        }
+
+        fn visit_application(
+            &mut self,
+            application: &DataApplicationRef<'_>,
+            context: (),
+        ) -> Visit<Infallible, (), Infallible, Infallible> {
+            // REC specifications should never contain this so it can be a debug error.
+            assert!(
+                is_data_function_symbol(&application.data_function_symbol()),
+                "Error in term {application}, higher order term rewrite systems are not supported"
+            );
+
+            add_symbol(
+                application.data_function_symbol().protect(),
+                application.data_arguments().len(),
+                self.symbols,
+            );
+            Ok(ControlFlow::Continue(Step::Into(context)))
+        }
+
+        fn visit_machine_number(
+            &mut self,
+            _number: &MachineNumberRef<'_>,
+            context: (),
+        ) -> Visit<Infallible, (), Infallible, Infallible> {
+            // A machine number has no function symbol of its own, so it is
+            // represented by the shared stand-in symbol; see [machine_number_symbol].
+            add_symbol(machine_number_symbol(), 0, self.symbols);
+            Ok(ControlFlow::Continue(Step::Into(context)))
+        }
+
+        // Variables carry no symbol.
+    }
+
+    FindSymbols { symbols }.visit(t, ());
 }
