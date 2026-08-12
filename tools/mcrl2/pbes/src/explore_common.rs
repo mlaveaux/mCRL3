@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::ops::Range;
+use std::os::linux::raw::stat;
 
 use itertools::Itertools;
 use log::info;
@@ -15,6 +16,7 @@ use merc_explore::explore_parallel;
 use merc_io::TimeProgress;
 use merc_lts::StateIndex;
 use merc_utilities::MercError;
+use merc_utilities::ShardedCounter;
 use merc_utilities::Timing;
 use merc_vpg::ParityGame;
 use merc_vpg::ParityGameBuilder;
@@ -169,6 +171,10 @@ pub(crate) struct VertexCounts {
 }
 
 impl VertexCounts {
+    pub fn new(instantiations: usize, subformulas: usize, sinks: usize) -> Self {
+        VertexCounts { instantiations, subformulas, sinks }
+    }
+
     /// Returns these counts with `kind` added.
     fn with(mut self, kind: PbesVertexKind) -> Self {
         match kind {
@@ -266,7 +272,12 @@ where
     M: LPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <M::Summand as Summand>::Context: Send,
 {
-    let pool = configure_rayon_thread_pool(threads, pinned)?;
+    let pool = configure_rayon_thread_pool(threads, pinned)?;    
+    let instantiations = ShardedCounter::new();   
+    let subformulas = ShardedCounter::new();   
+    let sinks = ShardedCounter::new();
+    let transitions = ShardedCounter::new();
+    let progress = bes_progress();
     let timing = Timing::new();
 
     let (_initial, partitions) = timing.measure("explore", || {
@@ -276,12 +287,22 @@ where
                 PbesPartition::default,
                 |partition: &mut PbesPartition, state: StateIndex, info: &PbesVertex| {
                     partition.vertices.push((VertexIndex::new(state.value()), *info));
+                    match info.kind {
+                        PbesVertexKind::Instantiation => instantiations.increment(),
+                        PbesVertexKind::Subformula => subformulas.increment(),
+                        PbesVertexKind::Sink => sinks.increment(),
+                    }
                     Ok(())
                 },
                 |partition: &mut PbesPartition, from: StateIndex, _label: &(), to: StateIndex| {
                     partition
                         .edges
                         .push((VertexIndex::new(from.value()), VertexIndex::new(to.value())));
+                    if progress.is_due() {
+                        let counts = VertexCounts::new(instantiations.get() as usize, subformulas.get() as usize, sinks.get() as usize);
+                        progress.print((counts, transitions.get() as usize));
+                    }
+                    transitions.increment();
                     Ok(())
                 },
             )
