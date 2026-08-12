@@ -7,6 +7,7 @@ mod data_terms;
 mod machine_word_evaluation;
 mod mcrl2_data_specification;
 mod sort_terms;
+mod visitor;
 
 // Explicit pub(crate) re-exports.
 pub(crate) use data_terms::DATA_SYMBOLS;
@@ -37,3 +38,7 @@ pub use sort_terms::BasicSort;
 pub use sort_terms::BasicSortRef;
 pub use sort_terms::SortExpression;
 pub use sort_terms::SortExpressionRef;
+pub use visitor::ClosureVisitor;
+pub use visitor::DataExpressionVisitor;
+pub use visitor::try_visit_data_expr;
+pub use visitor::visit_data_expr;

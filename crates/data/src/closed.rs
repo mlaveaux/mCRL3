@@ -1,10 +1,12 @@
+use std::ops::ControlFlow;
+
 use ahash::AHashSet;
 use merc_aterm::Term;
+use merc_utilities::Step;
 
-use crate::is_data_application;
-use crate::is_data_function_symbol;
-use crate::is_data_machine_number;
+use crate::DataExpressionRef;
 use crate::is_data_variable;
+use crate::visit_data_expr;
 
 /// Returns true iff `term` contains no data variables, i.e. it is a ground term.
 ///
@@ -18,27 +20,21 @@ pub fn is_closed<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     // than the size of the tree it unfolds to. Keying on the term address is only valid because
     // no terms are created here, so no garbage collection can run during the traversal.
     let mut visited = AHashSet::new();
-    let mut stack = vec![term.copy()];
 
-    while let Some(t) = stack.pop() {
-        if !visited.insert(t.index()) {
-            continue;
-        }
-
-        if is_data_variable(&t) {
-            return false;
-        } else if is_data_function_symbol(&t) || is_data_machine_number(&t) {
-            continue;
-        } else if is_data_application(&t) {
-            // The arguments of a data application include its head function symbol, which is
-            // closed by definition, so it needs no special treatment here.
-            stack.extend(t.arguments());
+    let variable: Option<()> = visit_data_expr(&DataExpressionRef::from(term.copy()), (), |expr, context| {
+        if !visited.insert(expr.index()) {
+            ControlFlow::Continue(Step::Prune)
+        } else if is_data_variable(expr) {
+            ControlFlow::Break(())
         } else {
-            panic!("is_closed is not defined for binders and where clauses: {t}");
+            // A function symbol and a machine number have no children, and the head function
+            // symbol of an application is closed by definition, so neither needs to be recognised
+            // separately here.
+            ControlFlow::Continue(Step::Into(context))
         }
-    }
+    });
 
-    true
+    variable.is_none()
 }
 
 #[cfg(test)]

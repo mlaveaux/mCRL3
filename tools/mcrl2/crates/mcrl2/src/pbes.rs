@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use mcrl2_sys::cxx::CxxVector;
 use mcrl2_sys::cxx::UniquePtr;
-use mcrl2_sys::pbes::ffi::assignment_pair;
+use mcrl2_sys::data::ffi::mcrl2_pbes_expression_replace_variables;
 use mcrl2_sys::pbes::ffi::local_control_flow_graph_vertex;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_pbes_file;
 use mcrl2_sys::pbes::ffi::mcrl2_load_pbes_from_text;
@@ -25,7 +25,6 @@ use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_is_mu;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_equations;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_propositional_variables;
-use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_propositional_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_formula;
@@ -66,6 +65,7 @@ use crate::DataSpecification;
 use crate::DataVariable;
 use crate::PbesExpression;
 use crate::PbesPropositionalVariableInstantiation;
+use crate::data_expression::to_assignment_pairs;
 use crate::lock_global;
 
 /// mcrl2::pbes_system::pbes
@@ -134,7 +134,7 @@ impl Pbes {
     /// Unlike `SrfPbes::unify_parameters`, this operates directly on the PBES without
     /// converting to standard recursive form, so formula structure is preserved.
     pub fn unify_parameters(&mut self, ignore_ce_equations: bool, reset: bool) -> Result<(), MercError> {
-        mcrl2_pbes_unify_parameters(self.pbes.pin_mut(), ignore_ce_equations, reset);
+        mcrl2_pbes_unify_parameters(self.pbes.pin_mut(), ignore_ce_equations, reset)?;
         Ok(())
     }
 
@@ -190,17 +190,17 @@ pub struct PbesRewriteContext {
 }
 
 impl PbesRewriteContext {
-    pub fn from_data_spec(data_spec: &DataSpecification) -> Self {
+    pub fn from_data_spec(data_spec: &DataSpecification) -> Result<Self, MercError> {
         let ctx = mcrl2_pbes_create_rewrite_context(
             data_spec
                 .get()
                 .as_ref()
                 .expect("data_specification UniquePtr should not be null"),
-        );
-        PbesRewriteContext {
+        )?;
+        Ok(PbesRewriteContext {
             ctx: RefCell::new(ctx),
             _not_send: PhantomData,
-        }
+        })
     }
 
     /// Sets σ := { variables[i] ↦ values[i] } for the next rewrite call.
@@ -213,7 +213,15 @@ impl PbesRewriteContext {
         variables: &[*const mcrl2_sys::atermpp::ffi::_aterm],
         values: &[*const mcrl2_sys::atermpp::ffi::_aterm],
     ) {
-        mcrl2_pbes_rewrite_set_assignments(self.ctx.borrow_mut().pin_mut(), variables, values);
+        assert_eq!(
+            variables.len(),
+            values.len(),
+            "Variables and values must have equal length"
+        );
+
+        // The only error the FFI reports is the length mismatch asserted above.
+        mcrl2_pbes_rewrite_set_assignments(self.ctx.borrow_mut().pin_mut(), variables, values)
+            .expect("variables and values have equal length");
     }
 
     /// Rewrites `formula` under the current σ.
@@ -221,11 +229,15 @@ impl PbesRewriteContext {
     /// The result is a protected `PbesExpression` and remains valid
     /// independently of subsequent calls.
     ///
+    /// Returns an error when the rewriter cannot evaluate the formula, which
+    /// happens for quantifiers that it fails to enumerate (for instance over a
+    /// function sort, or over an infinite sort).
+    ///
     /// # Safety
     /// `formula` must be a live `pbes_expression` term.
-    pub unsafe fn rewrite_formula(&self, formula: &PbesExpression) -> PbesExpression {
-        let ptr = unsafe { mcrl2_pbes_rewrite_formula(self.ctx.borrow_mut().pin_mut(), formula.get()) };
-        PbesExpression::new(unsafe { ATerm::from_ptr(ptr) })
+    pub unsafe fn rewrite_formula(&self, formula: &PbesExpression) -> Result<PbesExpression, MercError> {
+        let ptr = unsafe { mcrl2_pbes_rewrite_formula(self.ctx.borrow_mut().pin_mut(), formula.get()) }?;
+        Ok(PbesExpression::new(unsafe { ATerm::from_ptr(ptr) }))
     }
 }
 
@@ -356,7 +368,8 @@ impl ControlFlowGraph {
     }
 
     pub(crate) fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, index: usize) -> Self {
-        let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, index);
+        // Only ever called with an index from `0..mcrl2_stategraph_local_algorithm_cfgs`.
+        let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, index).expect("cfg index is in range");
         let vertices = (0..mcrl2_local_control_flow_graph_vertices(cfg))
             .map(|vertex_index| ControlFlowGraphVertex::new(algorithm.clone(), index, vertex_index))
             .collect::<Vec<_>>();
@@ -404,7 +417,7 @@ impl ControlFlowGraphVertex {
 
     /// Construct a new vertex and retrieve its edges as well.
     /// TODO: This should probably be private.
-    pub(crate) fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, cfg: usize, vertex: usize) -> Self {
+    pub fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, cfg: usize, vertex: usize) -> Self {
         let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, cfg);
         let vertex = mcrl2_local_control_flow_graph_vertex(cfg, vertex);
         let outgoing_edges_ffi = mcrl2_local_control_flow_graph_vertex_outgoing_edges(vertex);
@@ -527,7 +540,9 @@ impl StategraphEquation {
     }
 
     pub(crate) fn new(algorithm: Rc<UniquePtr<stategraph_algorithm>>, index: usize) -> Self {
-        let equation = mcrl2_stategraph_local_algorithm_equation(&algorithm, index);
+        // Only ever called with an index from `0..mcrl2_stategraph_local_algorithm_equations`.
+        let equation =
+            mcrl2_stategraph_local_algorithm_equation(&algorithm, index).expect("equation index is in range");
         let predicate_variables = mcrl2_stategraph_equation_predicate_variables(equation);
         let predicate_variables = predicate_variables.iter().map(|v| PredicateVariable::new(v)).collect();
 
@@ -540,7 +555,8 @@ impl StategraphEquation {
 
     /// Returns a reference to the underlying FFI equation.
     fn as_ref(&self) -> &stategraph_equation {
-        mcrl2_stategraph_local_algorithm_equation(&self.algorithm, self.index)
+        // `self.index` was validated when this equation was constructed.
+        mcrl2_stategraph_local_algorithm_equation(&self.algorithm, self.index).expect("equation index is in range")
     }
 }
 
@@ -588,7 +604,7 @@ impl SrfPbes {
     /// After unification the C++ `srf_pbes` object is updated in-place, so the
     /// Rust-side equation snapshot must be refreshed to stay consistent.
     pub fn unify_parameters(&mut self, ignore_ce_equations: bool, reset: bool) -> Result<(), MercError> {
-        mcrl2_srf_pbes_unify_parameters(self.srf_pbes.pin_mut(), ignore_ce_equations, reset);
+        mcrl2_srf_pbes_unify_parameters(self.srf_pbes.pin_mut(), ignore_ce_equations, reset)?;
 
         // Refresh the equations snapshot from the now-unified C++ object.
         let mut ffi_equations = CxxVector::new();
@@ -758,25 +774,26 @@ pub fn substitute_data_expressions(
     sigma: Vec<(DataExpression, DataExpression)>,
 ) -> PbesExpression {
     // Do not into_iter here, as we need to keep sigma alive for the call.
-    let sigma: Vec<assignment_pair> = sigma
-        .iter()
-        .map(|(lhs, rhs)| assignment_pair {
-            lhs: lhs.address(),
-            rhs: rhs.address(),
-        })
-        .collect();
+    let pairs = to_assignment_pairs(&sigma);
 
     PbesExpression::new(ATerm::from_unique_ptr(mcrl2_pbes_expression_replace_variables(
         expr.term.get(),
-        &sigma,
+        &pairs,
     )))
 }
 
-/// Replaces propositional variables in the given PBES expression according to the given substitution sigma.
+/// Reorders the parameters of every propositional variable instantiation in
+/// the given PBES expression according to the permutation `pi`.
+///
+/// Returns an error when `pi` is not a permutation of `0..pi.len()`, or when an
+/// instantiation with a different number of parameters is encountered.
 // The `&Vec<usize>` is required by the `mcrl2-sys` FFI binding.
 #[allow(clippy::ptr_arg)]
-pub fn reorder_propositional_variables(expr: &PbesExpression, pi: &Vec<usize>) -> PbesExpression {
-    PbesExpression::new(ATerm::from_unique_ptr(
-        mcrl2_pbes_expression_replace_propositional_variables(expr.term.get(), pi),
-    ))
+pub fn reorder_propositional_variables(
+    expr: &PbesExpression,
+    pi: &Vec<usize>,
+) -> Result<PbesExpression, MercError> {
+    Ok(PbesExpression::new(ATerm::from_unique_ptr(
+        mcrl2_pbes_expression_replace_propositional_variables(expr.term.get(), pi)?,
+    )))
 }
