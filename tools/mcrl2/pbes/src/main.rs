@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -50,6 +51,7 @@ use merc_vpg::Solver;
 use merc_vpg::solve_priority_promotion;
 use merc_vpg::solve_zielonka;
 use merc_vpg::verify_solution;
+use merc_vpg::write_pg;
 
 mod bsgs;
 mod clone_iterator;
@@ -86,6 +88,13 @@ struct Cli {
 
     #[arg(long, global = true)]
     timings: bool,
+
+    /// Skip the preprocessing that mCRL2 applies to a PBES before instantiating
+    /// it (instantiate global variables, simplify, one point rule, order
+    /// quantified variables). `pbessolve` always applies it, so leaving it on is
+    /// what makes the two tools comparable.
+    #[arg(long, global = true, default_value_t = false)]
+    no_preprocess: bool,
 
     /// The number of worker threads for the Oxidd LDD manager.
     #[arg(long, global = true, default_value_t = 1)]
@@ -233,6 +242,10 @@ struct ExploreExplicitArgs {
     /// Convert to SRF before exploring (legacy; default is the direct structure-graph algorithm).
     #[arg(long, default_value_t = false)]
     srf: bool,
+
+    /// Write the resulting parity game to this file in the PGSolver `.pg` format.
+    #[arg(long, short('o'), value_name = "FILE")]
+    output: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -329,13 +342,15 @@ fn main() -> ExitCode {
 }
 
 fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
+    let preprocess = !cli.no_preprocess;
+
     if let Some(command) = &cli.commands {
         match command {
-            Commands::Symmetry(args) => handle_symmetry(args)?,
-            Commands::GraphSymmetry(args) => handle_graph_symmetry(args)?,
-            Commands::ExploreExplicit(args) => handle_explore_explicit(args)?,
-            Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing)?,
-            Commands::Solve(args) => handle_solve(args)?,
+            Commands::Symmetry(args) => handle_symmetry(args, preprocess)?,
+            Commands::GraphSymmetry(args) => handle_graph_symmetry(args, preprocess)?,
+            Commands::ExploreExplicit(args) => handle_explore_explicit(args, preprocess)?,
+            Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing, preprocess)?,
+            Commands::Solve(args) => handle_solve(args, preprocess)?,
         }
     }
 
@@ -344,15 +359,29 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
 
 /// Reads a PBES from the given file in the explicitly chosen format, or the
 /// binary PBES format when no format is given.
-fn read_pbes(filename: &str, format: Option<PbesFormat>) -> Result<Pbes, MercError> {
-    match format.unwrap_or(PbesFormat::Pbes) {
-        PbesFormat::Pbes => Ok(Pbes::from_file(filename)?),
-        PbesFormat::Text => Ok(Pbes::from_text_file(filename)?),
+///
+/// Unless `preprocess` is false, the PBES is put through the same preprocessing
+/// that mCRL2 applies before instantiating one. Doing it here rather than inside
+/// a single explorer keeps every consumer of this PBES — the explorers, the
+/// symmetry detection and the parameter basis the generators index into —
+/// looking at the same equations.
+fn read_pbes(filename: &str, format: Option<PbesFormat>, preprocess: bool) -> Result<Pbes, MercError> {
+    let mut pbes = match format.unwrap_or(PbesFormat::Pbes) {
+        PbesFormat::Pbes => Pbes::from_file(filename)?,
+        PbesFormat::Text => Pbes::from_text_file(filename)?,
+    };
+
+    if preprocess {
+        pbes.preprocess()?;
+    } else {
+        info!("Skipping PBES preprocessing (--no-preprocess)");
     }
+
+    Ok(pbes)
 }
 
-fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format.clone())?;
+fn handle_explore_explicit(args: &ExploreExplicitArgs, preprocess: bool) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone(), preprocess)?;
     let game = if !args.quotient.is_empty() {
         let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
         explore_with_symmetry(
@@ -389,13 +418,25 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs) -> Result<(), MercError> 
         game.num_of_vertices(),
         game.num_of_edges()
     );
+
+    if let Some(output) = &args.output {
+        let mut output_file = File::create(output)?;
+        write_pg(&mut output_file, &game)?;
+        info!("Parity game written to '{}'", output.display());
+    }
+
     Ok(())
 }
 
 /// Handles symbolic exploration of a PBES, reporting the number of reachable
 /// BES equations (states).
-fn handle_explore_symbolic(cli: &Cli, args: &ExploreSymbolicArgs, timing: &Timing) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format.clone())?;
+fn handle_explore_symbolic(
+    cli: &Cli,
+    args: &ExploreSymbolicArgs,
+    timing: &Timing,
+    preprocess: bool,
+) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone(), preprocess)?;
     let storage = init_ldd_manager(cli);
     let states = explore_pbes_symbolic(&storage, &pbes, timing)?;
     println!("Number of states: {}", states.len());
@@ -548,8 +589,8 @@ where
 
 /// Handles the solve command, which explores a PBES into a parity game and
 /// solves the game, printing the solution of the initial vertex.
-fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format.clone())?;
+fn handle_solve(args: &SolveArgs, preprocess: bool) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone(), preprocess)?;
     let game = if !args.quotient.is_empty() {
         let bsgs = build_bsgs_from_user_generators(&pbes, &args.quotient, &args.gap_path)?;
         explore_with_symmetry(
@@ -608,8 +649,8 @@ fn handle_solve(args: &SolveArgs) -> Result<(), MercError> {
     Ok(())
 }
 
-fn handle_graph_symmetry(args: &GraphSymmetryArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format.clone())?;
+fn handle_graph_symmetry(args: &GraphSymmetryArgs, preprocess: bool) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone(), preprocess)?;
 
     let config = GapConfig {
         executable: args.gap_path.clone(),
@@ -643,8 +684,8 @@ fn handle_graph_symmetry(args: &GraphSymmetryArgs) -> Result<(), MercError> {
     Ok(())
 }
 
-fn handle_symmetry(args: &SymmetryArgs) -> Result<(), MercError> {
-    let pbes = read_pbes(&args.filename, args.format.clone())?;
+fn handle_symmetry(args: &SymmetryArgs, preprocess: bool) -> Result<(), MercError> {
+    let pbes = read_pbes(&args.filename, args.format.clone(), preprocess)?;
     let algorithm = SymmetryAlgorithm::new(&pbes, args.print_srf)?;
     if let Some(permutation) = &args.permutation {
         let pi = if permutation.trim_start().starts_with("[") {

@@ -281,6 +281,43 @@ init X(0, 1);",
         assert_parallel_matches_sequential(&pbes);
     }
 
+    /// A nested formula reachable from two equations of *different* priority is
+    /// a single vertex, and merging it does not change who wins.
+    ///
+    /// `X` (priority 2) and `W` (priority 1) both have `Y(n) || Z(n)` as their
+    /// first conjunct, so both reach the very same disjunction term. Keying the
+    /// subformula vertex on the enclosing priority as well as on the term would
+    /// split it into two vertices here, which is what mCRL2's `SG1` does not do
+    /// either: `insert_vertex(psi)` is keyed on the formula alone.
+    #[test]
+    fn test_shared_subformula_is_one_vertex() {
+        let pbes = Pbes::from_text(
+            "pbes nu X(n: Nat) = (Y(n) || Z(n)) && W(n);
+                  mu W(n: Nat) = (Y(n) || Z(n)) && X(n);
+                  nu Y(n: Nat) = val(n > 0);
+                  nu Z(n: Nat) = val(n < 1);
+             init X(0);",
+        )
+        .expect("parse failed");
+
+        // The SRF explorer has no subformula vertices at all, so it is an
+        // independent check that the merged game still has the same winner.
+        assert_general_matches_srf(&pbes);
+
+        let mut normalised = pbes.clone();
+        normalised.normalize();
+        let game = explore_pbes(normalised, ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("general exploration failed");
+
+        // 4 instantiations + 1 shared disjunction + 2 sinks. It would be 8 if
+        // the disjunction were split per priority.
+        assert_eq!(
+            game.num_of_vertices(),
+            7,
+            "the disjunction shared by X and W must be a single vertex"
+        );
+    }
+
     #[test]
     fn test_parallel_random_pbes_seeds() {
         use merc_syntax::random_pbes;

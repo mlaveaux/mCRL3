@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
+use std::time::Instant;
 
+use log::info;
 use mcrl2_sys::cxx::CxxVector;
 use mcrl2_sys::cxx::UniquePtr;
 use mcrl2_sys::data::ffi::mcrl2_pbes_expression_replace_variables;
@@ -26,9 +28,13 @@ use mcrl2_sys::pbes::ffi::mcrl2_pbes_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_equations;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_expression_replace_propositional_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_initial_state;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_instantiate_global_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_is_propositional_variable;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_one_point_rule;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_order_quantified_variables;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_formula;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_rewrite_set_assignments;
+use mcrl2_sys::pbes::ffi::mcrl2_pbes_simplify_quantifiers;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_srf_pbes;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_to_string;
 use mcrl2_sys::pbes::ffi::mcrl2_pbes_unify_parameters;
@@ -135,6 +141,68 @@ impl Pbes {
     /// converting to standard recursive form, so formula structure is preserved.
     pub fn unify_parameters(&mut self, ignore_ce_equations: bool, reset: bool) -> Result<(), MercError> {
         mcrl2_pbes_unify_parameters(self.pbes.pin_mut(), ignore_ce_equations, reset)?;
+        Ok(())
+    }
+
+    /// Substitutes a value for every global variable of the PBES, in-place.
+    ///
+    /// Returns an error when a global variable cannot be instantiated.
+    pub fn instantiate_global_variables(&mut self) -> Result<(), MercError> {
+        mcrl2_pbes_instantiate_global_variables(self.pbes.pin_mut())?;
+        Ok(())
+    }
+
+    /// Simplifies every equation body in-place, evaluating data subterms and
+    /// eliminating quantifiers that range over nothing.
+    pub fn simplify_quantifiers(&mut self) -> Result<(), MercError> {
+        mcrl2_pbes_simplify_quantifiers(self.pbes.pin_mut())?;
+        Ok(())
+    }
+
+    /// Applies the one point rule to every equation body in-place, replacing a
+    /// quantifier that pins its variable to a single value by that instance.
+    pub fn one_point_rule(&mut self) -> Result<(), MercError> {
+        mcrl2_pbes_one_point_rule(self.pbes.pin_mut())?;
+        Ok(())
+    }
+
+    /// Orders the quantified variables of every equation body in-place, so that
+    /// quantifiers differing only in the order of their variables become the
+    /// same term.
+    pub fn order_quantified_variables(&mut self) -> Result<(), MercError> {
+        mcrl2_pbes_order_quantified_variables(self.pbes.pin_mut())?;
+        Ok(())
+    }
+
+    /// Applies the preprocessing that mCRL2's `pbesinst_lazy_algorithm` performs
+    /// before instantiating a PBES, in-place, reporting every step it runs.
+    ///
+    /// This is [`Pbes::instantiate_global_variables`], [`Pbes::simplify_quantifiers`],
+    /// [`Pbes::one_point_rule`] and [`Pbes::order_quantified_variables`] in that
+    /// order, which is what makes an exploration comparable to `pbessolve`: that
+    /// tool never instantiates a PBES without it.
+    ///
+    /// Only the equation bodies change, so the parameter vector that
+    /// [`Pbes::unify_parameters`] produces is unaffected and the symmetry
+    /// generators keep indexing into the same vector.
+    ///
+    /// Returns an error when a global variable cannot be instantiated.
+    pub fn preprocess(&mut self) -> Result<(), MercError> {
+        // Named steps rather than four inlined calls so that the reporting
+        // cannot drift out of sync with what is actually run.
+        let steps: [(&str, fn(&mut Pbes) -> Result<(), MercError>); 4] = [
+            ("instantiate global variables", Pbes::instantiate_global_variables),
+            ("simplify quantifiers", Pbes::simplify_quantifiers),
+            ("one point rule", Pbes::one_point_rule),
+            ("order quantified variables", Pbes::order_quantified_variables),
+        ];
+
+        for (name, step) in steps {
+            let start = Instant::now();
+            step(self)?;
+            info!("Preprocessing: {name} took {:.3}s", start.elapsed().as_secs_f64());
+        }
+
         Ok(())
     }
 
@@ -790,10 +858,7 @@ pub fn substitute_data_expressions(
 /// instantiation with a different number of parameters is encountered.
 // The `&Vec<usize>` is required by the `mcrl2-sys` FFI binding.
 #[allow(clippy::ptr_arg)]
-pub fn reorder_propositional_variables(
-    expr: &PbesExpression,
-    pi: &Vec<usize>,
-) -> Result<PbesExpression, MercError> {
+pub fn reorder_propositional_variables(expr: &PbesExpression, pi: &Vec<usize>) -> Result<PbesExpression, MercError> {
     Ok(PbesExpression::new(ATerm::from_unique_ptr(
         mcrl2_pbes_expression_replace_propositional_variables(expr.term.get(), pi)?,
     )))

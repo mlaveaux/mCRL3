@@ -56,10 +56,25 @@ const TAG_MASK: usize = 0xF << (usize::BITS - 4);
 const TRUE_SINK: usize = 0x1 << (usize::BITS - 4);
 /// Source state is a false-sink (self-loop, Odd wins).
 const FALSE_SINK: usize = 0x2 << (usize::BITS - 4);
-/// Source state is a subformula AND node; full state: `[AND_OP, priority, subformula_idx]`.
+/// Source state is a subformula AND node; full state: `[AND_OP, subformula_idx]`.
 const AND_OP: usize = 0x3 << (usize::BITS - 4);
-/// Source state is a subformula OR node; full state: `[OR_OP, priority, subformula_idx]`.
+/// Source state is a subformula OR node; full state: `[OR_OP, subformula_idx]`.
 const OR_OP: usize = 0x4 << (usize::BITS - 4);
+
+/// The priority every subformula vertex is given.
+///
+/// A subformula vertex is a syntactic artefact rather than a fixpoint, so it
+/// must not influence which priority dominates a cycle. Giving it the neutral
+/// minimum achieves that: [`compute_priorities`] only produces priorities `>= 0`,
+/// so a subformula vertex is never the maximum on a cycle that also contains an
+/// instantiation — and every cycle does, because a subformula vertex's
+/// successors are strict subterms of its own formula (see [`emit_as_target`]),
+/// which makes the subgraph of subformula vertices acyclic.
+///
+/// This is what lets the same nested formula be *one* vertex no matter which
+/// equations reach it, mirroring mCRL2's `SG1`, whose `insert_vertex(psi)` is
+/// keyed on the formula alone and leaves the rank of such a vertex undefined.
+const SUBFORMULA_PRIORITY: usize = 0;
 
 type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 type SubformulaMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
@@ -74,8 +89,8 @@ type SubformulaMapping = ConcurrentIndexedSet<PbesExpressionRef<'static>>;
 /// - PVI state:  `[eq_idx, intern(v0), …, intern(vn)]` — length `1 + num_params`
 /// - TRUE sink:  `[TRUE_SINK]`
 /// - FALSE sink: `[FALSE_SINK]`
-/// - Subformula AND: `[AND_OP, priority, subformula_idx]`
-/// - Subformula OR:  `[OR_OP,  priority, subformula_idx]`
+/// - Subformula AND: `[AND_OP, subformula_idx]`
+/// - Subformula OR:  `[OR_OP,  subformula_idx]`
 pub(crate) struct PbesLps {
     /// The unified PBES; retained so the terms borrowed by the summands stay
     /// alive, and read back by [`PbesLps::parameters`].
@@ -317,7 +332,7 @@ impl PbesLps {
             subformula_mapping: subformula_mapping.handle(),
             name_to_eq: name_to_eq.clone(),
             num_params,
-            read_positions: vec![0, 1, 2],
+            read_positions: vec![0, 1],
             // A subformula vertex expands into propositional variable
             // instantiations, sinks or further subformula vertices, all of
             // different lengths.
@@ -443,9 +458,17 @@ impl LPS for PbesLps {
         } else if tag == FALSE_SINK {
             PbesVertex::new(Player::Odd, Priority::new(1), PbesVertexKind::Sink)
         } else if tag == AND_OP {
-            PbesVertex::new(Player::Odd, Priority::new(state[1]), PbesVertexKind::Subformula)
+            PbesVertex::new(
+                Player::Odd,
+                Priority::new(SUBFORMULA_PRIORITY),
+                PbesVertexKind::Subformula,
+            )
         } else if tag == OR_OP {
-            PbesVertex::new(Player::Even, Priority::new(state[1]), PbesVertexKind::Subformula)
+            PbesVertex::new(
+                Player::Even,
+                Priority::new(SUBFORMULA_PRIORITY),
+                PbesVertexKind::Subformula,
+            )
         } else {
             let (player, priority) = context
                 .player_priority
@@ -520,18 +543,16 @@ impl Summand for PbesSummand {
                 context.next_state_buf.push(FALSE_SINK);
                 report(&(), &context.next_state_buf)
             }
-            PbesSummandKind::Equation { priority, .. } => {
+            PbesSummandKind::Equation { .. } => {
                 let psi = context.psi.as_ref().expect("prepare must precede enumerate");
                 let formula = psi.copy();
                 // Split borrows: formula from context.psi, buf and children_buf from separate fields.
-                let priority = *priority;
                 let buf = &mut context.next_state_buf;
                 let children_buf = &mut context.flat_children;
-                enumerate_formula_children(formula, priority, self.tables(), children_buf, buf, &mut report)
+                enumerate_formula_children(formula, self.tables(), children_buf, buf, &mut report)
             }
             PbesSummandKind::Subformula => {
-                let subformula_idx = state[2];
-                let priority = state[1];
+                let subformula_idx = state[1];
                 let pbes_ref = self
                     .subformula_mapping
                     .get_by_index(subformula_idx)
@@ -539,7 +560,7 @@ impl Summand for PbesSummand {
                 let formula = pbes_ref.copy();
                 let buf = &mut context.next_state_buf;
                 let children_buf = &mut context.flat_children;
-                enumerate_formula_children(formula, priority, self.tables(), children_buf, buf, &mut report)
+                enumerate_formula_children(formula, self.tables(), children_buf, buf, &mut report)
             }
         }
     }
@@ -564,7 +585,6 @@ fn player_of(psi: &mcrl2::PbesExpression) -> Player {
 /// `children_buf` is a reusable scratch buffer owned by the per-thread context.
 fn enumerate_formula_children<F>(
     formula: PbesExpressionRef<'_>,
-    priority: usize,
     tables: TargetTables<'_>,
     children_buf: &mut Vec<PbesExpression>,
     buf: &mut Vec<usize>,
@@ -580,10 +600,10 @@ where
         flatten_pbes_or_into(formula, children_buf);
     } else {
         // Single leaf (PVI, true, false): emit directly without buffering.
-        return emit_as_target(formula, priority, tables, buf, report);
+        return emit_as_target(formula, tables, buf, report);
     }
     for child in children_buf.drain(..) {
-        emit_as_target(child.copy(), priority, tables, buf, report)?;
+        emit_as_target(child.copy(), tables, buf, report)?;
     }
     Ok(())
 }
@@ -591,11 +611,14 @@ where
 /// Emits a transition to the parity-game state corresponding to `expr`.
 ///
 /// PVI → concrete PVI state `[eq_idx, arg0, …]`.
-/// AND/OR sub-formula → subformula vertex `[AND_OP/OR_OP, priority, subformula_idx]`.
+/// AND/OR sub-formula → subformula vertex `[AND_OP/OR_OP, subformula_idx]`.
 /// `true` / `false` → respective sink state.
+///
+/// A sub-formula target is always a strict subterm of `expr`'s parent formula,
+/// which is what makes the subformula subgraph acyclic and lets those vertices
+/// share [`SUBFORMULA_PRIORITY`] regardless of which equation reached them.
 fn emit_as_target<F>(
     expr: PbesExpressionRef<'_>,
-    priority: usize,
     tables: TargetTables<'_>,
     buf: &mut Vec<usize>,
     report: &mut F,
@@ -626,7 +649,7 @@ where
             .subformula_mapping
             .insert(unsafe { PbesExpressionRef::from_address(expr.address()) });
         buf.clear();
-        buf.extend([AND_OP, priority, subformula_idx]);
+        buf.extend([AND_OP, subformula_idx]);
         report(&(), buf)
     } else if is_pbes_or(&expr.copy()) {
         // SAFETY: term is a sub-expression of the rewritten psi still in context;
@@ -635,7 +658,7 @@ where
             .subformula_mapping
             .insert(unsafe { PbesExpressionRef::from_address(expr.address()) });
         buf.clear();
-        buf.extend([OR_OP, priority, subformula_idx]);
+        buf.extend([OR_OP, subformula_idx]);
         report(&(), buf)
     } else if is_pbes_true(&expr.copy()) {
         buf.clear();
