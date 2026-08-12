@@ -2,8 +2,9 @@ use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::Once;
 
-use log::info;
+use log::debug;
 use log::trace;
 use parking_lot::Mutex;
 
@@ -12,6 +13,7 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_mark_address;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_garbage_collection;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_resize;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use merc_unsafety::ProtectionSet;
 
@@ -146,7 +148,7 @@ impl GlobalTermPool {
             trace!("Marked send term {:?}, index {root}", term.ptr);
         }
 
-        info!("Collecting garbage \n{:?}", self);
+        debug!("Collecting garbage \n{:?}", self);
     }
 
     /// Counts the number of terms in all protection sets.
@@ -165,6 +167,11 @@ impl GlobalTermPool {
 
         result += SEND_PROTECTION_SET.lock().len();
         result
+    }
+
+    /// Returns the number of registered (live) thread term pools, at least one.
+    fn num_thread_pools(&self) -> usize {
+        self.thread_protection_sets.iter().flatten().count().max(1)
     }
 
     /// Returns the number of terms in the pool.
@@ -234,4 +241,36 @@ pub(crate) fn mark_protection_sets(todo: Pin<&mut ffi::term_mark_stack>) {
 /// Counts the number of terms in all protection sets.
 pub(crate) fn protection_set_size() -> usize {
     GLOBAL_TERM_POOL.lock().protection_set_size()
+}
+
+/// Returns the number of registered (live) thread term pools, at least one.
+pub(crate) fn num_thread_pools() -> usize {
+    GLOBAL_TERM_POOL.lock().num_thread_pools()
+}
+
+/// Guards the one-time registration of the mark callback below.
+static MARK_CALLBACK: Once = Once::new();
+
+/// Registers [`mark_protection_sets`] with the mCRL2 aterm pool, exactly once
+/// for the whole process.
+///
+/// Registering is deliberately not done per thread: the callback already walks
+/// the protection sets of *every* thread, while the pool invokes each registered
+/// callback once per collection. One registration per thread would therefore make
+/// a single collection mark every protection set once per thread, i.e. quadratic
+/// in the number of threads.
+///
+/// Must be called without holding [`GLOBAL_TERM_POOL`], since registering takes
+/// the shared aterm pool lock while a collecting thread takes those in the
+/// opposite order.
+pub(crate) fn register_mark_callback() {
+    MARK_CALLBACK.call_once(|| {
+        // The registration is deliberately leaked. It has to stay alive for the
+        // rest of the process, and the mCRL2 side deregisters a callback from
+        // whichever thread drops it rather than the one that registered it.
+        std::mem::forget(mcrl2_aterm_pool_register_mark_callback(
+            mark_protection_sets,
+            protection_set_size,
+        ));
+    });
 }
