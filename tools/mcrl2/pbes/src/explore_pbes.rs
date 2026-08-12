@@ -265,9 +265,25 @@ impl PbesLps {
         // one thread's pool and relocated by another), so normalise once here on
         // the constructing thread. Afterwards `create_context` only reads the
         // specification and workers can build their rewriters concurrently.
-        drop(PbesRewriteContext::from_data_spec(&data_spec)?);
+        let rewriter = PbesRewriteContext::from_data_spec(&data_spec)?;
 
-        let initial_pvi = pbes.initial_state();
+        // Rewrite the initial state before interning it, as mCRL2's pbesinst
+        // does. Every later state is a rewritten term, so an initial argument
+        // left in a non-normal form (`X(1 + 1)`) is a value no successor ever
+        // equals: the initial vertex gets its own state and the first rewrite
+        // trips over the unevaluated term. `instantiate_global_variables`
+        // readily produces such arguments, which is how this surfaces.
+        let initial_expr = PbesExpression::from(pbes.initial_state());
+        // SAFETY: `initial_expr` owns a protected term read from the live PBES.
+        let initial_rewritten = unsafe { rewriter.rewrite_formula(&initial_expr) }?;
+        if !is_pbes_propositional_variable_instantiation(&initial_rewritten.copy()) {
+            return Err(MercError::from(format!(
+                "The initial state does not rewrite to a propositional variable instantiation: {}",
+                initial_rewritten.copy()
+            )));
+        }
+        let initial_pvi = PbesPropositionalVariableInstantiationRef::from(initial_rewritten.copy());
+
         let initial_eq_name = initial_pvi.name().to_string();
         let initial_eq_idx = *name_to_eq
             .get(&initial_eq_name)
@@ -282,6 +298,7 @@ impl PbesLps {
             let (idx, _) = value_mapping.insert(unsafe { DataExpressionRef::from_address(arg.address()) });
             initial_state.push(idx);
         }
+        drop(rewriter);
 
         let true_summand_idx = num_equations;
         let false_summand_idx = num_equations + 1;

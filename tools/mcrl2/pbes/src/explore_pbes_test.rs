@@ -281,6 +281,43 @@ init X(0, 1);",
         assert_parallel_matches_sequential(&pbes);
     }
 
+    /// The initial state is rewritten before it is explored from, as mCRL2's
+    /// pbesinst does.
+    ///
+    /// Every other state is reached through the rewriter, so an initial argument
+    /// left as written is a value no successor ever equals: `X(1 + 1)` would get
+    /// a vertex of its own that no edge leads back to, and rewriting its body
+    /// leaves an unevaluated `1 + 1` behind.
+    #[test]
+    fn test_initial_state_is_rewritten() {
+        let pbes =
+            Pbes::from_text("pbes nu X(n: Nat) = val(n >= 3) || X(n + 1);\ninit X(1 + 1);").expect("parse failed");
+
+        let game = explore_pbes(pbes, ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("an initial state that needs rewriting must still be explorable");
+
+        // X(2), X(3) and the true sink: X(1 + 1) is X(2), not a state of its own.
+        assert_eq!(game.num_of_vertices(), 3);
+    }
+
+    /// Preprocessing instantiates the global variables, which is what makes a
+    /// PBES with a global variable in its initial state explorable at all.
+    #[test]
+    fn test_preprocess_instantiates_global_variables() {
+        let text = "glob g: Nat;\npbes nu X(n: Nat) = val(n >= 3) || X(n + 1);\ninit X(g);";
+
+        let unprocessed = Pbes::from_text(text).expect("parse failed");
+        assert!(
+            explore_pbes(unprocessed, ExplorationStrategy::Bfs, CachingStrategy::None).is_err(),
+            "an uninstantiated global variable cannot be rewritten to a value"
+        );
+
+        let mut preprocessed = Pbes::from_text(text).expect("parse failed");
+        preprocessed.preprocess().expect("preprocessing failed");
+        explore_pbes(preprocessed, ExplorationStrategy::Bfs, CachingStrategy::None)
+            .expect("after preprocessing the global variable has a value");
+    }
+
     /// A nested formula reachable from two equations of *different* priority is
     /// a single vertex, and merging it does not change who wins.
     ///

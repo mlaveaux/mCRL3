@@ -19,6 +19,7 @@ use merc_tools::VersionFlag;
 use merc_tools::report_error;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+use merc_unsafety::print_allocator_metrics;
 
 use crate::bsgs::Bsgs;
 use crate::explore_common::ParameterLayoutLPS;
@@ -338,6 +339,7 @@ fn main() -> ExitCode {
         timing.print();
     }
 
+    print_allocator_metrics();
     report_error(result)
 }
 
