@@ -32,10 +32,10 @@ use merc_vpg::ParityGame;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 
+use crate::explore_common::ParameterLayoutLPS;
+use crate::explore_common::PbesVertex;
 use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
 use crate::explore_common::UNIFY_RESET_PARAMETERS;
-use crate::explore_common::ParameterLayout;
-use crate::explore_common::PbesVertex;
 use crate::explore_common::compute_priorities;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
@@ -406,7 +406,7 @@ impl LPS for PbesSrfLps {
     }
 }
 
-impl ParameterLayout for PbesSrfLps {
+impl ParameterLayoutLPS for PbesSrfLps {
     fn parameter_range(&self, state: &[usize]) -> Option<Range<usize>> {
         // Every SRF state is `[equation_index, params...]`.
         debug_assert_eq!(state.len(), 1 + self.num_params());

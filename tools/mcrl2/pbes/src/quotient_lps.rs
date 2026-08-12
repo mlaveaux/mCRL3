@@ -6,7 +6,7 @@ use merc_explore::Summand;
 use merc_utilities::MercError;
 
 use crate::bsgs::Bsgs;
-use crate::explore_common::ParameterLayout;
+use crate::explore_common::ParameterLayoutLPS;
 
 /// Wraps any `LPS<Value = usize>` and canonicalizes every enumerated next-state
 /// to the lexicographically smallest orbit representative before passing it to
@@ -25,7 +25,7 @@ use crate::explore_common::ParameterLayout;
 /// ```
 /// This keeps cache keys narrow (raw, un-canonicalized write positions) and avoids
 /// forcing the cache to track all parameters as written.
-pub(crate) struct QuotientLps<P: ParameterLayout<Value = usize>> {
+pub(crate) struct QuotientLps<P: ParameterLayoutLPS<Value = usize>> {
     inner: Arc<P>,
     bsgs: Arc<Bsgs>,
     summands: Vec<QuotientSummand<P>>,
@@ -36,7 +36,7 @@ pub(crate) struct QuotientLps<P: ParameterLayout<Value = usize>> {
 ///
 /// Delegates enumeration to the corresponding inner summand and canonicalizes
 /// each next-state before reporting it.
-pub(crate) struct QuotientSummand<P: ParameterLayout<Value = usize>> {
+pub(crate) struct QuotientSummand<P: ParameterLayoutLPS<Value = usize>> {
     index: usize,
     inner: Arc<P>,
     bsgs: Arc<Bsgs>,
@@ -45,7 +45,7 @@ pub(crate) struct QuotientSummand<P: ParameterLayout<Value = usize>> {
 }
 
 /// Per-thread enumeration context for a [`QuotientLps`].
-pub(crate) struct QuotientContext<P: ParameterLayout<Value = usize>> {
+pub(crate) struct QuotientContext<P: ParameterLayoutLPS<Value = usize>> {
     inner: <P::Summand as Summand>::Context,
 }
 
@@ -57,12 +57,12 @@ pub(crate) struct QuotientContext<P: ParameterLayout<Value = usize>> {
 // last Arc being dropped on a foreign thread, but `QuotientLps` is not `Send`,
 // so that case cannot arise. `Arc<Bsgs>` is unconditionally fine because `Bsgs`
 // contains only `usize`, `Vec`, and `HashMap` of plain data, all auto-`Sync`.
-unsafe impl<P: ParameterLayout<Value = usize> + Sync> Sync for QuotientLps<P> {}
-unsafe impl<P: ParameterLayout<Value = usize> + Sync> Sync for QuotientSummand<P> {}
+unsafe impl<P: ParameterLayoutLPS<Value = usize> + Sync> Sync for QuotientLps<P> {}
+unsafe impl<P: ParameterLayoutLPS<Value = usize> + Sync> Sync for QuotientSummand<P> {}
 
 impl<P> QuotientLps<P>
 where
-    P: ParameterLayout<Value = usize>,
+    P: ParameterLayoutLPS<Value = usize>,
 {
     /// Wraps `inner` in a canonicalizing quotient layer.
     ///
@@ -96,7 +96,7 @@ where
 
 impl<P> LPS for QuotientLps<P>
 where
-    P: ParameterLayout<Value = usize>,
+    P: ParameterLayoutLPS<Value = usize>,
 {
     type Value = usize;
     type Label = P::Label;
@@ -104,8 +104,7 @@ where
     type Summand = QuotientSummand<P>;
 
     fn initial_state(&self) -> Vec<usize> {
-        self.bsgs
-            .canonicalize(&self.inner.initial_state(), self.param_offset)
+        self.bsgs.canonicalize(&self.inner.initial_state(), self.param_offset)
     }
 
     fn summands(&self) -> &[Self::Summand] {
@@ -118,11 +117,7 @@ where
         }
     }
 
-    fn prepare<'a>(
-        &'a self,
-        context: &mut QuotientContext<P>,
-        state: &'a [usize],
-    ) -> impl Iterator<Item = usize> + 'a {
+    fn prepare<'a>(&'a self, context: &mut QuotientContext<P>, state: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
         self.inner.prepare(&mut context.inner, state)
     }
 
@@ -133,7 +128,7 @@ where
 
 impl<P> Summand for QuotientSummand<P>
 where
-    P: ParameterLayout<Value = usize>,
+    P: ParameterLayoutLPS<Value = usize>,
 {
     type Value = usize;
     type Label = P::Label;
@@ -159,7 +154,10 @@ where
         self.inner.summands()[self.index].enumerate(&mut context.inner, state, |label, next| {
             match inner.parameter_range(next) {
                 Some(range) => {
-                    debug_assert_eq!(range.start, param_offset, "the parameter block must start where the group acts");
+                    debug_assert_eq!(
+                        range.start, param_offset,
+                        "the parameter block must start where the group acts"
+                    );
                     debug_assert_eq!(range.len(), bsgs.n, "the group must act on the whole parameter block");
                     let canon = bsgs.canonicalize(next, param_offset);
                     report(label, &canon)
@@ -346,7 +344,11 @@ init X(0, 1);"#;
         let lps = PbesLps::new(pbes.clone())?;
         let n = lps.num_params();
         let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &gap_config())?);
-        let uncached = explore_pbes_impl(&QuotientLps::new(lps, Arc::clone(&bsgs), 1), ExplorationStrategy::Bfs, &timing)?;
+        let uncached = explore_pbes_impl(
+            &QuotientLps::new(lps, Arc::clone(&bsgs), 1),
+            ExplorationStrategy::Bfs,
+            &timing,
+        )?;
 
         let cached = CacheLPS::new(PbesLps::new(pbes)?, CachingStrategy::Local);
         let cached = explore_pbes_impl(&QuotientLps::new(cached, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
