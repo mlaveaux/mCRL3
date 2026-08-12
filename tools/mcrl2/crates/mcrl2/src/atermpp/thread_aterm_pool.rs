@@ -14,8 +14,8 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_create_int;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_empty_list_function_symbol;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_from_string;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_list_function_symbol;
-use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_capacity;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_collect_garbage;
+use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_enable_automatic_garbage_collection;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_print_metrics;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_register_mark_callback;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize;
@@ -42,6 +42,20 @@ use super::global_aterm_pool::protection_set_size;
 
 /// The number of times before garbage collection is tested again.
 const TEST_GC_INTERVAL: usize = 100;
+
+/// The number of terms that the pool must contain before garbage collection is
+/// considered at all, since collecting a small pool is not worth its cost.
+const MIN_TERMS_UNTIL_GC: usize = 1_000_000;
+
+/// Returns the pool size at which the next garbage collection should be
+/// triggered, i.e. when the pool has roughly doubled since the last collection.
+///
+/// Note that the capacity cannot be used for this, since it sums the capacities
+/// of the storages for every arity while a term only occupies one of them. The
+/// pool size therefore stays well below the capacity and never reaches it.
+fn next_size_until_gc() -> usize {
+    mcrl2_aterm_pool_size().saturating_mul(2).max(MIN_TERMS_UNTIL_GC)
+}
 
 thread_local! {
     /// This is the thread specific term pool that manages the protection sets.
@@ -93,7 +107,7 @@ impl ThreadTermPool {
             list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_list_function_symbol()) },
             empty_list_symbol: unsafe { Symbol::from_ptr(mcrl2_aterm_empty_list_function_symbol()) },
             gc_counter: Cell::new(TEST_GC_INTERVAL),
-            size_until_gc: Cell::new(mcrl2_aterm_pool_capacity()),
+            size_until_gc: Cell::new(next_size_until_gc()),
             data_appl: RefCell::new(vec![]),
             arguments: RefCell::new(vec![]),
             _callback: ManuallyDrop::new(mcrl2_aterm_pool_register_mark_callback(
@@ -106,9 +120,18 @@ impl ThreadTermPool {
     /// Trigger a garbage collection explicitly.
     pub fn collect(&self) {
         debug!("Collecting mCRL2 aterm pool garbage");
+
+        // The pool ignores every collection, including this explicit one, while
+        // garbage collection is disabled (see `aterm_pool::collect_impl`). It is
+        // disabled in the global term pool to keep the pool from collecting on its
+        // own from inside a shared section, so enable it for the duration of this
+        // externally scheduled collection and disable it again afterwards.
+        mcrl2_aterm_pool_enable_automatic_garbage_collection(true);
         mcrl2_aterm_pool_collect_garbage();
+        mcrl2_aterm_pool_enable_automatic_garbage_collection(false);
+
         // Garbage collection was performed, so we can reset the size limit.
-        self.size_until_gc.set(mcrl2_aterm_pool_capacity());
+        self.size_until_gc.set(next_size_until_gc());
     }
 
     /// Creates an ATerm from a string.
@@ -360,6 +383,7 @@ mod tests {
     use rand::rngs::StdRng;
 
     use super::THREAD_TERM_POOL;
+    use super::mcrl2_aterm_pool_size;
     use crate::ATerm;
     use crate::ATermRef;
     use crate::random_term;
@@ -373,6 +397,36 @@ mod tests {
                 "The arity matches the number of arguments."
             )
         }
+    }
+
+    /// Garbage collection is disabled in the global term pool, which also makes
+    /// the mCRL2 pool ignore explicitly requested collections. Check that an
+    /// explicit collect actually removes the unprotected terms.
+    #[test]
+    fn test_collect_removes_unprotected_terms() {
+        let mut rng = rand::rng();
+
+        {
+            let _terms: Vec<ATerm> = (0..1000)
+                .map(|_| {
+                    random_term(
+                        &mut rng,
+                        &[("f".to_string(), 2)],
+                        &["a".to_string(), "b".to_string()],
+                        10,
+                    )
+                })
+                .collect();
+        }
+
+        let before = mcrl2_aterm_pool_size();
+        THREAD_TERM_POOL.with_borrow(|tp| tp.collect());
+        let after = mcrl2_aterm_pool_size();
+
+        assert!(
+            after < before,
+            "collecting garbage did not remove any of the {before} terms in the pool"
+        );
     }
 
     #[test]
