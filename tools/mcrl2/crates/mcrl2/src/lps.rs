@@ -354,11 +354,13 @@ impl LearnSuccessorsContext {
         );
 
         let mut context = self.context.borrow_mut();
+        // The only error the FFI reports is the length mismatch asserted above.
         mcrl2_lps_set_assignments(
             context.as_mut().expect("The context is always defined"),
             variables,
             values,
-        );
+        )
+        .expect("variables and values have equal length");
     }
 
     /// Rewrites `expr` under the context's current substitution (sigma) and
