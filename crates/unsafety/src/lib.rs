@@ -21,6 +21,8 @@ pub use block_allocator::BlockAllocator;
 pub use block_allocator::BlockAllocatorSafe;
 pub use concurrent_append_vec::ConcurrentAppendVec;
 pub use concurrent_indexed_set::ConcurrentIndexedSet;
+pub use counting_allocator::AllocCounter;
+pub use counting_allocator::AllocMetrics;
 pub use erasable::Erasable;
 pub use erasable::ErasedPtr;
 pub use global_allocator::print_allocator_metrics;
