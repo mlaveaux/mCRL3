@@ -113,6 +113,8 @@ fn init_ldd_manager(cli: &Cli) -> oxidd::ldd::LDDManagerRef {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Print a PBES in textual format.
+    Print(PrintArgs),
     /// Analyze symmetries of a PBES
     Symmetry(SymmetryArgs),
     /// Compute symmetries of a PBES via the Symmetry Detection Graph and GAP.
@@ -186,6 +188,16 @@ struct ExploreArgs {
     srf: bool,
 
     /// Write the resulting parity game to this file in the PGSolver `.pg` format.
+    #[arg(long, short('o'), value_name = "FILE")]
+    output: Option<PathBuf>,
+}
+
+#[derive(clap::Args, Debug)]
+struct PrintArgs {
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// Write the PBES to this file instead of standard output.
     #[arg(long, short('o'), value_name = "FILE")]
     output: Option<PathBuf>,
 }
@@ -301,6 +313,7 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
 
     if let Some(command) = &cli.commands {
         match command {
+            Commands::Print(args) => handle_print(args, timing, preprocess)?,
             Commands::Symmetry(args) => handle_symmetry(args, timing, preprocess)?,
             Commands::GraphSymmetry(args) => handle_graph_symmetry(args, timing, preprocess)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing, preprocess)?,
@@ -421,6 +434,25 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preproce
         game.num_of_vertices(),
         game.num_of_edges()
     );
+
+    Ok(())
+}
+
+/// Handles the print command, writing the textual PBES to `--output` or to
+/// standard output.
+///
+/// Like every other subcommand this prints the PBES *after* preprocessing, so
+/// that what is shown is what the explorers actually see; `--no-preprocess`
+/// prints the PBES as it was read.
+fn handle_print(args: &PrintArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
+    let pbes = args.input.read(timing, preprocess)?;
+
+    if let Some(output) = &args.output {
+        write!(File::create(output)?, "{}", pbes)?;
+        info!("PBES written to '{}'", output.display());
+    } else {
+        println!("{}", pbes);
+    }
 
     Ok(())
 }
