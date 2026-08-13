@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
@@ -52,6 +53,12 @@ pub enum ExplorationStrategy {
 /// Returns the [`StateIndex`] assigned to the initial state of `lps`. The
 /// caller is responsible for finalising any builder it owns; counting states
 /// and transitions (and any progress reporting) is left to the closures.
+///
+/// # Logging
+///
+/// At trace level every explored state vector and every enumerated transition
+/// (with its summand index and target state vector) is logged, which is only
+/// practical for small state spaces.
 pub fn explore<P, Ctx, OnState, OnTransition>(
     lps: &P,
     strategy: ExplorationStrategy,
@@ -62,11 +69,15 @@ pub fn explore<P, Ctx, OnState, OnTransition>(
 ) -> Result<StateIndex, MercError>
 where
     P: LPS,
+    P::Value: Debug,
+    P::Label: Debug,
     OnState: FnMut(&mut Ctx, StateIndex, &P::StateInfo) -> Result<(), MercError>,
     OnTransition: FnMut(&mut Ctx, StateIndex, &P::Label, StateIndex) -> Result<(), MercError>,
 {
     let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
-    let (initial_ref, _) = discovered.insert(&lps.initial_state());
+    let initial_state = lps.initial_state();
+    let (initial_ref, _) = discovered.insert(&initial_state);
+    log::trace!("explore: initial state {} = {initial_state:?}", initial_ref.index());
 
     let mut working: VecDeque<StateRef> = VecDeque::from([initial_ref]);
     // Reusable buffer holding the current state vector reconstructed from the
@@ -93,6 +104,7 @@ where
             let found = discovered.get_into(current, &mut current_state);
             debug_assert!(found, "StateRef from working queue must be valid");
             let from = StateIndex::new(current.index());
+            log::trace!("explore: state {from} = {current_state:?}");
             let summands_to_explore = lps.prepare(&mut enumerate_context, &current_state);
 
             let info = lps.state_info(&current_state, &enumerate_context);
@@ -103,6 +115,10 @@ where
                 summands[index].enumerate(&mut enumerate_context, &current_state, |label, next_state| {
                     let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
                     let to = StateIndex::new(target_ref.index());
+                    log::trace!(
+                        "explore: transition (summand {index}) {from} --{label:?}--> {to} = {next_state:?}{}",
+                        if is_new { " (new)" } else { "" }
+                    );
                     on_transition(ctx, from, label, to)?;
                     if is_new {
                         working.push_back(target_ref);
@@ -136,6 +152,12 @@ where
 /// discovered set, whose backing store hands each worker a whole block of
 /// consecutive indices at once to keep index allocation contention-free. This
 /// means that the returned state indices are not dense.
+///
+/// # Logging
+///
+/// At trace level every explored state vector and every enumerated transition
+/// (with its summand index and target state vector) is logged, tagged with the
+/// worker that processed it since workers interleave their output.
 pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
     lps: &P,
     make_local: MakeLocal,
@@ -144,7 +166,8 @@ pub fn explore_parallel<P, Local, MakeLocal, OnState, OnTransition>(
 ) -> Result<(StateIndex, Vec<Local>), MercError>
 where
     P: LPS + Sync,
-    P::Value: Send + Sync,
+    P::Value: Send + Sync + Debug,
+    P::Label: Debug,
     <P::Summand as Summand>::Context: Send,
     Local: Send,
     MakeLocal: Fn() -> Local + Sync,
@@ -152,7 +175,9 @@ where
     OnTransition: Fn(&mut Local, StateIndex, &P::Label, StateIndex) -> Result<(), MercError> + Sync,
 {
     let discovered: DiscoveredSet<P::Value> = DiscoveredSet::new();
-    let (initial_ref, _) = discovered.insert(&lps.initial_state());
+    let initial_state = lps.initial_state();
+    let (initial_ref, _) = discovered.insert(&initial_state);
+    log::trace!("explore: initial state {} = {initial_state:?}", initial_ref.index());
 
     let num_workers = rayon::current_num_threads().max(1);
 
@@ -220,6 +245,7 @@ where
                 let found = discovered.get_into(state_ref, &mut state_buf);
                 debug_assert!(found, "StateRef from work queue must be valid");
                 let from = StateIndex::new(state_ref.index());
+                log::trace!("explore worker {me}: state {from} = {state_buf:?}");
                 let summands_to_explore = lps.prepare(&mut context, &state_buf);
 
                 let info = lps.state_info(&state_buf, &context);
@@ -230,6 +256,10 @@ where
                     summands[index].enumerate(&mut context, &state_buf, |label, next_state| {
                         let (target_ref, is_new) = discovered.insert_with(next_state, &mut forest_context);
                         let to = StateIndex::new(target_ref.index());
+                        log::trace!(
+                            "explore worker {me}: transition (summand {index}) {from} --{label:?}--> {to} = {next_state:?}{}",
+                            if is_new { " (new)" } else { "" }
+                        );
                         on_transition(&mut local, from, label, to)?;
                         if is_new {
                             successors.push(target_ref);
