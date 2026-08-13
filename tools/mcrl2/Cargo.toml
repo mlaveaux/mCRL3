@@ -35,9 +35,9 @@ private_intra_doc_links = "allow"
 
 [workspace.dependencies]
 clap = { version = "4.6", features = ["derive"] }
-env_logger = "0.11"
+env_logger = { version = "0.11", features = ["kv"] }
 itertools = "0.15"
-log = "0.4"
+log = { version = "0.4", features = ["kv"] }
 parking_lot = "0.12"
 petgraph = "0.8"
 rand = "0.10"

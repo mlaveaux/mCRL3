@@ -38,6 +38,7 @@ pub use explore_common::check_parameter_basis;
 pub use explore_common::explore_pbes_impl;
 pub use explore_common::explore_pbes_parallel_impl;
 pub use explore_common::symmetry_parameter_basis;
+pub use explore_common::symmetry_unified_pbes;
 pub use explore_pbes::PbesLps;
 pub use explore_pbes::explore_pbes;
 pub use explore_pbes::explore_pbes_parallel;
