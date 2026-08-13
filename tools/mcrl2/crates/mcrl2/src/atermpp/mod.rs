@@ -19,7 +19,7 @@ pub use aterm::TermIterator;
 
 pub use aterm_int::ATermInt;
 pub use aterm_int::ATermIntRef;
-pub use aterm_int::is_aterm_int;
+pub(crate) use aterm_int::is_aterm_int;
 
 pub use aterm_list::ATermList;
 pub use aterm_list::ATermListIter;
@@ -28,22 +28,19 @@ pub use aterm_list::ATermListRef;
 
 pub use aterm_string::ATermString;
 pub use aterm_string::ATermStringRef;
-pub use aterm_string::is_aterm_string;
+pub(crate) use aterm_string::is_aterm_string;
 
-pub use busy_forbidden::BfTermPool;
-pub use busy_forbidden::BfTermPoolRead;
-pub use busy_forbidden::BfTermPoolThreadWrite;
-pub use busy_forbidden::BfTermPoolWrite;
+pub(crate) use busy_forbidden::BfTermPool;
+pub(crate) use busy_forbidden::BfTermPoolThreadWrite;
+
+pub use convert::merc_aterm_to_mcrl2;
 
 pub use markable::Markable;
 pub use markable::Todo;
 
 pub use protected::Protected;
 
-pub use random_term::random_term;
-
 pub use symbol::Symbol;
 pub use symbol::SymbolRef;
 
 pub(crate) use thread_aterm_pool::THREAD_TERM_POOL;
-pub use thread_aterm_pool::ThreadTermPool;

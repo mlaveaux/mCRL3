@@ -16,27 +16,27 @@ pub fn is_pbes_propositional_variable_instantiation(term: &ATermRef<'_>) -> bool
     mcrl2_pbes_is_propositional_variable_instantiation(term.get())
 }
 
-pub(crate) fn is_pbes_not(term: &ATermRef<'_>) -> bool {
+pub fn is_pbes_not(term: &ATermRef<'_>) -> bool {
     mcrl2_pbes_is_not(term.get())
 }
 
-pub(crate) fn is_pbes_and(term: &ATermRef<'_>) -> bool {
+pub fn is_pbes_and(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_and(term.get())
 }
 
-pub(crate) fn is_pbes_or(term: &ATermRef<'_>) -> bool {
+pub fn is_pbes_or(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_or(term.get())
 }
 
-pub(crate) fn is_pbes_imp(term: &ATermRef<'_>) -> bool {
+pub fn is_pbes_imp(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_imp(term.get())
 }
 
-pub(crate) fn is_pbes_forall(term: &ATermRef<'_>) -> bool {
+pub fn is_pbes_forall(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_forall(term.get())
 }
 
-pub(crate) fn is_pbes_exists(term: &ATermRef<'_>) -> bool {
+pub fn is_pbes_exists(term: &ATermRef<'_>) -> bool {
     mcrl2_sys::pbes::ffi::mcrl2_pbes_is_exists(term.get())
 }
 
