@@ -336,16 +336,17 @@ fn replace_sort(spec: &UntypedDataSpecification, identifier: &str, sort: &SortEx
 
 /// Replaces sort references of `identifier` in `sort` by the given `result_sort`.
 fn replace_sort_expression(sort: &SortExpression, identifier: &str, result_sort: &SortExpression) -> SortExpression {
-    sort.clone().apply(|expr| -> Result<Option<SortExpression>, Infallible> {
-        if let SortExpressionKind::Reference(id) = &expr.node
-            && id == identifier
-        {
-            return Ok(Some(result_sort.clone()));
-        }
+    sort.clone()
+        .apply(|expr| -> Result<Option<SortExpression>, Infallible> {
+            if let SortExpressionKind::Reference(id) = &expr.node
+                && id == identifier
+            {
+                return Ok(Some(result_sort.clone()));
+            }
 
-        Ok(None)
-    })
-    .unwrap()
+            Ok(None)
+        })
+        .unwrap()
 }
 
 /// Generates the defining equations of a structured sort, following Appendix `B.10`.
