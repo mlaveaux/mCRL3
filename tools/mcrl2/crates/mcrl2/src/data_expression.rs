@@ -81,31 +81,31 @@ pub(crate) fn is_untyped_set_bag_comprehension_binder(term: &ATermRef<'_>) -> bo
 }
 
 /// Checks if this term is a data abstraction.
-pub(crate) fn is_abstraction(term: &ATermRef<'_>) -> bool {
+pub fn is_abstraction(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_abstraction(term.get())
 }
 
 /// Checks if this term is a data function symbol.
-pub(crate) fn is_function_symbol(term: &ATermRef<'_>) -> bool {
+pub fn is_function_symbol(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_function_symbol(term.get())
 }
 
 /// Checks if this term is a data where clause.
-pub(crate) fn is_where_clause(term: &ATermRef<'_>) -> bool {
+pub fn is_where_clause(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_where_clause(term.get())
 }
 
 /// Checks if this term is a data machine number.
-pub(crate) fn is_machine_number(term: &ATermRef<'_>) -> bool {
+pub fn is_machine_number(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_machine_number(term.get())
 }
 
 /// Checks if this term is a data untyped identifier.
-pub(crate) fn is_untyped_identifier(term: &ATermRef<'_>) -> bool {
+pub fn is_untyped_identifier(term: &ATermRef<'_>) -> bool {
     term.require_valid();
     mcrl2_data_expression_is_untyped_identifier(term.get())
 }

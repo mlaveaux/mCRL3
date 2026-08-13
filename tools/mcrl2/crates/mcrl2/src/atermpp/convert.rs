@@ -149,7 +149,7 @@ mod tests {
 
     use super::mcrl2_aterm_to_merc;
     use super::merc_aterm_to_mcrl2;
-    use crate::THREAD_TERM_POOL as MCRL2_POOL;
+    use crate::atermpp::THREAD_TERM_POOL as MCRL2_POOL;
 
     /// Build a simple merc term `f(g(a), b)` and verify it round-trips through
     /// the merc → mcrl2 → merc pipeline without structural change.

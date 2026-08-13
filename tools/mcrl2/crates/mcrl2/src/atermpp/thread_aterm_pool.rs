@@ -430,11 +430,11 @@ mod tests {
     use rand::SeedableRng;
     use rand::rngs::StdRng;
 
+    use super::super::random_term::random_term;
     use super::THREAD_TERM_POOL;
     use super::mcrl2_aterm_pool_size;
     use crate::ATerm;
     use crate::ATermRef;
-    use crate::random_term;
 
     /// Make sure that the term has the same number of arguments as its arity.
     fn verify_term(term: &ATermRef<'_>) {
