@@ -464,12 +464,13 @@ pub enum Descend<C> {
 /// `T`, or continue with a [`Descend`] decision carrying context `C`.
 pub type VisitResult<T, C, E> = Result<ControlFlow<T, Descend<C>>, E>;
 
-/// Context-threading traversal over data expressions. Override [`visit_node`] to inspect each
-/// node; the provided [`try_visit`] drives recursion into children automatically.
+/// Context-threading traversal over data expressions. Override the `visit_*` methods, for example
+/// [`visit_application`], to inspect each node; the provided [`try_visit`] drives recursion into
+/// children automatically.
 ///
 /// Use [`ClosureVisitor`] or call [`try_visit_data_expr_with`] to drive traversal from a closure.
 ///
-/// [`visit_node`]: DataExpressionContextVisitor::visit_node
+/// [`visit_application`]: DataExpressionContextVisitor::visit_application
 /// [`try_visit`]: DataExpressionContextVisitor::try_visit
 pub trait DataExpressionContextVisitor {
     type Context: Copy;
@@ -697,11 +698,11 @@ impl<C, T, E, F> PbesClosureVisitor<C, T, E, F> {
 
 /// Context-threading traversal over PBES expressions, consistent with [`DataExpressionContextVisitor`].
 ///
-/// Data-expression leaves (e.g. condition terms) are passed to [`visit_node`] but their
+/// Data-expression leaves (e.g. condition terms) are passed to [`visit_data_expression`] but their
 /// subterms are **not** recursed into automatically; use [`try_visit_data_expr_with`]
-/// from inside [`visit_node`] to continue into data subterms if desired.
+/// from inside [`visit_data_expression`] to continue into data subterms if desired.
 ///
-/// [`visit_node`]: PbesExpressionContextVisitor::visit_node
+/// [`visit_data_expression`]: PbesExpressionContextVisitor::visit_data_expression
 pub trait PbesExpressionContextVisitor {
     type Context: Copy;
     type Break;
