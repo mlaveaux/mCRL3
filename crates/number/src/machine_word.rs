@@ -292,6 +292,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // miri is too slow to run this test
     fn test_square_roots() {
         assert_eq!(sqrt_word(0), 0);
         assert_eq!(sqrt_word(15), 3);

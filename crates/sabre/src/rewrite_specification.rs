@@ -180,6 +180,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // miri is too slow to run this test
     fn test_from_data_specification_unconditional_equation() {
         let mcrl2_spec = lower(
             "map f: Nat -> Nat;
@@ -200,6 +201,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // miri is too slow to run this test
     fn test_from_data_specification_conditional_equation() {
         let mcrl2_spec = lower(
             "map f: Nat -> Nat;

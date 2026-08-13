@@ -92,6 +92,7 @@ fn test_word_valued_operations() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Miri is too slow to run this test.
 fn test_nested_operations_reduce_innermost_first() {
     let rules = rules();
     let mut rewriter = InnermostRewriter::new(&rules);
@@ -131,6 +132,7 @@ fn test_shift_right_with_bool_argument() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Miri is too slow to run this test.
 fn test_bool_valued_operations() {
     let rules = rules();
     let mut rewriter = InnermostRewriter::new(&rules);
@@ -155,6 +157,7 @@ fn test_bool_valued_operations() {
 
 /// A lone machine number is already in normal form and rewrites to itself.
 #[test]
+#[cfg_attr(miri, ignore)] // Miri is too slow to run this test.
 fn test_machine_number_is_normal_form() {
     let rules = rules();
     let mut rewriter = InnermostRewriter::new(&rules);
