@@ -41,18 +41,11 @@ pub(crate) struct DataSymbols {
 
     // Data expressions that are abstractions
     pub(crate) data_binder_symbol: ManuallyDrop<Symbol>,
-    #[allow(dead_code)]
     pub(crate) data_lambda_symbol: ManuallyDrop<Symbol>,
-    #[allow(dead_code)]
     pub(crate) data_exists_symbol: ManuallyDrop<Symbol>,
-    #[allow(dead_code)]
     pub(crate) data_forall_symbol: ManuallyDrop<Symbol>,
-    #[allow(dead_code)]
     pub(crate) data_set_comprehension_symbol: ManuallyDrop<Symbol>,
-    #[allow(dead_code)]
     pub(crate) data_bag_comprehension_symbol: ManuallyDrop<Symbol>,
-    #[allow(dead_code)]
-    pub(crate) data_untyped_set_bag_comprehension_symbol: ManuallyDrop<Symbol>,
 
     // Data expressions
     pub data_function_symbol: ManuallyDrop<Symbol>,
@@ -95,7 +88,6 @@ impl DataSymbols {
             data_forall_symbol: ManuallyDrop::new(Symbol::new("Forall", 0)),
             data_set_comprehension_symbol: ManuallyDrop::new(Symbol::new("SetComp", 0)),
             data_bag_comprehension_symbol: ManuallyDrop::new(Symbol::new("BagComp", 0)),
-            data_untyped_set_bag_comprehension_symbol: ManuallyDrop::new(Symbol::new("UntypedSetBagComp", 0)),
 
             data_function_symbol: ManuallyDrop::new(Symbol::new("OpId", 2)),
             data_function_symbol_no_index: ManuallyDrop::new(Symbol::new("OpIdNoIndex", 2)),

@@ -18,7 +18,6 @@ use petgraph::graph::NodeIndex;
 use petgraph::graph::UnGraph;
 use petgraph::graph6::ToGraph6;
 
-use mcrl2::ATerm;
 use mcrl2::ATermRef;
 use mcrl2::DataAbstractionRef;
 use mcrl2::DataApplicationRef;
@@ -29,9 +28,12 @@ use mcrl2::DataVariable;
 use mcrl2::DataVariableRef;
 use mcrl2::Pbes;
 use mcrl2::PbesExistsRef;
+use mcrl2::PbesExpression;
+use mcrl2::PbesExpressionRef;
 use mcrl2::PbesForallRef;
 use mcrl2::PbesImpRef;
 use mcrl2::PbesNotRef;
+use mcrl2::PbesPropositionalVariableInstantiation;
 use mcrl2::PbesPropositionalVariableInstantiationRef;
 use mcrl2::SortExpression;
 use mcrl2::flatten_associative;
@@ -74,13 +76,13 @@ fn is_flat_operator(name: &str, arity: usize) -> bool {
 }
 
 /// Collects leaves of a nested binary PBES connective chain; analogous to [`flatten_associative`] for non-`is_application` connectives.
-fn collect_pbes_flat<F>(term: ATermRef<'_>, is_op: F, out: &mut Vec<ATerm>)
+fn collect_pbes_flat<F>(term: PbesExpressionRef<'_>, is_op: F, out: &mut Vec<PbesExpression>)
 where
     F: Fn(&ATermRef<'_>) -> bool + Copy,
 {
     if is_op(&term) {
-        collect_pbes_flat(term.arg(0), is_op, out);
-        collect_pbes_flat(term.arg(1), is_op, out);
+        collect_pbes_flat(term.arg(0).into(), is_op, out);
+        collect_pbes_flat(term.arg(1).into(), is_op, out);
     } else {
         out.push(term.protect());
     }
@@ -99,7 +101,11 @@ enum SdgVertex {
     /// two occurrences of the syntactically identical subterm (even across
     /// different equations) collapse to a single vertex, with [`Sdg`]'s
     /// per-vertex `C_eq` accumulating every equation that reaches it.
-    Term(ATerm),
+    ///
+    /// Typed as a [`PbesExpression`] since that is exactly what is walked: the
+    /// PBES connectives, and the data expressions below them (in mCRL2 every
+    /// data expression is a PBES expression).
+    Term(PbesExpression),
 
     /// The synthetic update position `X_{i,k}`: not a PBES term, and never
     /// deduplicated (one fresh vertex per `(equation, pvi-index,
@@ -374,7 +380,7 @@ pub fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     // k`. This is what makes "restrict an automorphism to the parameter
     // vertices" trivial: GAP point `k+1` <-> parameter `k`.
     for (k, parameter) in parameters.iter().enumerate() {
-        let term: ATerm = parameter.clone().into();
+        let term = PbesExpression::new(parameter.clone().into());
         let colour = VertexColour::Parameter(parameter.sort().protect());
         let index = builder.add_vertex(SdgVertex::Parameter(k), colour);
         builder.term_map.insert(term, index);
@@ -385,9 +391,8 @@ pub fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     debug!("SDG build: {} parameter(s): [{}]", n, parameters.iter().format(", "));
 
     for (e, equation) in equations.iter().enumerate() {
-        let root = equation.formula();
-        let root_ref: ATermRef<'_> = root.copy().into();
-        builder.visit(root_ref, e)?;
+        let formula = equation.formula();
+        builder.visit(formula.copy(), e)?;
 
         // Deduplicate PVIs by ATerm identity: `Y(n) && Y(n)` yields two occurrences
         // from the traversal but they share one vertex, so one set of update vertices suffices.
@@ -398,11 +403,9 @@ pub fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
             builder.graph.node_count()
         );
 
-        let formula = equation.formula();
-        let mut seen_pvis: HashSet<ATerm> = HashSet::new();
+        let mut seen_pvis: HashSet<PbesPropositionalVariableInstantiation> = HashSet::new();
         for pvi in pbes_expression_pvi(&formula.copy()) {
-            let term: ATerm = pvi.clone().into();
-            if seen_pvis.insert(term) {
+            if seen_pvis.insert(pvi.clone()) {
                 builder.add_update_vertices(e, &pvi, n)?;
             }
         }
@@ -452,7 +455,7 @@ struct SdgBuilder {
 
     /// Deduplicates [`SdgVertex::Term`] vertices by (maximally shared) term
     /// identity -- see [`SdgVertex::Term`].
-    term_map: HashMap<ATerm, NodeIndex>,
+    term_map: HashMap<PbesExpression, NodeIndex>,
 
     /// Bound (quantifier-/abstraction-scoped) variables currently in scope,
     /// innermost last, used to tell a bound-variable occurrence apart from a
@@ -529,10 +532,10 @@ impl SdgBuilder {
     /// Interns a vertex for `term` (deduplicated by term identity), marks it with `equation`, and
     /// recurses into children. Hand-rolled because `NodeIndex` must flow upward and argument
     /// positions vary per child — constraints the visitor traits cannot express.
-    fn visit(&mut self, term: ATermRef<'_>, equation: usize) -> Result<NodeIndex, MercError> {
+    fn visit(&mut self, term: PbesExpressionRef<'_>, equation: usize) -> Result<NodeIndex, MercError> {
         let key = term.protect();
         if let Some(&node) = self.term_map.get(&key) {
-            trace!("visit: reused v{} for `{:?}` (eq {})", node.index(), term, equation);
+            trace!("visit: reused v{} for `{}` (eq {})", node.index(), term, equation);
             self.mark_equation(node, equation);
             return Ok(node);
         }
@@ -540,7 +543,7 @@ impl SdgBuilder {
         let colour = self.colour_of(&key)?;
         let node = self.add_vertex(SdgVertex::Term(key.clone()), colour.clone());
         trace!(
-            "visit: new   v{} {:?} for `{:?}` (eq {})",
+            "visit: new   v{} {:?} for `{}` (eq {})",
             node.index(),
             colour,
             term,
@@ -557,7 +560,7 @@ impl SdgBuilder {
     fn visit_child(
         &mut self,
         parent: NodeIndex,
-        child: ATermRef<'_>,
+        child: PbesExpressionRef<'_>,
         colour: EdgeColour,
         equation: usize,
     ) -> Result<(), MercError> {
@@ -568,8 +571,8 @@ impl SdgBuilder {
 
     /// Determines `C(term)`. Does not recurse; see [`Self::visit_children`]
     /// for the edges to `term`'s children.
-    fn colour_of(&self, term: &ATerm) -> Result<VertexColour, MercError> {
-        let r = term.copy();
+    fn colour_of(&self, term: &PbesExpression) -> Result<VertexColour, MercError> {
+        let r: ATermRef<'_> = term.copy().into();
 
         if is_pbes_and(&r) {
             Ok(VertexColour::Connective(Connective::And))
@@ -640,18 +643,18 @@ impl SdgBuilder {
     /// Adds edges from `node` (the vertex for `term`) to the vertices of its
     /// immediate children, recursing via [`Self::visit`]. Mirrors
     /// Definition 2's `sub#`, generalized per the module documentation.
-    fn visit_children(&mut self, term: &ATerm, node: NodeIndex, equation: usize) -> Result<(), MercError> {
-        let r = term.copy();
+    fn visit_children(&mut self, term: &PbesExpression, node: NodeIndex, equation: usize) -> Result<(), MercError> {
+        let r: ATermRef<'_> = term.copy().into();
 
         if is_pbes_and(&r) {
             let mut leaves = Vec::new();
-            collect_pbes_flat(r, is_pbes_and, &mut leaves);
+            collect_pbes_flat(term.copy(), is_pbes_and, &mut leaves);
             for leaf in leaves {
                 self.visit_child(node, leaf.copy(), EdgeColour::Uncoloured, equation)?;
             }
         } else if is_pbes_or(&r) {
             let mut leaves = Vec::new();
-            collect_pbes_flat(r, is_pbes_or, &mut leaves);
+            collect_pbes_flat(term.copy(), is_pbes_or, &mut leaves);
             for leaf in leaves {
                 self.visit_child(node, leaf.copy(), EdgeColour::Uncoloured, equation)?;
             }
@@ -661,28 +664,28 @@ impl SdgBuilder {
             let imp = PbesImpRef::from(r);
             self.visit_child(
                 node,
-                imp.lhs().into(),
+                imp.lhs(),
                 EdgeColour::Argument([1].into_iter().collect()),
                 equation,
             )?;
             self.visit_child(
                 node,
-                imp.rhs().into(),
+                imp.rhs(),
                 EdgeColour::Argument([2].into_iter().collect()),
                 equation,
             )?;
         } else if is_pbes_not(&r) {
             let not = PbesNotRef::from(r);
-            self.visit_child(node, not.body().into(), EdgeColour::Uncoloured, equation)?;
+            self.visit_child(node, not.body(), EdgeColour::Uncoloured, equation)?;
         } else if is_pbes_forall(&r) {
             let forall = PbesForallRef::from(r);
             let pushed = self.push_scope(forall.variables().iter());
-            self.visit_child(node, forall.body().into(), EdgeColour::Uncoloured, equation)?;
+            self.visit_child(node, forall.body(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_pbes_exists(&r) {
             let exists = PbesExistsRef::from(r);
             let pushed = self.push_scope(exists.variables().iter());
-            self.visit_child(node, exists.body().into(), EdgeColour::Uncoloured, equation)?;
+            self.visit_child(node, exists.body(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_pbes_propositional_variable_instantiation(&r) {
             // A PVI is not itself descended into: Definition 3 reaches its
@@ -716,7 +719,7 @@ impl SdgBuilder {
                 // positions for repeated arguments (see `EdgeColour::Argument`).
                 let mut by_child: BTreeMap<NodeIndex, BTreeSet<usize>> = BTreeMap::new();
                 for (position, argument) in application.data_arguments().enumerate() {
-                    let child = self.visit(argument, equation)?;
+                    let child = self.visit(argument.into(), equation)?;
                     by_child.entry(child).or_default().insert(position + 1);
                 }
 
@@ -751,17 +754,16 @@ impl SdgBuilder {
     fn add_update_vertices(
         &mut self,
         equation: usize,
-        pvi: &mcrl2::PbesPropositionalVariableInstantiation,
+        pvi: &PbesPropositionalVariableInstantiation,
         n: usize,
     ) -> Result<(), MercError> {
-        let pvi_term: ATerm = pvi.clone().into();
-        let pvi_ref: ATermRef<'_> = pvi_term.copy();
+        let pvi_expression: PbesExpression = pvi.clone().into();
         // The PVI vertex must already exist: it was interned while walking
         // the right-hand side (PVIs are leaves of that walk, but they are
         // still visited and given a vertex -- see `visit_children`).
-        let pvi_node = self.visit(pvi_ref, equation)?;
+        let pvi_node = self.visit(pvi_expression.copy(), equation)?;
 
-        let arguments: Vec<ATerm> = pvi.arguments().iter().map(|argument| argument.protect()).collect();
+        let arguments: Vec<PbesExpression> = pvi.arguments().iter().map(PbesExpression::from).collect();
         if arguments.len() != n {
             return Err(format!(
                 "Predicate variable instance '{}' has {} argument(s), but the unified parameter \
@@ -938,8 +940,8 @@ where
             // Update nodes are unlabeled; shape + dashed edges identify them.
             VertexColour::Update => String::new(),
             VertexColour::Pvi => {
-                if let SdgVertex::Term(aterm) = &sdg.graph[node] {
-                    PbesPropositionalVariableInstantiationRef::from(aterm.copy())
+                if let SdgVertex::Term(expression) = &sdg.graph[node] {
+                    PbesPropositionalVariableInstantiationRef::from(expression.copy())
                         .name()
                         .to_string()
                 } else {
@@ -947,15 +949,16 @@ where
                 }
             }
             VertexColour::BoundVariable(_) => {
-                if let SdgVertex::Term(aterm) = &sdg.graph[node] {
-                    DataVariableRef::from(aterm.copy()).name().to_string()
+                if let SdgVertex::Term(expression) = &sdg.graph[node] {
+                    let r: ATermRef<'_> = expression.copy().into();
+                    DataVariableRef::from(r).name().to_string()
                 } else {
                     unreachable!()
                 }
             }
             VertexColour::Quantifier(q, _) => {
-                if let SdgVertex::Term(aterm) = &sdg.graph[node] {
-                    let r = aterm.copy();
+                if let SdgVertex::Term(expression) = &sdg.graph[node] {
+                    let r: ATermRef<'_> = expression.copy().into();
                     let vars: Vec<String> = if is_pbes_forall(&r) {
                         PbesForallRef::from(r)
                             .variables()
