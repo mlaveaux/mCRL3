@@ -38,9 +38,7 @@ use crate::is_data_variable;
 use crate::is_data_where_clause;
 use crate::is_data_whr_decl;
 
-/// The kind of a binder in a `DataAbstraction` — mirrors mCRL2's
-/// `data::binder_type` enum (the 0-arity marker term that is the first child
-/// of every `Binder(type, vars, body)` aterm).
+/// The kind of a binder in a `DataAbstraction`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinderType {
     Lambda,
