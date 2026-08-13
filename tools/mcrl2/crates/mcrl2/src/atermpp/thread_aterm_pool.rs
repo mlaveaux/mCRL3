@@ -23,8 +23,10 @@ use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_resize_is_needed;
 use mcrl2_sys::atermpp::ffi::mcrl2_aterm_pool_size;
 use mcrl2_sys::atermpp::ffi::mcrl2_function_symbol_create;
 use mcrl2_sys::cxx::Exception;
+
 use merc_unsafety::ProtectionIndex;
 use merc_unsafety::ProtectionSet;
+use merc_utilities::debug_trace;
 
 use crate::ATerm;
 use crate::ATermRef;
@@ -299,7 +301,7 @@ impl ThreadTermPool {
     pub fn protect_container(&self, container: Arc<dyn Markable + Send + Sync>) -> ProtectionIndex {
         let root = unsafe { self.container_protection_set.write_exclusive().protect(container) };
 
-        trace!("Protected container index {}, protection set {}", root, self.index,);
+        debug_trace!("Protected container index {}, protection set {}", root, self.index,);
 
         root
     }
@@ -310,7 +312,7 @@ impl ThreadTermPool {
 
         unsafe {
             let mut protection_set = self.protection_set.write_exclusive();
-            trace!(
+            debug_trace!(
                 "Dropped term {:?}, index {}, protection set {}",
                 term.term, term.root, self.index
             );
@@ -324,7 +326,7 @@ impl ThreadTermPool {
     pub fn drop_container(&self, container_root: ProtectionIndex) {
         unsafe {
             let mut container_protection_set = self.container_protection_set.write_exclusive();
-            trace!(
+            debug_trace!(
                 "Dropped container index {}, protection set {}",
                 container_root, self.index
             );
@@ -362,7 +364,7 @@ impl ThreadTermPool {
         // (`root`), so it stays live as long as the resulting `ATerm` holds that
         // root, which justifies the `'static` lifetime.
         let term = unsafe { ATermRef::new(term) };
-        trace!(
+        debug_trace!(
             "Protected term {:?}, index {}, protection set {}",
             term, root, self.index
         );

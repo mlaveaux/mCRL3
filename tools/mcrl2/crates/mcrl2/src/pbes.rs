@@ -271,7 +271,7 @@ impl PbesRewriteContext {
         })
     }
 
-    /// Sets σ := { variables[i] ↦ values[i] } for the next rewrite call.
+    /// Sets σ := { `variables[i]` ↦ `values[i]` } for the next rewrite call.
     ///
     /// # Safety
     /// Every pointer in `variables` must be a live `data::variable` term, and
