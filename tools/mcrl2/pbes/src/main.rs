@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -16,6 +17,7 @@ use mcrl2::verbosity_to_log_level;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
+use merc_tools::format_key_values_json;
 use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
@@ -40,6 +42,7 @@ use merc_pbes::explore_srf_pbes;
 use merc_pbes::explore_srf_pbes_parallel;
 use merc_pbes::graph_symmetries;
 use merc_pbes::symmetry_parameter_basis;
+use merc_pbes::symmetry_unified_pbes;
 use merc_pbes::write_dot;
 
 use merc_explore::CacheLPS;
@@ -131,6 +134,11 @@ struct InputArgs {
     /// Explicitly choose the format of the input PBES file.
     #[arg(long, short('i'), value_enum)]
     format: Option<PbesFormat>,
+
+    /// Write the PBES that the symmetry generators are numbered against, after
+    /// preprocessing and unification.
+    #[arg(long, value_name = "FILE")]
+    dump_unified_pbes: Option<PathBuf>,
 }
 
 /// How to turn a PBES into a parity game, shared by every subcommand that
@@ -265,6 +273,7 @@ fn main() -> ExitCode {
 
     env_logger::Builder::new()
         .filter_level(cli.verbosity.log_level_filter())
+        .format_key_values(|formatter, source| format_key_values_json(formatter, source))
         .parse_default_env()
         .init();
 
@@ -313,7 +322,7 @@ impl InputArgs {
     /// symmetry detection and the parameter basis the generators index into —
     /// looking at the same equations.
     fn read(&self, timing: &Timing, preprocess: bool) -> Result<Pbes, MercError> {
-        let mut pbes = timing.measure("load", || match self.format.unwrap_or(PbesFormat::Pbes) {
+        let mut pbes = timing.measure("load PBES", || match self.format.unwrap_or(PbesFormat::Pbes) {
             PbesFormat::Pbes => Pbes::from_file(&self.filename),
             PbesFormat::Text => Pbes::from_text_file(&self.filename),
         })?;
@@ -324,7 +333,37 @@ impl InputArgs {
             info!("Skipping PBES preprocessing (--no-preprocess)");
         }
 
+        if let Some(path) = &self.dump_unified_pbes {
+            self.dump_unified(&pbes, path)?;
+        }
+
         Ok(pbes)
+    }
+
+    /// Writes the unified PBES the symmetry generators index into, and logs its
+    /// parameter vector with the positions a `--quotient` permutation uses.
+    ///
+    /// Unification is redone here rather than reusing the explorer's, since only
+    /// the symmetry path unifies at all and the dump has to be available to every
+    /// subcommand.
+    fn dump_unified(&self, pbes: &Pbes, path: &Path) -> Result<(), MercError> {
+        let unified = symmetry_unified_pbes(pbes)?;
+        write!(File::create(path)?, "{}", unified)?;
+
+        let basis = symmetry_parameter_basis(pbes)?;
+        info!(
+            "Unified PBES written to '{}', {} parameter(s): {}",
+            path.display(),
+            basis.len(),
+            basis
+                .iter()
+                .enumerate()
+                .map(|(index, parameter)| format!("{index}: {parameter}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        Ok(())
     }
 }
 
@@ -359,12 +398,6 @@ impl ExploreArgs {
             explore_pbes(pbes, self.strategy, self.caching, timing)?
         };
 
-        info!(
-            "Parity game: {} vertices, {} edges",
-            game.num_of_vertices(),
-            game.num_of_edges()
-        );
-
         if let Some(output) = &self.output {
             let mut output_file = File::create(output)?;
             write_pg(&mut output_file, &game)?;
@@ -378,7 +411,12 @@ impl ExploreArgs {
 fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
     let game = args.explore.explore(args.input.read(timing, preprocess)?, timing)?;
 
-    println!(
+    // Reported as log key-values so that `format_key_values_json` renders them as
+    // a JSON object next to the human-readable message, which makes the sizes
+    // machine-consumable without parsing the message text.
+    info!(
+        vertices = game.num_of_vertices(),
+        edges = game.num_of_edges();
         "Parity game: {} vertices, {} edges",
         game.num_of_vertices(),
         game.num_of_edges()

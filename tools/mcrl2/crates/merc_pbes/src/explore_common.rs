@@ -49,14 +49,25 @@ pub const UNIFY_RESET_PARAMETERS: bool = true;
 /// an explorer may only be quotiented by those generators when it lays its state
 /// vectors out by the same parameters.
 pub fn symmetry_parameter_basis(pbes: &Pbes) -> Result<Vec<DataVariable>, MercError> {
-    let mut pbes = pbes.clone();
-    pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
+    let pbes = symmetry_unified_pbes(pbes)?;
 
     let equations = pbes.equations();
     let first = equations
         .first()
         .ok_or_else(|| MercError::from("PBES has no equations"))?;
     Ok(first.variable().parameters().iter().collect())
+}
+
+/// The PBES that symmetry detection and quotient exploration actually see:
+/// `pbes` with every equation's parameter vector unified under the flags above.
+///
+/// Exposed so that the same PBES the generators are numbered against can be
+/// written out and inspected; deriving it here rather than at the call site is
+/// what keeps it from drifting away from [`symmetry_parameter_basis`].
+pub fn symmetry_unified_pbes(pbes: &Pbes) -> Result<Pbes, MercError> {
+    let mut pbes = pbes.clone();
+    pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
+    Ok(pbes)
 }
 
 /// Returns an error unless `parameters`, the vector `backend` lays its state
