@@ -450,23 +450,24 @@ pub(crate) fn argument_sorts(sort: &SortExpression) -> &[SortExpression] {
 /// Rewrites every `Function` node of `sort` into a `FlattenedFunction` whose
 /// domain is the flattened `Product` spine (`(A#B)->C` becomes `A#B->C`).
 fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
-    sort.clone().apply(|expr| -> Result<_, Infallible> {
-        if let SortExpressionKind::Function { domain, range } = &expr.node {
-            let mut flattened_domain = Vec::new();
-            flatten_function_domain_rec(domain, &mut flattened_domain);
+    sort.clone()
+        .apply(|expr| -> Result<_, Infallible> {
+            if let SortExpressionKind::Function { domain, range } = &expr.node {
+                let mut flattened_domain = Vec::new();
+                flatten_function_domain_rec(domain, &mut flattened_domain);
 
-            return Ok(Some(
-                SortExpressionKind::FlattenedFunction {
-                    domain: flattened_domain,
-                    range: range.clone(),
-                }
-                .into(),
-            ));
-        }
+                return Ok(Some(
+                    SortExpressionKind::FlattenedFunction {
+                        domain: flattened_domain,
+                        range: range.clone(),
+                    }
+                    .into(),
+                ));
+            }
 
-        Ok(None)
-    })
-    .expect("flatten_function_sorts should not fail")
+            Ok(None)
+        })
+        .expect("flatten_function_sorts should not fail")
 }
 
 /// Flattens a function sort of the form ((A_0 # A_1) # ... # A_n) -> B into a

@@ -54,32 +54,33 @@ fn normalize_sort(
     alias_map: &HashMap<DefId, SortExpression>,
     visited: &mut Vec<DefId>,
 ) -> SortExpression {
-    sort.clone().apply(|expr| -> Result<_, Infallible> {
-        let SortExpressionKind::Resolved(_, id) = &expr.node else {
-            return Ok(None);
-        };
+    sort.clone()
+        .apply(|expr| -> Result<_, Infallible> {
+            let SortExpressionKind::Resolved(_, id) = &expr.node else {
+                return Ok(None);
+            };
 
-        // A structured-sort alias, an abstract sort, or an alias reached again
-        // while it is being expanded, is a named representative: keep the name
-        // and do not recurse, so recursion through a `struct` terminates.
-        if visited.contains(id) {
-            return Ok(None);
-        }
-        match alias_map.get(id) {
-            Some(Spanned {
-                node: SortExpressionKind::Struct { .. },
-                ..
-            })
-            | None => Ok(None),
-            Some(alias) => {
-                visited.push(*id);
-                let result = normalize_sort(alias, alias_map, visited);
-                visited.pop();
-                Ok(Some(result))
+            // A structured-sort alias, an abstract sort, or an alias reached again
+            // while it is being expanded, is a named representative: keep the name
+            // and do not recurse, so recursion through a `struct` terminates.
+            if visited.contains(id) {
+                return Ok(None);
             }
-        }
-    })
-    .expect("normalization never fails")
+            match alias_map.get(id) {
+                Some(Spanned {
+                    node: SortExpressionKind::Struct { .. },
+                    ..
+                })
+                | None => Ok(None),
+                Some(alias) => {
+                    visited.push(*id);
+                    let result = normalize_sort(alias, alias_map, visited);
+                    visited.pop();
+                    Ok(Some(result))
+                }
+            }
+        })
+        .expect("normalization never fails")
 }
 
 #[cfg(test)]

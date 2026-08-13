@@ -37,6 +37,10 @@ pub(crate) static GLOBAL_TERM_POOL: LazyLock<GlobalBfSharedMutex<GlobalTermPool>
 /// Enables aggressive garbage collection, which is used for testing.
 pub(crate) const AGGRESSIVE_GC: bool = false;
 
+/// The number of terms a thread pool reserves from the shared budget at a time, see
+/// [crate::storage::ThreadTermPool].
+pub(crate) const GC_BUDGET_CHUNK: usize = 4096;
+
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = RecursiveLockReadGuard<'a, GlobalTermPool>;
 
@@ -73,7 +77,7 @@ pub(crate) struct GlobalTermPool {
 
     /// The number of terms that may still be created before garbage collection should be
     /// triggered. Set to roughly `capacity - len` after each collection and consumed by the
-    /// thread pools in chunks (see [crate::storage::ThreadTermPool]) to avoid contention.
+    /// thread pools in [GC_BUDGET_CHUNK] sized chunks to avoid contention on this counter.
     gc_budget: AtomicUsize,
 
     /// Default terms
@@ -269,22 +273,18 @@ impl GlobalTermPool {
         }
     }
 
-    /// Triggers garbage collection if necessary, refreshes the global budget and returns the
-    /// per-thread chunk the calling thread pool should count down before touching the budget
-    /// again.
-    pub(crate) fn trigger_garbage_collection(&mut self) -> usize {
+    /// Triggers garbage collection if necessary and refreshes the global budget.
+    pub(crate) fn trigger_garbage_collection(&mut self) {
         if self.garbage_collection {
             // Garbage collection is enabled.
             self.collect_garbage();
         }
 
-        self.reset_gc_budget()
+        self.reset_gc_budget();
     }
 
-    /// Recomputes the global GC budget from the free storage capacity and returns the per-thread
-    /// chunk (the budget divided over the registered thread pools, to avoid every thread
-    /// contending on the shared counter).
-    pub(crate) fn reset_gc_budget(&self) -> usize {
+    /// Recomputes the global GC budget from the free storage capacity.
+    pub(crate) fn reset_gc_budget(&self) {
         let budget = if AGGRESSIVE_GC {
             1
         } else {
@@ -292,7 +292,6 @@ impl GlobalTermPool {
         };
 
         self.gc_budget.store(budget, Ordering::Relaxed);
-        (budget / self.num_thread_pools()).max(1)
     }
 
     /// Subtracts `amount` from the global GC budget, saturating at zero so it never wraps, and
@@ -304,17 +303,6 @@ impl GlobalTermPool {
                 Some(current.saturating_sub(amount))
             })
             .expect("the update closure always returns Some")
-    }
-
-    /// Returns the current per-thread budget chunk without recomputing the global budget. Used
-    /// by a newly registered thread pool to obtain its initial counter.
-    pub(crate) fn gc_budget_chunk(&self) -> usize {
-        (self.gc_budget.load(Ordering::Relaxed) / self.num_thread_pools()).max(1)
-    }
-
-    /// Returns the number of registered (live) thread pools, at least one.
-    fn num_thread_pools(&self) -> usize {
-        self.thread_pools.iter().flatten().count().max(1)
     }
 
     /// Enables or disables automatic garbage collection.
