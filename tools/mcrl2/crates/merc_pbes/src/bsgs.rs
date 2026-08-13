@@ -115,7 +115,7 @@ pub(crate) struct CanonicalizeContext {
 }
 
 /// A base and strong generating set, stored as a stabilizer chain.
-pub(crate) struct Bsgs {
+pub struct Bsgs {
     /// Degree of the permutation group; every point is in `0..n`.
     pub(crate) n: usize,
 
@@ -126,7 +126,7 @@ pub(crate) struct Bsgs {
 impl Bsgs {
     /// Build a BSGS by invoking GAP with the `ExplicitBSGS` script.
     /// Falls back to the local Schreier–Sims construction if GAP is not available.
-    pub(crate) fn from_generators(gens: &[Permutation], n: usize, config: &GapConfig) -> Result<Self, MercError> {
+    pub fn from_generators(gens: &[Permutation], n: usize, config: &GapConfig) -> Result<Self, MercError> {
         if gens.is_empty() {
             return Ok(Bsgs { n, chain: vec![] });
         }
@@ -141,7 +141,7 @@ impl Bsgs {
     }
 
     /// Product of transversal sizes — equals |G|.
-    pub(crate) fn order(&self) -> u128 {
+    pub fn order(&self) -> u128 {
         self.chain.iter().map(|l| l.transversal.len() as u128).product()
     }
 

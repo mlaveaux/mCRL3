@@ -29,7 +29,7 @@ use merc_explore::ExplorationStrategy;
 ///
 /// Part of [`UNIFY_RESET_PARAMETERS`]'s contract: every caller must pass the same
 /// pair of flags.
-pub(crate) const UNIFY_IGNORE_CE_EQUATIONS: bool = false;
+pub const UNIFY_IGNORE_CE_EQUATIONS: bool = false;
 
 /// Whether a parameter that an equation does not declare is reset to a default
 /// value rather than copied through.
@@ -38,7 +38,7 @@ pub(crate) const UNIFY_IGNORE_CE_EQUATIONS: bool = false;
 /// flags. This one changes the right-hand sides (see mCRL2's
 /// `unify_parameters_replace_function`), so detecting symmetries on one PBES and
 /// applying them while exploring a differently unified one is unsound.
-pub(crate) const UNIFY_RESET_PARAMETERS: bool = true;
+pub const UNIFY_RESET_PARAMETERS: bool = true;
 
 /// The parameter vector that symmetry generators index into.
 ///
@@ -48,7 +48,7 @@ pub(crate) const UNIFY_RESET_PARAMETERS: bool = true;
 /// vector. Generator point `k` therefore means "entry `k` of this vector", and
 /// an explorer may only be quotiented by those generators when it lays its state
 /// vectors out by the same parameters.
-pub(crate) fn symmetry_parameter_basis(pbes: &Pbes) -> Result<Vec<DataVariable>, MercError> {
+pub fn symmetry_parameter_basis(pbes: &Pbes) -> Result<Vec<DataVariable>, MercError> {
     let mut pbes = pbes.clone();
     pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
 
@@ -65,7 +65,7 @@ pub(crate) fn symmetry_parameter_basis(pbes: &Pbes) -> Result<Vec<DataVariable>,
 /// A permutation is only a list of positions, so nothing about it detects being
 /// applied to the wrong vector: the exploration would silently swap unrelated
 /// values and quotient the game by a group that is not a symmetry of it.
-pub(crate) fn check_parameter_basis(
+pub fn check_parameter_basis(
     basis: &[DataVariable],
     parameters: &[DataVariable],
     backend: &str,
@@ -91,7 +91,7 @@ pub(crate) fn check_parameter_basis(
 /// A symmetry group acts on the parameters only, so a layer that permutes state
 /// vectors has to be able to tell the shapes apart — permuting a subformula
 /// vertex's payload silently corrupts it.
-pub(crate) trait ParameterLayoutLPS: LPS {
+pub trait ParameterLayoutLPS: LPS {
     /// Returns the positions of `state` holding data parameters, or `None` when
     /// this state has no parameter block.
     fn parameter_range(&self, state: &[Self::Value]) -> Option<Range<usize>>;
@@ -118,7 +118,7 @@ impl<P: ParameterLayoutLPS> ParameterLayoutLPS for &P {
 /// kinds are vertices of the structure graph, so the total vertex count of the
 /// generated parity game exceeds the equation count.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum PbesVertexKind {
+pub enum PbesVertexKind {
     /// A propositional variable instantiation, i.e. one BES equation.
     Instantiation,
 
@@ -134,31 +134,31 @@ pub(crate) enum PbesVertexKind {
 /// Owner, priority and provenance of a parity-game vertex, produced by
 /// [`LPS::state_info`] of the PBES explorers.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) struct PbesVertex {
+pub struct PbesVertex {
     /// The player owning the vertex.
-    pub(crate) player: Player,
+    pub player: Player,
 
     /// The vertex priority.
-    pub(crate) priority: Priority,
+    pub priority: Priority,
 
     /// What the vertex was created for.
-    pub(crate) kind: PbesVertexKind,
+    pub kind: PbesVertexKind,
 }
 
 impl PbesVertex {
-    pub(crate) fn new(player: Player, priority: Priority, kind: PbesVertexKind) -> Self {
+    pub fn new(player: Player, priority: Priority, kind: PbesVertexKind) -> Self {
         PbesVertex { player, priority, kind }
     }
 
     /// Shorthand for a vertex standing for a propositional variable instantiation.
-    pub(crate) fn instantiation(player: Player, priority: Priority) -> Self {
+    pub fn instantiation(player: Player, priority: Priority) -> Self {
         PbesVertex::new(player, priority, PbesVertexKind::Instantiation)
     }
 }
 
 /// Tally of the generated parity-game vertices, broken down by [`PbesVertexKind`].
 #[derive(Clone, Copy, Default)]
-pub(crate) struct VertexCounts {
+pub struct VertexCounts {
     /// Vertices for propositional variable instantiations (BES equations).
     instantiations: usize,
 
@@ -171,7 +171,11 @@ pub(crate) struct VertexCounts {
 
 impl VertexCounts {
     pub fn new(instantiations: usize, subformulas: usize, sinks: usize) -> Self {
-        VertexCounts { instantiations, subformulas, sinks }
+        VertexCounts {
+            instantiations,
+            subformulas,
+            sinks,
+        }
     }
 
     /// Returns these counts with `kind` added.
@@ -204,7 +208,7 @@ fn report_counts(counts: VertexCounts, edges: usize) {
 }
 
 /// Periodic progress reporter for PBES exploration.
-pub(crate) fn bes_progress() -> TimeProgress<(VertexCounts, usize)> {
+pub fn bes_progress() -> TimeProgress<(VertexCounts, usize)> {
     TimeProgress::new(
         |(counts, edges): (VertexCounts, usize)| {
             info!(
@@ -219,11 +223,7 @@ pub(crate) fn bes_progress() -> TimeProgress<(VertexCounts, usize)> {
 
 /// Builds a [`ParityGame`] by exploring any LPS that produces unit labels and
 /// [`PbesVertex`] state info (i.e. a parity game vertex description).
-pub(crate) fn explore_pbes_impl<M>(
-    lps: &M,
-    strategy: ExplorationStrategy,
-    timing: &Timing,
-) -> Result<ParityGame, MercError>
+pub fn explore_pbes_impl<M>(lps: &M, strategy: ExplorationStrategy, timing: &Timing) -> Result<ParityGame, MercError>
 where
     M: LPS<Value = usize, Label = (), StateInfo = PbesVertex>,
 {
@@ -257,27 +257,31 @@ where
 
 /// Per-worker output partition for parallel parity-game exploration.
 #[derive(Default)]
-pub(crate) struct PbesPartition {
+pub struct PbesPartition {
     /// Vertices discovered by this worker, with their owner, priority and kind.
-    pub(crate) vertices: Vec<(VertexIndex, PbesVertex)>,
+    pub vertices: Vec<(VertexIndex, PbesVertex)>,
 
     /// Edges discovered by this worker, as `(source, target)` pairs.
-    pub(crate) edges: Vec<(VertexIndex, VertexIndex)>,
+    pub edges: Vec<(VertexIndex, VertexIndex)>,
 }
 
 /// Builds a [`ParityGame`] by exploring any sync-safe LPS in parallel.
-pub(crate) fn explore_pbes_parallel_impl<M>(lps: &M, threads: usize, pinned: bool) -> Result<ParityGame, MercError>
+pub fn explore_pbes_parallel_impl<M>(
+    lps: &M,
+    threads: usize,
+    pinned: bool,
+    timing: &Timing,
+) -> Result<ParityGame, MercError>
 where
     M: LPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <M::Summand as Summand>::Context: Send,
 {
-    let pool = configure_rayon_thread_pool(threads, pinned)?;    
-    let instantiations = ShardedCounter::new();   
-    let subformulas = ShardedCounter::new();   
+    let pool = configure_rayon_thread_pool(threads, pinned)?;
+    let instantiations = ShardedCounter::new();
+    let subformulas = ShardedCounter::new();
     let sinks = ShardedCounter::new();
     let transitions = ShardedCounter::new();
     let progress = bes_progress();
-    let timing = Timing::new();
 
     let (_initial, partitions) = timing.measure("explore", || {
         pool.install(|| {
@@ -298,7 +302,11 @@ where
                         .edges
                         .push((VertexIndex::new(from.value()), VertexIndex::new(to.value())));
                     if progress.is_due() {
-                        let counts = VertexCounts::new(instantiations.get() as usize, subformulas.get() as usize, sinks.get() as usize);
+                        let counts = VertexCounts::new(
+                            instantiations.get() as usize,
+                            subformulas.get() as usize,
+                            sinks.get() as usize,
+                        );
                         progress.print((counts, transitions.get() as usize));
                     }
                     transitions.increment();
@@ -339,7 +347,7 @@ where
 /// 2. Reverse so outermost (depth 0) → highest priority (max_depth).
 /// 3. Shift all priorities by 1 when the outermost equation's parity does not
 ///    match its fixpoint type (ν → even, μ → odd).
-pub(crate) fn compute_priorities(is_mu: &[bool]) -> Vec<usize> {
+pub fn compute_priorities(is_mu: &[bool]) -> Vec<usize> {
     if is_mu.is_empty() {
         return Vec::new();
     }

@@ -17,11 +17,7 @@ use crate::explore_srf::PbesSrfLps;
 /// machinery (equation-index gating via `prepare`, condition enumeration,
 /// read/write positions) is reused from the explicit [`PbesSrfLps`] through the
 /// generic [`SymbolicLps`] adapter, shared with LPS symbolic exploration.
-pub(crate) fn explore_pbes_symbolic(
-    storage: &LDDManagerRef,
-    pbes: &Pbes,
-    timing: &Timing,
-) -> Result<LDDFunction, MercError> {
+pub fn explore_pbes_symbolic(storage: &LDDManagerRef, pbes: &Pbes, timing: &Timing) -> Result<LDDFunction, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
     let mut symbolic = SymbolicLps::new(storage, lps)?;
 

@@ -955,29 +955,15 @@ version = "1.0.0"
 dependencies = [
  "clap",
  "env_logger",
- "itertools 0.15.0",
- "log",
  "mcrl2",
- "merc_collections",
- "merc_data",
  "merc_explore",
- "merc_io",
+ "merc_lps",
  "merc_lts",
- "merc_reduction",
  "merc_symbolic",
- "merc_syntax",
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
  "oxidd",
- "rand",
- "rayon",
- "rustc-hash 2.1.3",
- "serde",
- "serde_json",
- "streaming-iterator",
- "tempfile",
- "thiserror",
 ]
 
 [[package]]
@@ -987,28 +973,15 @@ dependencies = [
  "clap",
  "duct",
  "env_logger",
- "itertools 0.15.0",
  "log",
  "mcrl2",
- "merc_collections",
  "merc_explore",
- "merc_io",
- "merc_lts",
- "merc_symbolic",
- "merc_syntax",
+ "merc_pbes",
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
  "merc_vpg",
  "oxidd",
- "petgraph",
- "rand",
- "rayon",
- "serde",
- "serde_json",
- "streaming-iterator",
- "test-case",
- "thiserror",
  "which",
 ]
 
@@ -1104,6 +1077,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "merc_lps"
+version = "1.0.0"
+dependencies = [
+ "log",
+ "mcrl2",
+ "merc_explore",
+ "merc_io",
+ "merc_lts",
+ "merc_reduction",
+ "merc_symbolic",
+ "merc_syntax",
+ "merc_unsafety",
+ "merc_utilities",
+ "oxidd",
+ "rayon",
+ "tempfile",
+]
+
+[[package]]
 name = "merc_lts"
 version = "3.0.0"
 dependencies = [
@@ -1144,6 +1136,28 @@ dependencies = [
  "merc_utilities",
  "num",
  "rand",
+]
+
+[[package]]
+name = "merc_pbes"
+version = "1.0.0"
+dependencies = [
+ "duct",
+ "itertools 0.15.0",
+ "log",
+ "mcrl2",
+ "merc_explore",
+ "merc_io",
+ "merc_lts",
+ "merc_symbolic",
+ "merc_syntax",
+ "merc_unsafety",
+ "merc_utilities",
+ "merc_vpg",
+ "oxidd",
+ "petgraph",
+ "rand",
+ "test-case",
 ]
 
 [[package]]

@@ -1,0 +1,31 @@
+[package]
+name = "merc_pbes"
+description = "Exploration, symmetry detection and symmetry reduction for mCRL2 parameterised boolean equation systems."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mcrl2.workspace = true
+merc_explore = { workspace = true, features = ["clap"] }
+merc_io.workspace = true
+merc_lts = { workspace = true, features = ["clap"] }
+merc_symbolic = { workspace = true, features = ["clap"] }
+merc_unsafety.workspace = true
+merc_utilities.workspace = true
+merc_vpg = { workspace = true, features = ["clap"] }
+oxidd.workspace = true
+
+duct.workspace = true
+itertools.workspace = true
+log.workspace = true
+petgraph.workspace = true
+
+[dev-dependencies]
+merc_syntax.workspace = true
+rand.workspace = true
+test-case.workspace = true

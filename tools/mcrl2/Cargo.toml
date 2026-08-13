@@ -15,6 +15,8 @@ resolver = "3"
 members = [
     "crates/mcrl2",
     "crates/mcrl2-macros",
+    "crates/merc_lps",
+    "crates/merc_pbes",
     "crates/xtask",
     "lps",
     "pbes",
@@ -22,6 +24,14 @@ members = [
 exclude = [
     "crates/mCRL2-sys",
 ]
+
+[workspace.lints.rustdoc]
+# Several public functions/types intentionally link to crate-internal items
+# from their doc comments (e.g. to explain an implementation detail without
+# exposing it). Keep the links themselves (so a rename still trips the
+# separate, still-denied `broken_intra_doc_links` lint) but don't fail the
+# build just because the linked item isn't publicly reachable.
+private_intra_doc_links = "allow"
 
 [workspace.dependencies]
 clap = { version = "4.6", features = ["derive"] }
@@ -58,7 +68,9 @@ merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
 merc_explore = { path = "../../crates/explore", features = ["clap"] }
 merc_io = { path = "../../crates/io" }
+merc_lps = { path = "crates/merc_lps" }
 merc_lts = { path = "../../crates/lts", features = ["clap"] }
+merc_pbes = { path = "crates/merc_pbes" }
 merc_reduction = { path = "../../crates/reduction" }
 merc_symbolic = { path = "../../crates/symbolic", features = ["clap"] }
 merc_tools = { path = "../../crates/tools" }
