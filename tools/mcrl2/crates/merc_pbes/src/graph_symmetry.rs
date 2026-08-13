@@ -287,7 +287,7 @@ impl fmt::Display for UpdateRole {
 
 /// The symmetry detection graph (SDG) of a PBES, as constructed by
 /// [`build_sdg`].
-pub(crate) struct Sdg {
+pub struct Sdg {
     /// Undirected, matching the paper's "nondirected colored graph". Exactly
     /// one edge per `(phi, psi)` vertex pair: [`EdgeColour`]'s combined
     /// labels resolve the only two situations that could otherwise force a
@@ -314,17 +314,17 @@ pub(crate) struct Sdg {
 impl Sdg {
     /// Returns the number of parameters (the size of the permutation domain
     /// that symmetries are ultimately expressed over).
-    pub(crate) fn num_parameters(&self) -> usize {
+    pub fn num_parameters(&self) -> usize {
         self.parameters.len()
     }
 
     /// Returns the number of vertices in the graph.
-    pub(crate) fn num_vertices(&self) -> usize {
+    pub fn num_vertices(&self) -> usize {
         self.graph.node_count()
     }
 
     /// Returns the number of edges in the graph.
-    pub(crate) fn num_edges(&self) -> usize {
+    pub fn num_edges(&self) -> usize {
         self.graph.edge_count()
     }
 }
@@ -364,7 +364,7 @@ fn unified_parameters(equations: &mcrl2::PbesEquations) -> Result<Vec<DataVariab
 /// Every equation must already share the same parameter vector; call
 /// [`graph_symmetries`] (which calls [`Pbes::unify_parameters`] first) when
 /// that precondition is not yet established.
-pub(crate) fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
+pub fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     let equations = pbes.equations();
     let parameters = unified_parameters(&equations)?;
 
@@ -848,7 +848,7 @@ fn merge_edge_colour(a: EdgeColour, b: EdgeColour) -> EdgeColour {
 
 /// The SDG in the form GAP's Digraphs package expects: a symmetric digraph
 /// (every undirected edge as two opposite directed arcs) with 1-based points.
-pub(crate) struct GapGraph {
+pub struct GapGraph {
     /// `out_neighbours[u]` lists the 1-based out-neighbours of vertex `u+1`.
     out_neighbours: Vec<Vec<usize>>,
     /// Positionally aligned with `out_neighbours`; `edge_colours[u][j]` is the
@@ -857,11 +857,11 @@ pub(crate) struct GapGraph {
     /// `vertex_colours[u]` is the dense colour index of vertex `u+1`.
     vertex_colours: Vec<usize>,
     /// How many of the leading vertices (NodeIndex 0..n-1) are parameter vertices.
-    pub(crate) num_parameters: usize,
+    pub num_parameters: usize,
 }
 
 impl Sdg {
-    pub(crate) fn to_gap_graph(&self) -> GapGraph {
+    pub fn to_gap_graph(&self) -> GapGraph {
         let n = self.graph.node_count();
         let mut vc_map: HashMap<String, usize> = HashMap::new();
         let mut next_vc = 1usize;
@@ -922,7 +922,7 @@ impl Sdg {
 }
 
 /// Writes the SDG as a Graphviz DOT file, including vertex/edge colours.
-pub(crate) fn write_dot<W>(sdg: &Sdg, w: &mut W) -> Result<(), MercError>
+pub fn write_dot<W>(sdg: &Sdg, w: &mut W) -> Result<(), MercError>
 where
     W: Write,
 {
@@ -1038,7 +1038,7 @@ const GRAPH6_MAX_NODES: usize = 258_047;
 /// vertex and edge colours are not representable. Use this as a debug or
 /// interop artifact (nauty's `showg`, GAP's `DigraphFromGraph6String`), not
 /// as the channel through which colours reach GAP (that goes through the script).
-pub(crate) fn graph6_string(sdg: &Sdg) -> Result<String, MercError> {
+pub fn graph6_string(sdg: &Sdg) -> Result<String, MercError> {
     if sdg.graph.node_count() > GRAPH6_MAX_NODES {
         return Err(
             format!("petgraph's graph6 encoder does not support graphs over {GRAPH6_MAX_NODES} vertices").into(),
@@ -1105,11 +1105,11 @@ QUIT;;
 }
 
 /// Configuration for invoking the external GAP process.
-pub(crate) struct GapConfig {
+pub struct GapConfig {
     /// Path or name of the GAP executable (default: `"gap"` on `$PATH`).
-    pub(crate) executable: String,
+    pub executable: String,
     /// If set, the generated GAP script is also written to this file.
-    pub(crate) dump_script: Option<PathBuf>,
+    pub dump_script: Option<PathBuf>,
 }
 
 impl Default for GapConfig {
@@ -1129,7 +1129,7 @@ impl Default for GapConfig {
 /// - `-r` ignores the user's gap.ini
 /// - `--quitonbreak` makes runtime errors exit with non-zero status
 ///   (note: do NOT add `-T`/`--nobreakloop`, which defeats `--quitonbreak`)
-pub(crate) fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
+pub fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
     if let Some(path) = &config.dump_script {
         fs::write(path, script)
             .map_err(|e| MercError::from(format!("failed to write GAP script to '{}': {}", path.display(), e)))?;
@@ -1242,27 +1242,28 @@ fn parse_gap_output(stdout: &str, num_parameters: usize) -> Result<(u128, u128, 
 }
 
 /// Result returned by [`graph_symmetries`].
-pub(crate) struct GraphSymmetryResult {
+pub struct GraphSymmetryResult {
     /// The symmetry detection graph the automorphisms were computed on.
-    pub(crate) sdg: Sdg,
+    pub sdg: Sdg,
 
     /// `|Aut(G)|`, the order of the automorphism group of the whole SDG.
-    pub(crate) automorphism_group_order: u128,
+    pub automorphism_group_order: u128,
 
     /// `|Sym(pbes)|`, the order after restricting to the parameter vertices.
-    pub(crate) symmetry_group_order: u128,
+    pub symmetry_group_order: u128,
 
     /// Generators of `Sym(pbes)`, as permutations of the parameter indices.
-    pub(crate) generators: Vec<Permutation>,
+    pub generators: Vec<Permutation>,
 }
 
 /// Constructs the "symmetry detection graph" (SDG) of a PBES, and uses it (via
-/// the GAP automorphism-group computation, see [`crate::gap`]) to derive
+/// the GAP automorphism-group computation, see [`run_gap`]) to derive
 /// permutation symmetries of the PBES's parameters using auto morphisms of the
 /// SDG.
-pub(crate) fn graph_symmetries(pbes: &Pbes, config: &GapConfig) -> Result<GraphSymmetryResult, MercError> {
-    // Unify parameters here so build_sdg works on the original PBES structure.
-    let mut pbes = Pbes::from_text(&pbes.to_string())?;
+pub fn graph_symmetries(pbes: &Pbes, config: &GapConfig) -> Result<GraphSymmetryResult, MercError> {
+    // Unify on a copy so build_sdg works on a PBES with one parameter vector
+    // while the caller keeps the equations it passed in.
+    let mut pbes = pbes.clone();
     pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
     let sdg = build_sdg(&pbes)?;
     info!(
@@ -1338,13 +1339,13 @@ mod tests {
         Some(graph_symmetries(&pbes, &GapConfig::default()).unwrap())
     }
 
-    #[test_case(include_str!("../../../../examples/pbes/a.text.pbes"); "a")]
-    #[test_case(include_str!("../../../../examples/pbes/b.text.pbes"); "b")]
-    #[test_case(include_str!("../../../../examples/pbes/c.text.pbes"); "c")]
-    #[test_case(include_str!("../../../../examples/pbes/alloc3.text.pbes");  "alloc3")]
-    #[test_case(include_str!("../../../../examples/pbes/alloc7.text.pbes");  "alloc7")]
-    #[test_case(include_str!("../../../../examples/pbes/alloc9.text.pbes");  "alloc9")]
-    #[test_case(include_str!("../../../../examples/pbes/dining8.text.pbes"); "dining8")]
+    #[test_case(include_str!("../../../../../examples/pbes/a.text.pbes"); "a")]
+    #[test_case(include_str!("../../../../../examples/pbes/b.text.pbes"); "b")]
+    #[test_case(include_str!("../../../../../examples/pbes/c.text.pbes"); "c")]
+    #[test_case(include_str!("../../../../../examples/pbes/alloc3.text.pbes");  "alloc3")]
+    #[test_case(include_str!("../../../../../examples/pbes/alloc7.text.pbes");  "alloc7")]
+    #[test_case(include_str!("../../../../../examples/pbes/alloc9.text.pbes");  "alloc9")]
+    #[test_case(include_str!("../../../../../examples/pbes/dining8.text.pbes"); "dining8")]
     fn test_gap_symmetries(source: &str) {
         check_gap_symmetries(source);
     }
@@ -1354,7 +1355,7 @@ mod tests {
     #[test]
     fn test_c_pbes_parameter_vertices() {
         test_logger();
-        let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/c.text.pbes")).unwrap();
+        let pbes = Pbes::from_text(include_str!("../../../../../examples/pbes/c.text.pbes")).unwrap();
         let sdg = build_sdg(&pbes).unwrap();
 
         assert_eq!(sdg.num_parameters(), 4, "c.text.pbes has 4 parameters");
@@ -1380,8 +1381,8 @@ mod tests {
     fn test_a_and_b_pbes_build_without_error() {
         test_logger();
         for source in [
-            include_str!("../../../../examples/pbes/a.text.pbes"),
-            include_str!("../../../../examples/pbes/b.text.pbes"),
+            include_str!("../../../../../examples/pbes/a.text.pbes"),
+            include_str!("../../../../../examples/pbes/b.text.pbes"),
         ] {
             let pbes = Pbes::from_text(source).unwrap();
             build_sdg(&pbes).unwrap();

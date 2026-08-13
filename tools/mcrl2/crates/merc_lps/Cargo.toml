@@ -1,30 +1,32 @@
 [package]
-name = "merc-lps"
-version.workspace = true
+name = "merc_lps"
+description = "Explicit and symbolic state space exploration for mCRL2 linear process specifications."
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-
-[[bin]]
-name = "merc-lps"
-path = "src/main.rs"
-# Avoid a rustdoc output filename collision with the `merc_lps` library crate.
-doc = false
+version.workspace = true
 
 [features]
 # Tracks per-summand cache and control-flow pruning counters during exploration.
-metrics = ["merc_lps/metrics"]
+metrics = ["merc_explore/metrics"]
+
+[lints]
+workspace = true
 
 [dependencies]
 mcrl2.workspace = true
 merc_explore = { workspace = true, features = ["clap"] }
-merc_lps.workspace = true
+merc_io.workspace = true
 merc_lts = { workspace = true, features = ["clap"] }
 merc_symbolic = { workspace = true, features = ["clap"] }
-merc_tools.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true
 oxidd.workspace = true
 
-clap.workspace = true
-env_logger.workspace = true
+log.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+merc_reduction.workspace = true
+merc_syntax.workspace = true
+tempfile.workspace = true

@@ -44,7 +44,7 @@ use crate::cfg_lps::CfgLinearProcessSpecification;
 
 /// Periodic progress reporter for LPS exploration, printing the number of
 /// discovered states and transitions.
-pub(crate) fn lps_progress() -> TimeProgress<(usize, usize)> {
+pub fn lps_progress() -> TimeProgress<(usize, usize)> {
     TimeProgress::new(
         |(states, transitions): (usize, usize)| {
             info!("Explored {states} states, {transitions} transitions...");
@@ -62,7 +62,7 @@ pub(crate) fn lps_progress() -> TimeProgress<(usize, usize)> {
 /// changes the explored transition system.
 ///
 /// [`ControlFlowAnalysis`]: crate::control_flow::ControlFlowAnalysis
-pub(crate) fn explore_lps_explicit<B>(
+pub fn explore_lps_explicit<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
     caching: CachingStrategy,
@@ -163,7 +163,7 @@ where
 /// Explores the linear process specification explicitly in parallel across
 /// `threads` worker threads, streaming the discovered transitions into
 /// `builder`.
-pub(crate) fn explore_lps_explicit_parallel<B>(
+pub fn explore_lps_explicit_parallel<B>(
     builder: &mut B,
     lps: &LinearProcessSpecification,
     caching: CachingStrategy,
@@ -286,7 +286,7 @@ where
 /// enumeration cache and the concurrent LTS builder. Display uses mCRL2's
 /// pretty-printer.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct Mcrl2MultiActionLabel {
+pub struct Mcrl2MultiActionLabel {
     term: ATermSend,
 }
 
@@ -345,7 +345,7 @@ fn is_mcrl2_timed_multi_action_term(term: &ATermSend) -> bool {
 /// through the [`Protected`] wrapper, so the mapping is globally consistent and
 /// safe to populate from several worker threads at once. Labels are the printed
 /// multi-actions of the summands.
-pub(crate) struct ExplicitLinearProcessSpecification {
+pub struct ExplicitLinearProcessSpecification {
     /// The (preprocessed) underlying LPS. Retained because each per-thread
     /// [`ExplicitContext`] builds its own [`LearnSuccessorsContext`] from it.
     lps: LinearProcessSpecification,
@@ -377,7 +377,7 @@ type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 unsafe impl Sync for ExplicitLinearProcessSpecification {}
 
 impl ExplicitLinearProcessSpecification {
-    pub(crate) fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
+    pub fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
         let lps = preprocess(lps, &PreprocessOptions::default())?;
 
         let parameters = lps.parameters();
@@ -437,12 +437,12 @@ impl ExplicitLinearProcessSpecification {
     }
 
     /// The process parameter variables in declaration order.
-    pub(crate) fn parameters(&self) -> Vec<DataVariable> {
+    pub fn parameters(&self) -> Vec<DataVariable> {
         self.lps.parameters().to_vec()
     }
 
     /// The (preprocessed) underlying linear process specification.
-    pub(crate) fn lps(&self) -> &LinearProcessSpecification {
+    pub fn lps(&self) -> &LinearProcessSpecification {
         &self.lps
     }
 
@@ -452,7 +452,7 @@ impl ExplicitLinearProcessSpecification {
     /// The rewriting and interning mirror the construction of the initial state
     /// vector, so the returned index can be compared directly against the
     /// entries of explored state vectors.
-    pub(crate) fn intern_normal_form(&self, context: &LearnSuccessorsContext, value: &DataExpressionRef) -> usize {
+    pub fn intern_normal_form(&self, context: &LearnSuccessorsContext, value: &DataExpressionRef) -> usize {
         let rewritten = context.rewrite_under_sigma(value);
 
         // SAFETY: the rewritten term is interned into `self.value_mapping`, a
@@ -469,7 +469,7 @@ impl ExplicitLinearProcessSpecification {
 /// Owns the mCRL2 enumeration backend and the reusable scratch buffers, so the
 /// LPS and its summands stay immutable and shareable by `&self` while each
 /// worker thread drives its own context.
-pub(crate) struct ExplicitContext {
+pub struct ExplicitContext {
     /// Backend used by mCRL2 to perform the enumeration, staged per source
     /// state by [`LPS::prepare`] and consumed by [`Summand::enumerate`].
     context: LearnSuccessorsContext,
@@ -488,7 +488,7 @@ pub(crate) struct ExplicitContext {
 unsafe impl Send for ExplicitContext {}
 
 /// A single summand of the LPS, prepared for explicit enumeration.
-pub(crate) struct ExplicitSummand {
+pub struct ExplicitSummand {
     /// The indices of the parameters that this summand reads.
     read_indices: Vec<usize>,
 
@@ -590,12 +590,12 @@ impl ExplicitSummand {
     }
 
     /// The condition (guard) of this summand.
-    pub(crate) fn condition(&self) -> &DataExpression {
+    pub fn condition(&self) -> &DataExpression {
         &self.condition
     }
 
     /// The non-identity assignments (write parameters) of this summand.
-    pub(crate) fn write_assignments(&self) -> &ATermList<ATerm> {
+    pub fn write_assignments(&self) -> &ATermList<ATerm> {
         &self.write_assignments
     }
 }

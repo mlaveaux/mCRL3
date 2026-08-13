@@ -2,9 +2,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use std::time::Instant;
 
-use log::info;
 use mcrl2_sys::cxx::CxxVector;
 use mcrl2_sys::cxx::UniquePtr;
 use mcrl2_sys::data::ffi::mcrl2_pbes_expression_replace_variables;
@@ -62,6 +60,7 @@ use mcrl2_sys::pbes::ffi::srf_summand;
 use mcrl2_sys::pbes::ffi::stategraph_algorithm;
 use mcrl2_sys::pbes::ffi::stategraph_equation;
 use merc_utilities::MercError;
+use merc_utilities::Timing;
 
 use crate::ATerm;
 use crate::ATermList;
@@ -186,8 +185,11 @@ impl Pbes {
     /// [`Pbes::unify_parameters`] produces is unaffected and the symmetry
     /// generators keep indexing into the same vector.
     ///
+    /// Every step is registered on `timing`, so a tool that prints its timings
+    /// reports them alongside the rest of its phases.
+    ///
     /// Returns an error when a global variable cannot be instantiated.
-    pub fn preprocess(&mut self) -> Result<(), MercError> {
+    pub fn preprocess(&mut self, timing: &Timing) -> Result<(), MercError> {
         // Named steps rather than four inlined calls so that the reporting
         // cannot drift out of sync with what is actually run.
         let steps: [(&str, fn(&mut Pbes) -> Result<(), MercError>); 4] = [
@@ -198,9 +200,7 @@ impl Pbes {
         ];
 
         for (name, step) in steps {
-            let start = Instant::now();
-            step(self)?;
-            info!("Preprocessing: {name} took {:.3}s", start.elapsed().as_secs_f64());
+            timing.measure(&format!("preprocess: {name}"), || step(self))?;
         }
 
         Ok(())

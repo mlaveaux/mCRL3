@@ -34,14 +34,14 @@ use crate::explore_explicit::ExplicitSummand;
 /// Under these conditions the value of a CFP in any reachable state is one of a
 /// statically known set of constants, so a summand whose guard requires
 /// `d == c` can only fire from states where `d` already equals `c`.
-pub(crate) struct ControlFlowAnalysis {
+pub struct ControlFlowAnalysis {
     /// The process parameter indices identified as control flow parameters.
-    pub(crate) control_flow_parameters: Vec<usize>,
+    pub control_flow_parameters: Vec<usize>,
 
     /// For each summand, the source-value constraints on the control flow
     /// parameters: each `(position, value)` requires the state's value at
     /// `control_flow_parameters[position]` to equal the interned `value`.
-    pub(crate) source_constraints: Vec<Vec<(usize, usize)>>,
+    pub source_constraints: Vec<Vec<(usize, usize)>>,
 }
 
 impl ControlFlowAnalysis {
@@ -50,7 +50,7 @@ impl ControlFlowAnalysis {
     /// The source values are interned into the same value mapping (and under the
     /// same normalisation) that `lps` uses for its state vectors, so the indices
     /// can be compared directly against state entries.
-    pub(crate) fn new(lps: &ExplicitLinearProcessSpecification) -> Self {
+    pub fn new(lps: &ExplicitLinearProcessSpecification) -> Self {
         let parameters = lps.parameters();
 
         // Certain preprocessing steps (notably

@@ -22,7 +22,7 @@ use crate::explore_explicit::Mcrl2MultiActionLabel;
 /// Pruning never changes the explored transition system: a dropped summand has a
 /// guard that is false in the current state and would have produced no
 /// transitions anyway.
-pub(crate) struct CfgLinearProcessSpecification {
+pub struct CfgLinearProcessSpecification {
     /// The underlying explicit LPS that performs the actual enumeration.
     inner: ExplicitLinearProcessSpecification,
 
@@ -49,7 +49,7 @@ struct SummandCfgCounters {
 
 impl CfgLinearProcessSpecification {
     /// Builds the explicit LPS and runs the control flow graph analysis on top.
-    pub(crate) fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
+    pub fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
         let inner = ExplicitLinearProcessSpecification::new(lps)?;
         let analysis = ControlFlowAnalysis::new(&inner);
         let summand_metrics = (0..analysis.source_constraints.len())
@@ -64,7 +64,7 @@ impl CfgLinearProcessSpecification {
 
     /// Returns the process parameter indices identified as control flow
     /// parameters.
-    pub(crate) fn control_flow_parameters(&self) -> &[usize] {
+    pub fn control_flow_parameters(&self) -> &[usize] {
         &self.analysis.control_flow_parameters
     }
 
@@ -73,7 +73,7 @@ impl CfgLinearProcessSpecification {
     /// The returned [`CfgMetrics`] implements [`fmt::Display`] for a
     /// human-readable summary of how often each summand was selected versus
     /// pruned.
-    pub(crate) fn metrics(&self) -> CfgMetrics {
+    pub fn metrics(&self) -> CfgMetrics {
         let summands = self
             .summand_metrics
             .iter()
@@ -91,7 +91,7 @@ impl CfgLinearProcessSpecification {
 
 /// Control flow pruning metrics for a single summand.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct SummandCfgMetrics {
+pub struct SummandCfgMetrics {
     /// Index of the summand in the LPS.
     pub index: usize,
     /// Number of states in which this summand was selected (explored).
@@ -102,14 +102,14 @@ pub(crate) struct SummandCfgMetrics {
 
 impl SummandCfgMetrics {
     /// Total number of states for which this summand was evaluated.
-    pub(crate) fn evaluated(&self) -> u64 {
+    pub fn evaluated(&self) -> u64 {
         self.selected + self.pruned
     }
 
     /// Fraction of evaluations in which this summand was pruned, in `[0.0, 1.0]`.
     ///
     /// Returns `0.0` when the summand was never evaluated.
-    pub(crate) fn prune_rate(&self) -> f64 {
+    pub fn prune_rate(&self) -> f64 {
         let evaluated = self.evaluated();
         if evaluated == 0 {
             0.0
@@ -122,24 +122,24 @@ impl SummandCfgMetrics {
 /// Aggregated control flow pruning metrics for every summand of a
 /// [`CfgLinearProcessSpecification`].
 #[derive(Clone, Debug)]
-pub(crate) struct CfgMetrics {
+pub struct CfgMetrics {
     /// Per-summand metrics, ordered by summand index.
     pub summands: Vec<SummandCfgMetrics>,
 }
 
 impl CfgMetrics {
     /// Total number of summand selections across all summands.
-    pub(crate) fn total_selected(&self) -> u64 {
+    pub fn total_selected(&self) -> u64 {
         self.summands.iter().map(|s| s.selected).sum()
     }
 
     /// Total number of summand prunings across all summands.
-    pub(crate) fn total_pruned(&self) -> u64 {
+    pub fn total_pruned(&self) -> u64 {
         self.summands.iter().map(|s| s.pruned).sum()
     }
 
     /// Fraction of evaluations pruned across all summands.
-    pub(crate) fn prune_rate(&self) -> f64 {
+    pub fn prune_rate(&self) -> f64 {
         let pruned = self.total_pruned();
         let evaluated = pruned + self.total_selected();
         if evaluated == 0 {

@@ -18,7 +18,7 @@ use crate::explore_explicit::ExplicitLinearProcessSpecification;
 /// from the explicit [`ExplicitLinearProcessSpecification`] via the generic
 /// [`SymbolicLps`] adapter, so LPS and PBES symbolic exploration share one
 /// implementation.
-pub(crate) fn explore_lps_symbolic(
+pub fn explore_lps_symbolic(
     storage: &LDDManagerRef,
     lps: &LinearProcessSpecification,
     strategy: ExplorationStrategy,
@@ -72,7 +72,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let lps_path = temp_dir.path().join("abp.lps");
 
-        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../examples/mCRL2/academic/abp/abp.mcrl2");
+        let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../examples/mCRL2/academic/abp/abp.mcrl2");
 
         // Run mcrl22lps on the ABP example to get an LPS file.
         let status = Command::new(&mcrl22lps)

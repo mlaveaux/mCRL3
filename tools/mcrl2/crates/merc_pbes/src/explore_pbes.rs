@@ -111,7 +111,7 @@ unsafe fn name_key(name: ATermStringRef<'_>) -> ATermStringRef<'static> {
 /// - FALSE sink: `[FALSE_SINK]`
 /// - Subformula AND: `[AND_OP, subformula_idx]`
 /// - Subformula OR:  `[OR_OP,  subformula_idx]`
-pub(crate) struct PbesLps {
+pub struct PbesLps {
     /// The unified PBES; retained so the terms borrowed by the summands stay
     /// alive, and read back by [`PbesLps::parameters`].
     pbes: Pbes,
@@ -184,7 +184,7 @@ enum PbesSummandKind {
 }
 
 /// A single summand of a [`PbesLps`], pre-bound to the state shape it fires on.
-pub(crate) struct PbesSummand {
+pub struct PbesSummand {
     /// The state shape this summand fires on and how successors are derived.
     kind: PbesSummandKind,
 
@@ -218,7 +218,7 @@ struct TargetTables<'a> {
 }
 
 /// Per-thread enumeration context for a [`PbesLps`].
-pub(crate) struct PbesContext {
+pub struct PbesContext {
     /// The worker's own quantifier-enumerating rewriter.
     rewrite: PbesRewriteContext,
 
@@ -245,7 +245,7 @@ pub(crate) struct PbesContext {
 unsafe impl Send for PbesContext {}
 
 impl PbesLps {
-    pub(crate) fn new(mut pbes: Pbes) -> Result<Self, MercError> {
+    pub fn new(mut pbes: Pbes) -> Result<Self, MercError> {
         pbes.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
 
         let equations = pbes.equations();
@@ -393,7 +393,7 @@ impl PbesLps {
     /// [`crate::explore_common::symmetry_parameter_basis`] instead, which does
     /// not need a constructed LPS.
     #[cfg(test)]
-    pub(crate) fn num_params(&self) -> usize {
+    pub fn num_params(&self) -> usize {
         self.num_params
     }
 
@@ -403,7 +403,7 @@ impl PbesLps {
     /// This is the vector [`crate::explore_common::symmetry_parameter_basis`]
     /// returns, since both unify with the same flags, but a caller that permutes
     /// parameter positions should check rather than assume that.
-    pub(crate) fn parameters(&self) -> Vec<DataVariable> {
+    pub fn parameters(&self) -> Vec<DataVariable> {
         self.pbes.equations()[0].variable().parameters().iter().collect()
     }
 }
@@ -715,18 +715,18 @@ where
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES directly (no SRF conversion).
-pub(crate) fn explore_pbes(
+pub fn explore_pbes(
     pbes: Pbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
+    timing: &Timing,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesLps::new(pbes)?;
-    let timing = Timing::new();
     match caching {
-        CachingStrategy::None => explore_pbes_impl(&lps, strategy, &timing),
+        CachingStrategy::None => explore_pbes_impl(&lps, strategy, timing),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_impl(&cached, strategy, &timing)?;
+            let game = explore_pbes_impl(&cached, strategy, timing)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
@@ -734,18 +734,19 @@ pub(crate) fn explore_pbes(
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES directly in parallel.
-pub(crate) fn explore_pbes_parallel(
+pub fn explore_pbes_parallel(
     pbes: Pbes,
     threads: usize,
     caching: CachingStrategy,
     pinned: bool,
+    timing: &Timing,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesLps::new(pbes)?;
     match caching {
-        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned),
+        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned, timing),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_parallel_impl(&cached, threads, pinned)?;
+            let game = explore_pbes_parallel_impl(&cached, threads, pinned, timing)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }

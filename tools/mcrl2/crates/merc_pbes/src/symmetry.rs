@@ -40,7 +40,7 @@ use crate::permutation::permutation_group;
 use crate::permutation::permutation_group_size;
 
 /// Implements symmetry detection for PBESs.
-pub(crate) struct SymmetryAlgorithm {
+pub struct SymmetryAlgorithm {
     /// Needs to be kept alive while the control flow graphs are used.
     state_graph: PbesStategraph,
 
@@ -60,7 +60,7 @@ pub(crate) struct SymmetryAlgorithm {
 
 impl SymmetryAlgorithm {
     /// Does the required preprocessing to analyse symmetries in the given PBES.
-    pub(crate) fn new(pbes: &Pbes, print_srf: bool) -> Result<Self, MercError> {
+    pub fn new(pbes: &Pbes, print_srf: bool) -> Result<Self, MercError> {
         let (srf, parameters, state_graph) = preprocess_symmetry(pbes, print_srf)?;
 
         let all_control_flow_parameters = state_graph
@@ -87,19 +87,19 @@ impl SymmetryAlgorithm {
     }
 
     /// Returns the SRF PBES after unifying parameters.
-    pub(crate) fn srf_pbes(&self) -> &SrfPbes {
+    pub fn srf_pbes(&self) -> &SrfPbes {
         &self.srf
     }
 
     /// Returns the state graph of the PBES.
-    pub(crate) fn state_graph(&self) -> &PbesStategraph {
+    pub fn state_graph(&self) -> &PbesStategraph {
         &self.state_graph
     }
 
     /// Returns compliant permutations.
     ///
     /// See [Self::clique_candidates] for the parameters.
-    pub(crate) fn candidates(
+    pub fn candidates(
         &self,
         partition_data_sorts: bool,
         partition_data_updates: bool,
@@ -153,7 +153,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Checks whether the given permutation is valid, meaning that control flow parameters are mapped to control flow parameters.
-    pub(crate) fn is_valid_permutation(&self, pi: &Permutation) -> Result<(), MercError> {
+    pub fn is_valid_permutation(&self, pi: &Permutation) -> Result<(), MercError> {
         // Check that all control flow parameters are mapped to control flow parameters.
         for index in pi.domain() {
             let mapped_index = pi.value(index);
@@ -181,7 +181,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Performs the syntactic check defined as symcheck in the paper.
-    pub(crate) fn check_symmetry(&self, pi: &Permutation) -> bool {
+    pub fn check_symmetry(&self, pi: &Permutation) -> bool {
         for equation in self.srf.equations() {
             for summand in equation.summands() {
                 let mut matched = false;
@@ -216,7 +216,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Determine the cliques in the given control flow graphs.
-    pub(crate) fn cliques(&self) -> Vec<Vec<usize>> {
+    pub fn cliques(&self) -> Vec<Vec<usize>> {
         let mut cal_I = Vec::new();
 
         for (i, cfg) in self.state_graph.control_flow_graphs().iter().enumerate() {
@@ -765,7 +765,7 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
 const UNDEFINED_VERTEX: usize = usize::MAX;
 
 /// Returns the index of the variable that the control flow graph represents.
-pub(crate) fn variable_index(cfg: &ControlFlowGraph) -> usize {
+pub fn variable_index(cfg: &ControlFlowGraph) -> usize {
     // Find the first defined index
     let defined_index = cfg
         .vertices()
@@ -819,7 +819,7 @@ mod tests {
     #[test]
     fn test_symmetry_example_a() {
         test_logger();
-        let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/a.text.pbes")).unwrap();
+        let pbes = Pbes::from_text(include_str!("../../../../../examples/pbes/a.text.pbes")).unwrap();
 
         let cliques = SymmetryAlgorithm::new(&pbes, false).unwrap().cliques();
 
@@ -829,7 +829,7 @@ mod tests {
     #[test]
     fn test_symmetry_examples_b() {
         test_logger();
-        let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/b.text.pbes")).unwrap();
+        let pbes = Pbes::from_text(include_str!("../../../../../examples/pbes/b.text.pbes")).unwrap();
 
         let cliques = SymmetryAlgorithm::new(&pbes, false).unwrap().cliques();
 
@@ -839,7 +839,7 @@ mod tests {
     #[test]
     fn test_symmetry_examples_c() {
         test_logger();
-        let pbes = Pbes::from_text(include_str!("../../../../examples/pbes/c.text.pbes")).unwrap();
+        let pbes = Pbes::from_text(include_str!("../../../../../examples/pbes/c.text.pbes")).unwrap();
 
         let algorithm = SymmetryAlgorithm::new(&pbes, false).unwrap();
         let cliques = algorithm.cliques();

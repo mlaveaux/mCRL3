@@ -41,19 +41,19 @@ use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
-pub(crate) fn explore_srf_pbes(
+pub fn explore_srf_pbes(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
+    timing: &Timing,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
-    let timing = Timing::new();
 
     match caching {
-        CachingStrategy::None => explore_pbes_impl(&lps, strategy, &timing),
+        CachingStrategy::None => explore_pbes_impl(&lps, strategy, timing),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_impl(&cached, strategy, &timing)?;
+            let game = explore_pbes_impl(&cached, strategy, timing)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
@@ -61,19 +61,20 @@ pub(crate) fn explore_srf_pbes(
 }
 
 /// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel.
-pub(crate) fn explore_srf_pbes_parallel(
+pub fn explore_srf_pbes_parallel(
     pbes: &Pbes,
     threads: usize,
     caching: CachingStrategy,
     pinned: bool,
+    timing: &Timing,
 ) -> Result<ParityGame, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
 
     match caching {
-        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned),
+        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned, timing),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_parallel_impl(&cached, threads, pinned)?;
+            let game = explore_pbes_parallel_impl(&cached, threads, pinned, timing)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
@@ -85,7 +86,7 @@ pub(crate) fn explore_srf_pbes_parallel(
 /// Owns the mCRL2 enumeration backend and the reusable scratch buffers, so the
 /// LPS and its summands stay immutable and shareable by `&self` while each
 /// worker thread drives its own context.
-pub(crate) struct PbesSrfContext {
+pub struct PbesSrfContext {
     /// Backend used to evaluate summand conditions and enumerate solutions,
     /// staged per source state by [`LPS::prepare`].
     context: LearnSuccessorsContext,
@@ -113,7 +114,7 @@ unsafe impl Send for PbesSrfContext {}
 /// State vectors have layout `[equation_index, param_0, …, param_{n-1}]` where
 /// `equation_index` is a flat index into [`SrfPbes::equations`] and each
 /// `param_i` is an index into the shared [`ValueMapping`].
-pub(crate) struct PbesSrfLps {
+pub struct PbesSrfLps {
     /// The unified SRF PBES; retained so summand pointers stay alive, and read
     /// back by [`PbesSrfLps::parameters`].
     srf: SrfPbes,
@@ -160,7 +161,7 @@ unsafe impl Sync for PbesSrfLps {}
 
 /// A single SRF summand, pre-bound to the equation it belongs to and the
 /// target equation it transitions into.
-pub(crate) struct PbesSrfSummand {
+pub struct PbesSrfSummand {
     /// Source equation index; the summand fires only when `state[0]` equals it.
     equation_index: usize,
 
@@ -200,7 +201,7 @@ pub(crate) struct PbesSrfSummand {
 impl PbesSrfLps {
     /// Constructs a new [`PbesSrfLps`] from a PBES by normalising it to SRF and
     /// unifying the parameter lists.
-    pub(crate) fn new(pbes: &Pbes) -> Result<Self, MercError> {
+    pub fn new(pbes: &Pbes) -> Result<Self, MercError> {
         let mut srf = SrfPbes::from(pbes)?;
         srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
 
@@ -338,13 +339,13 @@ impl PbesSrfLps {
         })
     }
 
-    pub(crate) fn num_params(&self) -> usize {
+    pub fn num_params(&self) -> usize {
         self.num_params
     }
 
     /// The unified data parameters, in state-vector order: entry `i` occupies
     /// state position `1 + i`.
-    pub(crate) fn parameters(&self) -> Vec<DataVariable> {
+    pub fn parameters(&self) -> Vec<DataVariable> {
         self.srf.equations()[0].variable().parameters().iter().collect()
     }
 }

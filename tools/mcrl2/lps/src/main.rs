@@ -25,17 +25,10 @@ use mcrl2::read_lps_text;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 
-use explore_explicit::Mcrl2MultiActionLabel;
-use explore_explicit::explore_lps_explicit;
-use explore_explicit::explore_lps_explicit_parallel;
-use explore_symbolic::explore_lps_symbolic;
-
-mod cfg_lps;
-mod cfg_lps_test;
-mod control_flow;
-mod explore_explicit;
-mod explore_lps_test;
-mod explore_symbolic;
+use merc_lps::Mcrl2MultiActionLabel;
+use merc_lps::explore_lps_explicit;
+use merc_lps::explore_lps_explicit_parallel;
+use merc_lps::explore_lps_symbolic;
 
 /// Default number of nodes for the Oxidd LDD manager.
 const DEFAULT_OXIDD_NODE_CAPACITY: usize = 1 << 24;

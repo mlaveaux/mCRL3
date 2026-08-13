@@ -26,7 +26,7 @@ use crate::explore_common::ParameterLayoutLPS;
 /// ```
 /// This keeps cache keys narrow (raw, un-canonicalized write positions) and avoids
 /// forcing the cache to track all parameters as written.
-pub(crate) struct QuotientLps<P: ParameterLayoutLPS<Value = usize>> {
+pub struct QuotientLps<P: ParameterLayoutLPS<Value = usize>> {
     inner: Arc<P>,
     bsgs: Arc<Bsgs>,
     summands: Vec<QuotientSummand<P>>,
@@ -37,7 +37,7 @@ pub(crate) struct QuotientLps<P: ParameterLayoutLPS<Value = usize>> {
 ///
 /// Delegates enumeration to the corresponding inner summand and canonicalizes
 /// each next-state before reporting it.
-pub(crate) struct QuotientSummand<P: ParameterLayoutLPS<Value = usize>> {
+pub struct QuotientSummand<P: ParameterLayoutLPS<Value = usize>> {
     index: usize,
     inner: Arc<P>,
     bsgs: Arc<Bsgs>,
@@ -46,7 +46,7 @@ pub(crate) struct QuotientSummand<P: ParameterLayoutLPS<Value = usize>> {
 }
 
 /// Per-thread enumeration context for a [`QuotientLps`].
-pub(crate) struct QuotientContext<P: ParameterLayoutLPS<Value = usize>> {
+pub struct QuotientContext<P: ParameterLayoutLPS<Value = usize>> {
     inner: <P::Summand as Summand>::Context,
 
     /// Working buffers of [`Bsgs::canonicalize_into`], so that canonicalizing a
@@ -77,7 +77,7 @@ where
     /// `param_offset` is the first position in the state vector that belongs to
     /// the PBES parameters (always `1` for `PbesSrfLps`, where position 0 is the
     /// equation index).
-    pub(crate) fn new(inner: P, bsgs: Arc<Bsgs>, param_offset: usize) -> Self {
+    pub fn new(inner: P, bsgs: Arc<Bsgs>, param_offset: usize) -> Self {
         let inner = Arc::new(inner);
 
         let summands = inner
