@@ -934,7 +934,7 @@ dependencies = [
 [[package]]
 name = "mcrl2-sys"
 version = "1.0.0"
-source = "git+https://github.com/MERCorg/mCRL2-sys?rev=4e01fe2a60c5278e05527d0b52d7058e998eec60#4e01fe2a60c5278e05527d0b52d7058e998eec60"
+source = "git+https://github.com/MERCorg/mCRL2-sys?rev=6302f19246ba5ecfd16702226a1a70ed74022f58#6302f19246ba5ecfd16702226a1a70ed74022f58"
 dependencies = [
  "cargo-emit",
  "cc",
