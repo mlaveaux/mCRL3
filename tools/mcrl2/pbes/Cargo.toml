@@ -11,10 +11,15 @@ path = "src/main.rs"
 # Avoid a rustdoc output filename collision with the `merc_pbes` library crate.
 doc = false
 
+[features]
+# Tracks per-summand cache counters during exploration.
+metrics = ["merc_pbes/metrics"]
+
 [dependencies]
 mcrl2.workspace = true
 merc_explore = { workspace = true, features = ["clap"] }
 merc_pbes.workspace = true
+merc_symbolic.workspace = true
 merc_tools.workspace = true
 merc_unsafety.workspace = true
 merc_utilities.workspace = true

@@ -27,9 +27,12 @@ use mcrl2::DataMachineNumberRef;
 use mcrl2::DataVariable;
 use mcrl2::DataVariableRef;
 use mcrl2::Pbes;
+use mcrl2::PbesConnective;
 use mcrl2::PbesExistsRef;
 use mcrl2::PbesExpression;
 use mcrl2::PbesExpressionRef;
+use mcrl2::PbesFlattenIter;
+use mcrl2::PbesFlattenStack;
 use mcrl2::PbesForallRef;
 use mcrl2::PbesImpRef;
 use mcrl2::PbesNotRef;
@@ -71,21 +74,15 @@ fn is_commutative(name: &str, arity: usize) -> bool {
 }
 
 /// True iff `name` is associative-commutative and its chains should be flattened into one n-ary SDG vertex.
+///
+/// Flattening goes beyond Definition 3, whose colouring only accounts for
+/// commutativity: there `a && b && c` is the nested `&&(&&(a,b),c)` and an
+/// automorphism can only swap operands within each binary node, so of the six
+/// orderings only two are found. One n-ary vertex with `k` uncoloured edges
+/// gives the full `S_k`, which is sound for the same reason the commutative
+/// case is -- the semantics of the operator is invariant under it.
 fn is_flat_operator(name: &str, arity: usize) -> bool {
     arity == 2 && ASSOCIATIVE_FUNCTION_SYMBOLS.contains(&name)
-}
-
-/// Collects leaves of a nested binary PBES connective chain; analogous to [`flatten_associative`] for non-`is_application` connectives.
-fn collect_pbes_flat<F>(term: PbesExpressionRef<'_>, is_op: F, out: &mut Vec<PbesExpression>)
-where
-    F: Fn(&ATermRef<'_>) -> bool + Copy,
-{
-    if is_op(&term) {
-        collect_pbes_flat(term.arg(0).into(), is_op, out);
-        collect_pbes_flat(term.arg(1).into(), is_op, out);
-    } else {
-        out.push(term.protect());
-    }
 }
 
 /// A vertex of the symmetry detection graph.
@@ -131,10 +128,18 @@ enum VertexColour {
     Parameter(SortExpression),
 
     /// A quantifier-bound variable, coloured by its sort but, like
-    /// [`VertexColour::Quantifier`], deliberately not by name (matching the
-    /// paper's note that the bound variable's name is not part of a
-    /// quantifier's colour) -- otherwise an automorphism could map a bound
-    /// variable onto an unrelated PBES parameter of the same sort.
+    /// [`VertexColour::Quantifier`], deliberately *not* by name.
+    ///
+    /// This is coarser than the paper's `C(x) = x` for `x` not a parameter,
+    /// which colours a bound variable by its name and so only ever identifies
+    /// two branches that were alpha-renamed to agree (the assumption the paper
+    /// states it needs). Colouring by sort instead identifies branches up to
+    /// alpha-equivalence, which is what mCRL2 input actually looks like:
+    /// `lps2pbes` hands out a fresh name per branch, so name-colouring would
+    /// discard most real symmetries. The binder structure is still pinned down
+    /// by the edges and by [`VertexColour::Quantifier`], and the separate
+    /// colour keeps a bound variable from being mapped onto a PBES parameter of
+    /// the same sort.
     BoundVariable(SortExpression),
 
     /// `C(f(t1,...,tk)) = f`, identified by name. Also used for nullary
@@ -150,13 +155,23 @@ enum VertexColour {
     /// connectives given their own distinct colours the same way).
     Connective(Connective),
 
-    /// `C(Qe:D.phi) = (Q,D)`. Generalized from a single sort to a vector of
-    /// sorts, since mCRL2 quantifiers may bind more than one variable at
-    /// once (`forall e1:D1, e2:D2 . phi`); this specializes to the paper's
-    /// exact `(Q,D)` when exactly one variable is bound.
+    /// `C(Qe:D.phi) = (Q,D)`, with the bound variable's *name* dropped for the
+    /// reason given on [`VertexColour::BoundVariable`] (the paper's `Qe: D`
+    /// keeps it). Generalized from a single sort to a vector of sorts, since
+    /// mCRL2 quantifiers may bind more than one variable at once (`forall
+    /// e1:D1, e2:D2 . phi`).
     Quantifier(Quantifier, Vec<SortExpression>),
 
     /// `C(X(t1,...,tn)) = pvi`.
+    ///
+    /// Note that this drops the predicate variable's name, which the paper's
+    /// `C(X(t1,...,tn)) = X` keeps and which its Lemma 3 uses in the PVI case
+    /// (`Jh(X(t))K` and `Jpi(X(t))K` are only equal for arbitrary `eta` when `h`
+    /// cannot rename `X`). What blocks the confusion here instead is the
+    /// orthogonal `C_eq` component (see [`Sdg::equations`]), which the paper
+    /// does not have; that is not the same argument, so adding the name here
+    /// would be strictly safer and cannot cost a genuine symmetry (the group
+    /// action of Definition 5 preserves predicate variable names).
     Pvi,
 
     /// `C(X_{i,k}) = update`.
@@ -234,16 +249,6 @@ impl fmt::Display for Quantifier {
 }
 
 /// `C(e)`, the colour of an edge, passed to GAP as a native edge colour (no
-/// port-vertex subdivision gadget is needed).
-///
-/// Both set-valued variants implement the same idea: when an edge's
-/// "natural" single label would coincide with another edge already present
-/// between the same pair of vertices, the labels are combined into one set
-/// instead of creating a duplicate `(source, target, colour)` triple (GAP's
-/// `AutomorphismGroup` with edge colours disallows two edges sharing source,
-/// range *and* colour). In the common, non-colliding case this is just a
-/// singleton set, so it costs nothing and changes nothing versus the paper's
-/// literal per-position/per-role reading. See [`SdgBuilder::add_or_merge_edge`].
 impl fmt::Display for EdgeColour {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -254,16 +259,29 @@ impl fmt::Display for EdgeColour {
     }
 }
 
+/// `C(e)`, the colour of an edge, passed to GAP as a native edge colour (no
+/// port-vertex subdivision gadget is needed).
+///
+/// Both set-valued variants implement the same idea: when an edge's
+/// "natural" single label would coincide with another edge already present
+/// between the same pair of vertices, the labels are combined into one set
+/// instead of creating a duplicate `(source, target, colour)` triple (GAP's
+/// `AutomorphismGroup` with edge colours disallows two edges sharing source,
+/// range *and* colour). In the common, non-colliding case this is just a
+/// singleton set, so it costs nothing and changes nothing versus the paper's
+/// literal per-position/per-role reading. See [`SdgBuilder::add_or_merge_edge`].
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum EdgeColour {
     /// The set of positions `{i | t_i = psi}` of a non-commutative
     /// function's argument `psi` -- a singleton `{i}` unless `psi` repeats
     /// across positions (e.g. `f(x,y,x)` gets one edge to `x` coloured
-    /// `{1,3}`, not two parallel edges).
+    /// `{1,3}`, not two parallel edges). Exactly the paper's
+    /// `C(f(t1,...,tk), t) = {i | exists i in [k]. t = t_i}`.
     Argument(BTreeSet<usize>),
 
-    /// Any argument of a commutative function; any other `C = 0` edge (`(+)`
-    /// operands, quantifier body, abstraction body, ...).
+    /// Any argument of a commutative function; any other edge the paper gives
+    /// the "no colour" label `*` (`(+)` operands, quantifier body, abstraction
+    /// body, ...).
     Uncoloured,
 
     /// The set of [`UpdateRole`]s that coincide on the same target vertex of
@@ -271,6 +289,12 @@ enum EdgeColour {
     /// argument is literally the current value of parameter `d_k` (a
     /// "copy", which is extremely common in practice), in which case the
     /// `Data` and `Par` edges land on the same vertex and are combined.
+    ///
+    /// The paper leaves these three edges uncoloured (`C(e) = *`), which its
+    /// Lemma 3 then silently works around: the PVI case has to know that the
+    /// image of the `data(X,i,k)` edge is again a `data` edge and the image of
+    /// the `d_k` edge again a parameter edge, and nothing in an uncoloured
+    /// triple says so. Colouring by role is what makes that step true.
     Update(BTreeSet<UpdateRole>),
 }
 
@@ -306,6 +330,13 @@ pub struct Sdg {
 
     /// `C_eq(v)`: the set of (0-based) equation indices whose right-hand
     /// side reaches this vertex, indexed by `NodeIndex::index()`.
+    ///
+    /// Not part of the paper's colouring, and what makes its Lemma 2
+    /// (`h(phi_X) = phi_X`) actually hold: size preservation alone only rules
+    /// out mapping a right-hand side to a *proper* subformula of itself, not to
+    /// the equally-sized right-hand side of another equation. With `C_eq`,
+    /// `h(phi_X) = phi_Y` would need `C_eq(phi_X) = C_eq(phi_Y)`, i.e. each of
+    /// `phi_X`, `phi_Y` a subformula of the other, hence `phi_X = phi_Y`.
     equations: Vec<BTreeSet<usize>>,
 
     /// The unified parameter vector; `parameters[k]` is the vertex
@@ -396,6 +427,9 @@ pub fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
 
         // Deduplicate PVIs by ATerm identity: `Y(n) && Y(n)` yields two occurrences
         // from the traversal but they share one vertex, so one set of update vertices suffices.
+        // The paper instead ranges `i` over all `npred(X)` occurrences, which would give the
+        // shared PVI vertex two identical fans of update vertices; those only enlarge `Aut(G)`
+        // by permutations of the duplicated fans, which restrict to the identity on parameters.
         debug!(
             "SDG build: equation {} '{}' — {} vertices so far",
             e,
@@ -642,21 +676,27 @@ impl SdgBuilder {
 
     /// Adds edges from `node` (the vertex for `term`) to the vertices of its
     /// immediate children, recursing via [`Self::visit`]. Mirrors
-    /// Definition 2's `sub#`, generalized per the module documentation.
+    /// Definition 2's `sub#`, generalized to the mCRL2 connectives and data
+    /// expressions as documented on [`VertexColour`], and flattening
+    /// associative-commutative chains (see [`is_flat_operator`]).
     fn visit_children(&mut self, term: &PbesExpression, node: NodeIndex, equation: usize) -> Result<(), MercError> {
         let r: ATermRef<'_> = term.copy().into();
 
-        if is_pbes_and(&r) {
-            let mut leaves = Vec::new();
-            collect_pbes_flat(term.copy(), is_pbes_and, &mut leaves);
-            for leaf in leaves {
-                self.visit_child(node, leaf.copy(), EdgeColour::Uncoloured, equation)?;
-            }
-        } else if is_pbes_or(&r) {
-            let mut leaves = Vec::new();
-            collect_pbes_flat(term.copy(), is_pbes_or, &mut leaves);
-            for leaf in leaves {
-                self.visit_child(node, leaf.copy(), EdgeColour::Uncoloured, equation)?;
+        if is_pbes_and(&r) || is_pbes_or(&r) {
+            // Flatten the whole chain into a single n-ary vertex, so that `a && b
+            // && c` (stored as `&&(&&(a,b),c)`) yields one vertex with three
+            // uncoloured edges rather than nested binary ones -- the same
+            // treatment `is_flat_operator` gives to associative-commutative data
+            // functions below.
+            let connective = if is_pbes_and(&r) {
+                PbesConnective::And
+            } else {
+                PbesConnective::Or
+            };
+
+            let mut stack = PbesFlattenStack::new();
+            for leaf in PbesFlattenIter::new(term.copy(), connective, &mut stack) {
+                self.visit_child(node, leaf, EdgeColour::Uncoloured, equation)?;
             }
         } else if is_pbes_imp(&r) {
             // Implication is NOT commutative: lhs => rhs ≠ rhs => lhs.
@@ -1129,16 +1169,19 @@ impl Default for GapConfig {
 /// Flags used (verified on GAP 4.12.1):
 /// - `-q` suppresses the banner and prompt
 /// - `-A` disables autoloading of suggested packages
-/// - `-r` ignores the user's gap.ini
 /// - `--quitonbreak` makes runtime errors exit with non-zero status
 ///   (note: do NOT add `-T`/`--nobreakloop`, which defeats `--quitonbreak`)
+///
+/// Note that `-r` must NOT be added: it disables the user GAP root directory
+/// `~/.gap`, which is where both `InstallPackage` and a manual build without
+/// root privileges install the Digraphs package.
 pub fn run_gap(script: &str, config: &GapConfig) -> Result<String, MercError> {
     if let Some(path) = &config.dump_script {
         fs::write(path, script)
             .map_err(|e| MercError::from(format!("failed to write GAP script to '{}': {}", path.display(), e)))?;
     }
 
-    let output = duct::cmd(&*config.executable, ["-q", "-A", "-r", "--quitonbreak"])
+    let output = duct::cmd(&*config.executable, ["-q", "-A", "--quitonbreak"])
         .stdin_bytes(script.to_owned())
         .stdout_capture()
         .stderr_capture()
@@ -1321,7 +1364,7 @@ mod tests {
     fn gap_with_digraphs_available() -> bool {
         static AVAILABLE: OnceLock<bool> = OnceLock::new();
         *AVAILABLE.get_or_init(|| {
-            duct::cmd("gap", ["-q", "-A", "-r", "--quitonbreak"])
+            duct::cmd("gap", ["-q", "-A", "--quitonbreak"])
                 .stdin_bytes("if LoadPackage(\"digraphs\") = fail then QUIT_GAP(1); fi;; QUIT_GAP(0);;")
                 .stdout_null()
                 .stderr_null()
