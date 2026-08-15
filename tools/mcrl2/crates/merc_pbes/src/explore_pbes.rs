@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::iter;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -119,22 +120,19 @@ pub struct PbesLps {
     /// Data specification used to build each per-thread [`PbesContext`].
     data_spec: DataSpecification,
 
-    /// Flat list of summands: one per equation, plus the sink and subformula summands.
+    /// Flat list of summands: summand `i` instantiates equation `i` (so a source
+    /// state fires exactly the summand named by its equation index `state[0]`),
+    /// followed by the two sink summands and the subformula summand.
     summands: Vec<PbesSummand>,
 
-    /// For each equation index, the indices into [`PbesLps::summands`] of the
-    /// summands belonging to that equation. A source state only explores the
-    /// summands of its current equation (`state[0]`).
-    equation_summands: Vec<Vec<usize>>,
+    /// Index into [`PbesLps::summands`] of the summand fired by a true sink state.
+    true_sink_summand: usize,
 
-    /// Indices into [`PbesLps::summands`] of the summands fired by a true sink state.
-    true_sink_summands: Vec<usize>,
+    /// Index into [`PbesLps::summands`] of the summand fired by a false sink state.
+    false_sink_summand: usize,
 
-    /// Indices into [`PbesLps::summands`] of the summands fired by a false sink state.
-    false_sink_summands: Vec<usize>,
-
-    /// Indices into [`PbesLps::summands`] of the summands fired by a subformula node.
-    subformula_summands: Vec<usize>,
+    /// Index into [`PbesLps::summands`] of the summand fired by a subformula node.
+    subformula_summand: usize,
 
     /// The initial state vector.
     initial_state: Vec<usize>,
@@ -146,16 +144,14 @@ pub struct PbesLps {
     /// Number of data parameters shared by every equation.
     num_params: usize,
 
-    /// Number of equations in the PBES.
-    num_equations: usize,
-
-    /// Maps a propositional variable name to its equation index.
-    name_to_eq: Arc<NameMapping>,
-
     /// Interning table for enumerated parameter values, shared with the summands.
+    /// Retained here because dropping it would unprotect every interned term.
     value_mapping: Protected<ValueMapping>,
 
     /// Interning table for nested (and/or) sub-formulas, shared with the summands.
+    /// Only ever accessed through the handles held by the summands; retained here
+    /// because dropping it would unprotect every interned sub-formula.
+    #[allow(dead_code)]
     subformula_mapping: Protected<SubformulaMapping>,
 }
 
@@ -173,11 +169,9 @@ enum PbesSummandKind {
         priority: usize,
     },
 
-    /// The true sink, which has itself as its only successor.
-    TrueSink,
-
-    /// The false sink, which has itself as its only successor.
-    FalseSink,
+    /// A sink, which has itself as its only successor; the payload is the sink's
+    /// own single-word state ([`TRUE_SINK`] or [`FALSE_SINK`]).
+    Sink(usize),
 
     /// Expands an interned nested sub-formula into its operands.
     Subformula,
@@ -197,9 +191,6 @@ pub struct PbesSummand {
 
     /// Maps a propositional variable name to its equation index.
     name_to_eq: Arc<NameMapping>,
-
-    /// Number of data parameters shared by every equation.
-    num_params: usize,
 
     /// Positions of the source state read by this summand.
     read_positions: Vec<usize>,
@@ -313,77 +304,62 @@ impl PbesLps {
         }
         drop(rewriter);
 
-        let true_summand_idx = num_equations;
-        let false_summand_idx = num_equations + 1;
-        let subformula_summand_idx = num_equations + 2;
+        let make_summand = |kind, read_positions, effect| PbesSummand {
+            kind,
+            value_mapping: value_mapping.handle(),
+            subformula_mapping: subformula_mapping.handle(),
+            name_to_eq: name_to_eq.clone(),
+            read_positions,
+            effect,
+        };
 
         let mut summands: Vec<PbesSummand> = Vec::with_capacity(num_equations + 3);
 
         for (eq_idx, eq) in equations.iter().enumerate() {
             let formula = eq.formula();
             let (read_positions, effect) = formula_positions(&formula, &process_parameters);
-            summands.push(PbesSummand {
-                kind: PbesSummandKind::Equation {
+            summands.push(make_summand(
+                PbesSummandKind::Equation {
                     formula,
                     priority: priorities[eq_idx],
                 },
-                value_mapping: value_mapping.handle(),
-                subformula_mapping: subformula_mapping.handle(),
-                name_to_eq: name_to_eq.clone(),
-                num_params,
                 read_positions,
                 effect,
-            });
+            ));
         }
 
-        summands.push(PbesSummand {
-            kind: PbesSummandKind::TrueSink,
-            value_mapping: value_mapping.handle(),
-            subformula_mapping: subformula_mapping.handle(),
-            name_to_eq: name_to_eq.clone(),
-            num_params,
-            read_positions: vec![0],
-            // A sink's only transition is the self-loop, so nothing changes.
-            effect: OwnedStateEffect::Positions(vec![]),
-        });
-        summands.push(PbesSummand {
-            kind: PbesSummandKind::FalseSink,
-            value_mapping: value_mapping.handle(),
-            subformula_mapping: subformula_mapping.handle(),
-            name_to_eq: name_to_eq.clone(),
-            num_params,
-            read_positions: vec![0],
-            // A sink's only transition is the self-loop, so nothing changes.
-            effect: OwnedStateEffect::Positions(vec![]),
-        });
-        summands.push(PbesSummand {
-            kind: PbesSummandKind::Subformula,
-            value_mapping: value_mapping.handle(),
-            subformula_mapping: subformula_mapping.handle(),
-            name_to_eq: name_to_eq.clone(),
-            num_params,
-            read_positions: vec![0, 1],
-            // A subformula vertex expands into propositional variable
-            // instantiations, sinks or further subformula vertices, all of
-            // different lengths.
-            effect: OwnedStateEffect::Opaque,
-        });
-
-        let equation_summands: Vec<Vec<usize>> = (0..num_equations).map(|i| vec![i]).collect();
+        // A sink's only transition is the self-loop, so nothing changes.
+        let true_sink_summand = summands.len();
+        summands.push(make_summand(
+            PbesSummandKind::Sink(TRUE_SINK),
+            vec![0],
+            OwnedStateEffect::Positions(vec![]),
+        ));
+        let false_sink_summand = summands.len();
+        summands.push(make_summand(
+            PbesSummandKind::Sink(FALSE_SINK),
+            vec![0],
+            OwnedStateEffect::Positions(vec![]),
+        ));
+        // A subformula vertex expands into propositional variable instantiations,
+        // sinks or further subformula vertices, all of different lengths.
+        let subformula_summand = summands.len();
+        summands.push(make_summand(
+            PbesSummandKind::Subformula,
+            vec![0, 1],
+            OwnedStateEffect::Opaque,
+        ));
 
         Ok(PbesLps {
             pbes,
             data_spec,
             summands,
-            equation_summands,
-            true_sink_summands: vec![true_summand_idx],
-            false_sink_summands: vec![false_summand_idx],
-            subformula_summands: vec![subformula_summand_idx],
+            true_sink_summand,
+            false_sink_summand,
+            subformula_summand,
             initial_state,
             process_parameters,
             num_params,
-            num_equations,
-            name_to_eq,
             value_mapping,
             subformula_mapping,
         })
@@ -439,15 +415,18 @@ impl LPS for PbesLps {
 
     fn prepare<'a>(&'a self, context: &mut PbesContext, state: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
         let tag = state[0] & TAG_MASK;
-        if tag == TRUE_SINK {
-            self.true_sink_summands.iter().copied()
+        let summand = if tag == TRUE_SINK {
+            self.true_sink_summand
         } else if tag == FALSE_SINK {
-            self.false_sink_summands.iter().copied()
+            self.false_sink_summand
         } else if tag == AND_OP || tag == OR_OP {
-            self.subformula_summands.iter().copied()
+            self.subformula_summand
         } else {
             debug_assert!(tag == 0, "unexpected state tag {tag:#x}");
             let eq_idx = state[0];
+            let PbesSummandKind::Equation { formula, priority } = &self.summands[eq_idx].kind else {
+                panic!("an untagged state[0] must be the index of an equation summand");
+            };
 
             context.parameter_values.clear();
             for &vi in &state[1..=self.num_params] {
@@ -466,19 +445,18 @@ impl LPS for PbesLps {
                 context
                     .rewrite
                     .set_assignments(&self.process_parameters, &context.parameter_values);
-                context
-                    .rewrite
-                    .rewrite_formula(self.summands[eq_idx].formula().unwrap())
+                context.rewrite.rewrite_formula(formula)
             }
             .expect("the rewriter cannot evaluate the right-hand side of this equation");
 
-            let priority = self.summands[eq_idx].priority().unwrap();
             let player = player_of(&psi);
             context.psi = Some(psi);
-            context.player_priority = Some((player, Priority::new(priority)));
+            context.player_priority = Some((player, Priority::new(*priority)));
 
-            self.equation_summands[eq_idx].iter().copied()
-        }
+            eq_idx
+        };
+
+        iter::once(summand)
     }
 
     fn state_info(&self, state: &[usize], context: &PbesContext) -> PbesVertex {
@@ -522,20 +500,6 @@ impl ParameterLayoutLPS for PbesLps {
 }
 
 impl PbesSummand {
-    fn formula(&self) -> Option<&mcrl2::PbesExpression> {
-        match &self.kind {
-            PbesSummandKind::Equation { formula, .. } => Some(formula),
-            _ => None,
-        }
-    }
-
-    fn priority(&self) -> Option<usize> {
-        match &self.kind {
-            PbesSummandKind::Equation { priority, .. } => Some(*priority),
-            _ => None,
-        }
-    }
-
     fn tables(&self) -> TargetTables<'_> {
         TargetTables {
             name_to_eq: &self.name_to_eq,
@@ -563,14 +527,9 @@ impl Summand for PbesSummand {
         F: FnMut(&(), &[usize]) -> Result<(), MercError>,
     {
         match &self.kind {
-            PbesSummandKind::TrueSink => {
+            PbesSummandKind::Sink(sink_state) => {
                 context.next_state_buf.clear();
-                context.next_state_buf.push(TRUE_SINK);
-                report(&(), &context.next_state_buf)
-            }
-            PbesSummandKind::FalseSink => {
-                context.next_state_buf.clear();
-                context.next_state_buf.push(FALSE_SINK);
+                context.next_state_buf.push(*sink_state);
                 report(&(), &context.next_state_buf)
             }
             PbesSummandKind::Equation { .. } => {
