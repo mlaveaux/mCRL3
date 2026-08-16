@@ -1,16 +1,3 @@
-//! Native evaluation of the machine-word (`@word`) operations declared in
-//! `crates/syntax/spec/machine_word.mcrl2`.
-//!
-//! Those operations are `defined_by_code` in mCRL2: they carry no rewrite rules
-//! and must instead be computed directly. [`MachineWordOp`] resolves a function
-//! symbol's name to the operation it denotes, once, at rewriter-construction
-//! time — the resulting enum lets a rewrite engine dispatch on a densely-keyed
-//! table (e.g. the `SetAutomaton`'s per-symbol `Transition`) instead of
-//! re-running a string comparison chain on every constructed term.
-//! [`MachineWordOp::evaluate`] then maps concrete argument values onto the
-//! result [`DataExpression`] — either a new `MachineNumber` or a `Bool` literal
-//! — by calling the pure implementations in [`merc_number::machine_word`].
-
 use merc_aterm::ATermRef;
 use merc_number::machine_word as mw;
 
@@ -230,7 +217,10 @@ impl MachineWordOp {
     /// doesn't guarantee that (e.g. an outermost strategy), a `None` here
     /// simply leaves the application unevaluated, matching mCRL2's own
     /// behaviour of requiring concrete word arguments.
-    pub fn evaluate<'a>(self, mut args: impl Iterator<Item = DataExpressionRef<'a>>) -> Option<DataExpression> {
+    pub fn evaluate<'a, I>(self, mut args: I) -> Option<DataExpression>
+    where
+        I: Iterator<Item = DataExpressionRef<'a>>,
+    {
         // `@shift_right` is the only operation whose first argument is a `Bool`
         // rather than a `@word`, so it cannot go through the uniform word-argument
         // path below.
@@ -381,7 +371,12 @@ fn as_bool(arg: &DataExpressionRef<'_>) -> Option<bool> {
 mod tests {
     use crate::DataApplication;
 
-    use super::*;
+    use super::DataExpression;
+    use super::DataFunctionSymbol;
+    use super::MachineWordOp;
+    use super::bool_literal;
+    use super::machine_number;
+    use super::try_evaluate_machine_word;
 
     /// A nullary function symbol, e.g. the operand `@zero_word` or a `Bool` literal.
     fn symbol(name: &str) -> DataExpression {

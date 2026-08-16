@@ -7,7 +7,6 @@ mod lps;
 mod sequence_forest;
 mod thread_affinity;
 
-pub(crate) use cpu_topology::*;
 pub(crate) use discovered_set::*;
 pub(crate) use sequence_forest::*;
 
@@ -28,3 +27,5 @@ pub use lps::StateEffect;
 pub use lps::Summand;
 pub use sequence_forest::Slot;
 pub use thread_affinity::configure_rayon_thread_pool;
+pub use cpu_topology::CpuTopology;
+pub use cpu_topology::TopologyDetectionConfig;
