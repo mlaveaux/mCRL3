@@ -12,7 +12,6 @@ path = "src/main.rs"
 doc = false
 
 [features]
-# Tracks per-summand cache counters during exploration.
 metrics = ["merc_pbes/metrics"]
 
 [dependencies]
