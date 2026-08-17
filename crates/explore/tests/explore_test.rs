@@ -8,10 +8,13 @@ mod mock_lps;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
+use merc_explore::PermutedLps;
+use merc_explore::StateEffect;
 use merc_explore::Summand;
 use merc_explore::explore;
 use merc_explore::explore_parallel;
@@ -219,6 +222,56 @@ fn parallel_state_indices_may_be_sparse() {
         max_index + 1 >= total,
         "state indices must cover at least one index per discovered state"
     );
+}
+
+#[test]
+fn permuted_matches_unpermuted() {
+    // Permuting the state vector must not change the transition system, only the positions the
+    // summands report it over. Every permutation of every fixture is checked, including the
+    // identity, which the wrapper passes through untouched.
+    for lps in fixtures() {
+        let expected = baseline(&lps);
+        let num_positions = lps.initial_state().len();
+
+        for order in (0..num_positions).permutations(num_positions) {
+            let permuted = PermutedLps::new(lps.clone(), order.clone()).expect("the order is a permutation");
+
+            // The mock reports the live state vector as its `StateInfo`, and the wrapper hands the
+            // wrapped LPS the un-permuted state, so the reported states are directly comparable.
+            assert_eq!(
+                run_sequential(&permuted, ExplorationStrategy::Dfs),
+                expected,
+                "permuting with {order:?} changed the transition system"
+            );
+            assert_eq!(
+                run_parallel(&permuted),
+                expected,
+                "permuting with {order:?} changed the transition system (parallel driver)"
+            );
+        }
+    }
+}
+
+#[test]
+fn permuted_reports_permuted_positions() {
+    // The metadata the wrapper exposes is in permuted positions: position `order[i]` of the
+    // wrapped LPS becomes position `i`.
+    let lps = MockLps::grid(&[2, 3, 4]);
+    let permuted = PermutedLps::new(lps, vec![2, 0, 1]).expect("the order is a permutation");
+
+    // The grid starts at the origin, so the initial state alone does not show the permutation;
+    // the summand of coordinate `i` reads and writes it, which does.
+    assert_eq!(permuted.initial_state(), vec![0, 0, 0]);
+    assert_eq!(permuted.summands()[0].read_positions(), &[1]);
+    assert_eq!(permuted.summands()[1].read_positions(), &[2]);
+    assert_eq!(permuted.summands()[2].read_positions(), &[0]);
+    assert_eq!(permuted.summands()[2].effect(), StateEffect::Positions(&[0]));
+
+    // An order must be a permutation of the positions of the state vector.
+    let lps = MockLps::grid(&[2, 3, 4]);
+    assert!(PermutedLps::new(lps.clone(), vec![0, 1]).is_err());
+    assert!(PermutedLps::new(lps.clone(), vec![0, 1, 1]).is_err());
+    assert!(PermutedLps::new(lps, vec![0, 1, 3]).is_err());
 }
 
 #[test]

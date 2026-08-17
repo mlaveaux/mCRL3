@@ -5,6 +5,7 @@ use log::debug;
 
 use merc_collections::IndexedSet;
 use merc_explore::LPS;
+use merc_explore::PermutedLps;
 use merc_explore::Summand;
 use merc_utilities::MercError;
 use oxidd::ManagerRef;
@@ -19,7 +20,6 @@ use crate::SummandGrouping;
 use crate::SymbolicLPS;
 use crate::TransitionGroup;
 use crate::VariableOrder;
-use crate::inverse_order;
 use crate::iter;
 use crate::print_read_write_patterns;
 use crate::print_transition_groups;
@@ -37,6 +37,11 @@ use crate::transition_group_pattern;
 /// The wrapped `LPS` interns parameter values in its own space; this adapter
 /// keeps a separate per-position interning into dense LDD values so the decision
 /// diagrams stay compact regardless of how the `LPS` numbers its values.
+///
+/// Position `i` of the state vector is stored at level `i` of the diagrams. A variable order is
+/// therefore not something this adapter applies: the constructors permute the state vector of the
+/// `LPS` itself (see [`PermutedLps`]) up front, and everything below works in a single position
+/// space.
 pub struct SymbolicLps<L: LPS> {
     /// The wrapped `LPS` definition; the single source of summands and the
     /// `prepare`/`enumerate` machinery. Shared immutably with every group.
@@ -75,7 +80,7 @@ pub struct SymbolicLpsOptions {
     pub order: VariableOrder,
 }
 
-impl<L: LPS> SymbolicLps<L> {
+impl<L: LPS> SymbolicLps<PermutedLps<L>> {
     /// Wraps `lps` into a symbolic LDD view, encoding its initial state, with one transition group
     /// per summand.
     pub fn new(manager: &LDDManagerRef, lps: L) -> Result<Self, MercError> {
@@ -97,32 +102,33 @@ impl<L: LPS> SymbolicLps<L> {
 
     /// Wraps `lps` into a symbolic LDD view, encoding its initial state, with the given grouping of
     /// its summands and order of its state vector positions.
+    ///
+    /// The order is applied by permuting the state vector of `lps` itself, so that position `i` of
+    /// the LPS that is encoded below is stored at level `i` of the diagrams.
     pub fn with_options(manager: &LDDManagerRef, lps: L, options: &SymbolicLpsOptions) -> Result<Self, MercError> {
-        let lps = Rc::new(lps);
+        let num_positions = lps.initial_state().len();
 
-        let initial_values = lps.initial_state();
-        let num_positions = initial_values.len();
-
-        let patterns = read_write_patterns(&*lps, num_positions)?;
+        let patterns = read_write_patterns(&lps, num_positions)?;
         debug!(
             "Read/write matrix of the summands:\n{}",
             print_read_write_patterns(&patterns)
         );
 
-        // `order[level]` is the state vector position stored at `level` of the diagram, and
-        // `level_of[position]` its inverse. The `columns` and the states of the wrapped `LPS` stay in
-        // position space; only the short vectors and their metas live in level space. The order is
-        // used here only: every group stores the positions its short vectors carry, so learning needs
-        // no translation between the two spaces.
+        // `order[level]` is the state vector position to store at `level` of the diagram, which is
+        // realised by permuting the LPS; from here on the positions of `lps` *are* the levels.
         let order = options.order.compute(&patterns, num_positions)?;
-        let level_of = inverse_order(&order);
+        let lps = Rc::new(PermutedLps::new(lps, order)?);
+
+        // The patterns of the permuted summands, i.e. the read/write matrix as the diagrams store it.
+        let patterns = read_write_patterns(&*lps, num_positions)?;
+        let initial_values = lps.initial_state();
 
         let mut columns: Vec<IndexedSet<L::Value>> = (0..num_positions).map(|_| IndexedSet::new()).collect();
 
         // Encode the initial state, interning each value into its column.
         let mut initial_vector: Vec<Value> = Vec::with_capacity(num_positions);
-        for &position in order.iter() {
-            let (index, _) = columns[position].insert(initial_values[position]);
+        for (position, value) in initial_values.iter().enumerate() {
+            let (index, _) = columns[position].insert(*value);
             initial_vector.push(*index as Value);
         }
         let initial_state = manager.with_manager_shared(|m| LDDFunction::singleton(m, &initial_vector))?;
@@ -136,33 +142,19 @@ impl<L: LPS> SymbolicLps<L> {
             .collect::<Result<Vec<_>, MercError>>()?;
 
         if !matches!(options.grouping, SummandGrouping::None) || !matches!(options.order, VariableOrder::None) {
-            // Shown in the variable order, i.e. the way the transition relations store it.
-            let permuted = group_patterns
-                .iter()
-                .map(|pattern| pattern.permute(&order))
-                .collect::<Result<Vec<_>, MercError>>()?;
-
             debug!(
                 "Read/write matrix of the transition groups (grouping {}):\n{}",
                 options.grouping,
-                print_transition_groups(&group_indices, &permuted)
+                print_transition_groups(&group_indices, &group_patterns)
             );
         }
 
         let mut groups = Vec::with_capacity(group_indices.len());
         for (indices, pattern) in group_indices.into_iter().zip(group_patterns) {
-            // The short-vector encoding requires sorted read/write indices, in level space. Sort
-            // (level, position) pairs so that the state vector position of every short vector entry
-            // is kept alongside the level it is stored at.
-            let mut read_pairs: Vec<(Value, usize)> =
-                pattern.read_positions().map(|p| (level_of[p] as Value, p)).collect();
-            let mut write_pairs: Vec<(Value, usize)> =
-                pattern.write_positions().map(|p| (level_of[p] as Value, p)).collect();
-            read_pairs.sort_unstable();
-            write_pairs.sort_unstable();
-
-            let (read_indices, read_full_positions): (Vec<Value>, Vec<usize>) = read_pairs.into_iter().unzip();
-            let (write_indices, write_full_positions): (Vec<Value>, Vec<usize>) = write_pairs.into_iter().unzip();
+            // The short-vector encoding requires sorted read/write indices, which the patterns
+            // already report in increasing order.
+            let read_indices: Vec<Value> = pattern.read_positions().map(|p| p as Value).collect();
+            let write_indices: Vec<Value> = pattern.write_positions().map(|p| p as Value).collect();
 
             let (project_ldd, meta, read_positions, write_positions, relation, domain) =
                 manager.with_manager_shared(|m| -> Result<_, MercError> {
@@ -182,8 +174,6 @@ impl<L: LPS> SymbolicLps<L> {
                 indices,
                 read_indices,
                 write_indices,
-                read_full_positions,
-                write_full_positions,
                 read_positions,
                 write_positions,
                 project_ldd,
@@ -199,11 +189,13 @@ impl<L: LPS> SymbolicLps<L> {
             initial_state,
         })
     }
+}
 
+impl<L: LPS> SymbolicLps<L> {
     /// Builds the per-position interning seeded with the initial-state values.
     ///
     /// Re-inserting `initial_state()` into fresh per-column sets reproduces the
-    /// exact dense indices used when [Self::new] encoded the initial LDD, so the
+    /// exact dense indices used when [Self::with_options] encoded the initial LDD, so the
     /// learned relations stay consistent with it.
     fn initial_columns(&self) -> Vec<IndexedSet<L::Value>> {
         let initial_values = self.lps.initial_state();
@@ -269,19 +261,11 @@ pub struct SymbolicLpsGroup<L: LPS> {
     /// Indices of the summands in this group within `lps.summands()`, in increasing order.
     indices: Vec<usize>,
 
-    /// Diagram levels read by the group (sorted).
+    /// Diagram levels read by the group (sorted), which are the state vector positions it reads.
     read_indices: Vec<Value>,
 
-    /// Diagram levels written by the group (sorted).
+    /// Diagram levels written by the group (sorted), which are the state vector positions it writes.
     write_indices: Vec<Value>,
-
-    /// State vector positions of `read_indices`, i.e. the position whose value the `k`-th entry of a
-    /// short read vector holds. This is where the variable order enters the group; it needs no other
-    /// knowledge of it.
-    read_full_positions: Vec<usize>,
-
-    /// State vector positions of `write_indices`, see [Self::read_full_positions].
-    write_full_positions: Vec<usize>,
 
     /// Interleaved short-vector positions of `read_indices`.
     read_positions: Vec<usize>,
@@ -375,8 +359,8 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
             // Overlay the short read values into the full state buffer and the
             // interleaved read positions.
             for (k, &value) in short_state.iter().enumerate() {
-                let full_pos = self.read_full_positions[k];
-                full_state[full_pos] = *columns[full_pos]
+                let position = self.read_indices[k] as usize;
+                full_state[position] = *columns[position]
                     .get_by_index(value as usize)
                     .expect("read value must already be interned");
                 interleaved[self.read_positions[k]] = value;
@@ -398,14 +382,15 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
             // (the [`StateEffect::Positions`] contract), so `next_state` carries the source value
             // there, which the group reads by construction of its read positions.
             for &index in &applicable {
-                let write_full_positions = &self.write_full_positions;
+                let write_indices = &self.write_indices;
                 let write_positions = &self.write_positions;
                 let interleaved = &mut interleaved;
                 let relation = &mut relation;
 
                 self.lps.summands()[index].enumerate(enumerate, &full_state, |_label, next_state| {
-                    for (m, &full_pos) in write_full_positions.iter().enumerate() {
-                        let (value, _) = columns[full_pos].insert(next_state[full_pos]);
+                    for (m, &write_index) in write_indices.iter().enumerate() {
+                        let position = write_index as usize;
+                        let (value, _) = columns[position].insert(next_state[position]);
                         interleaved[write_positions[m]] = *value as Value;
                     }
 
@@ -443,5 +428,177 @@ impl<L: LPS> fmt::Debug for SymbolicLpsGroup<L> {
             "summands {:?} (read {:?}, write {:?})",
             self.indices, self.read_indices, self.write_indices
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_explore::StateEffect;
+    use merc_utilities::Timing;
+
+    use crate::ReachabilityOptions;
+    use crate::reachability_with_options;
+
+    use super::*;
+
+    /// A grid [`LPS`]: summand `i` increments position `i` while it is below its bound, and one
+    /// extra summand increments the first two positions at once. The diagonal summand couples two
+    /// positions, so the transition groups are not all over a single position.
+    struct GridLps {
+        summands: Vec<GridSummand>,
+        num_positions: usize,
+    }
+
+    /// A guarded increment of [`GridLps`], writing the positions it also reads.
+    struct GridSummand {
+        /// The positions incremented, which are exactly the ones read and written.
+        positions: Vec<usize>,
+        /// The guard: every incremented position must be below this bound.
+        bound: usize,
+    }
+
+    impl GridLps {
+        /// The grid over `bounds.len()` positions, with the diagonal summand over the first two.
+        fn new(bounds: &[usize]) -> GridLps {
+            let mut summands: Vec<GridSummand> = bounds
+                .iter()
+                .enumerate()
+                .map(|(position, &bound)| GridSummand {
+                    positions: vec![position],
+                    bound,
+                })
+                .collect();
+            summands.push(GridSummand {
+                positions: vec![0, 1],
+                bound: bounds[0].min(bounds[1]),
+            });
+
+            GridLps {
+                summands,
+                num_positions: bounds.len(),
+            }
+        }
+    }
+
+    impl LPS for GridLps {
+        type Value = usize;
+        type Label = ();
+        type StateInfo = ();
+        type Summand = GridSummand;
+
+        fn initial_state(&self) -> Vec<usize> {
+            vec![0; self.num_positions]
+        }
+
+        fn summands(&self) -> &[GridSummand] {
+            &self.summands
+        }
+
+        fn create_context(&self) -> Vec<usize> {
+            Vec::new()
+        }
+
+        fn prepare<'a>(&'a self, _context: &mut Vec<usize>, _state: &'a [usize]) -> impl Iterator<Item = usize> + 'a {
+            0..self.summands.len()
+        }
+
+        fn state_info(&self, _state: &[usize], _context: &Vec<usize>) {}
+    }
+
+    impl Summand for GridSummand {
+        type Value = usize;
+        type Label = ();
+        type Context = Vec<usize>;
+
+        fn enumerate<F>(&self, context: &mut Vec<usize>, state: &[usize], mut report: F) -> Result<(), MercError>
+        where
+            F: FnMut(&(), &[usize]) -> Result<(), MercError>,
+        {
+            if self.positions.iter().any(|&position| state[position] >= self.bound) {
+                return Ok(());
+            }
+
+            context.clear();
+            context.extend_from_slice(state);
+            for &position in &self.positions {
+                context[position] += 1;
+            }
+            report(&(), context)
+        }
+
+        fn read_positions(&self) -> &[usize] {
+            &self.positions
+        }
+
+        fn effect(&self) -> StateEffect<'_> {
+            StateEffect::Positions(&self.positions)
+        }
+    }
+
+    /// Explores the grid over `bounds` with the given encoding and returns the reachable state count.
+    fn explored_count(bounds: &[usize], options: &SymbolicLpsOptions) -> usize {
+        let storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+        let mut symbolic =
+            SymbolicLps::with_options(&storage, GridLps::new(bounds), options).expect("the encoding is valid");
+
+        reachability_with_options(&storage, &mut symbolic, &ReachabilityOptions::default(), &Timing::new())
+            .expect("reachability succeeds")
+            .states
+            .len()
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Miri is too slow.
+    fn test_variable_order_preserves_the_reachable_states() {
+        let bounds = [2, 3, 4];
+
+        // Every combination of coordinates below its bound is reachable.
+        let expected = bounds.iter().map(|bound| bound + 1).product::<usize>();
+        assert_eq!(explored_count(&bounds, &SymbolicLpsOptions::default()), expected);
+
+        // The order only decides how the state vector is stored, never which states are reachable.
+        for order in [vec![0, 1, 2], vec![2, 1, 0], vec![1, 2, 0], vec![0, 2, 1]] {
+            for grouping in [SummandGrouping::None, SummandGrouping::Used, SummandGrouping::Simple] {
+                let options = SymbolicLpsOptions {
+                    grouping,
+                    order: VariableOrder::Explicit(order.clone()),
+                };
+                assert_eq!(
+                    explored_count(&bounds, &options),
+                    expected,
+                    "variable order {order:?} changed the reachable states"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_variable_order_permutes_the_transition_groups() {
+        let storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+        let options = SymbolicLpsOptions {
+            grouping: SummandGrouping::None,
+            order: VariableOrder::Explicit(vec![2, 1, 0]),
+        };
+        let symbolic =
+            SymbolicLps::with_options(&storage, GridLps::new(&[2, 3, 4]), &options).expect("the encoding is valid");
+
+        // Summand `i` reads and writes position `i`, which the reversed order stores at level
+        // `2 - i`; the groups are given as read/write levels alone.
+        let levels: Vec<Vec<Value>> = symbolic
+            .transition_groups()
+            .iter()
+            .map(|group| group.read_indices().to_vec())
+            .collect();
+        assert_eq!(levels, vec![vec![2], vec![1], vec![0], vec![1, 2]]);
+    }
+
+    #[test]
+    fn test_invalid_variable_order_is_rejected() {
+        let storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+        let options = SymbolicLpsOptions {
+            grouping: SummandGrouping::None,
+            order: VariableOrder::Explicit(vec![0, 1]),
+        };
+        assert!(SymbolicLps::with_options(&storage, GridLps::new(&[2, 3, 4]), &options).is_err());
     }
 }

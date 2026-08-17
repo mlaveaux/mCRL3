@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use log::debug;
 
+use merc_explore::validate_permutation;
 use merc_utilities::MercError;
 
 use crate::DependencyGraph;
@@ -15,6 +16,10 @@ use crate::reorder;
 /// at level `level` of the diagram. It does not change the represented set of states, only the size of
 /// the diagram: the closer the positions that a transition group reads and writes are together, the
 /// smaller its relation tends to be.
+///
+/// The order is applied by permuting the state vector of the LPS itself, with
+/// [`merc_explore::PermutedLps`], before it is encoded symbolically. Position `i` of the permuted LPS
+/// is then stored at level `i`, so nothing downstream of that step has to know the order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum VariableOrder {
     /// Keeps the positions in the order of the state vector.
@@ -72,16 +77,6 @@ impl VariableOrder {
     }
 }
 
-/// Returns the inverse of the permutation `order`, i.e. the level at which every state vector position
-/// is stored.
-pub fn inverse_order(order: &[usize]) -> Vec<usize> {
-    let mut inverse = vec![0; order.len()];
-    for (level, &position) in order.iter().enumerate() {
-        inverse[position] = level;
-    }
-    inverse
-}
-
 /// Returns the dependency graph of the read/write matrix, with one hyper-edge per summand.
 fn dependency_graph(patterns: &[ReadWritePattern]) -> DependencyGraph {
     DependencyGraph::new(
@@ -90,27 +85,6 @@ fn dependency_graph(patterns: &[ReadWritePattern]) -> DependencyGraph {
             .map(|pattern| Relation::new(pattern.read_positions().collect(), pattern.write_positions().collect()))
             .collect(),
     )
-}
-
-/// Checks that `order` is a permutation of `0..num_positions`.
-fn validate_permutation(order: &[usize], num_positions: usize) -> Result<(), MercError> {
-    let mut seen = vec![false; num_positions];
-
-    for &position in order {
-        let assigned = seen
-            .get_mut(position)
-            .ok_or_else(|| format!("position {position} does not exist, there are {num_positions} position(s)"))?;
-        if *assigned {
-            return Err(format!("position {position} occurs more than once in the variable order").into());
-        }
-        *assigned = true;
-    }
-
-    if let Some(missing) = seen.iter().position(|assigned| !assigned) {
-        return Err(format!("position {missing} does not occur in the variable order").into());
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -146,11 +120,5 @@ mod tests {
                 .compute(&patterns(), 4)
                 .is_err()
         );
-    }
-
-    #[test]
-    fn test_inverse_order() {
-        assert_eq!(inverse_order(&[1, 3, 2, 0]), vec![3, 0, 2, 1]);
-        assert_eq!(inverse_order(&[0, 1, 2]), vec![0, 1, 2]);
     }
 }

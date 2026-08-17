@@ -4,6 +4,7 @@ mod cpu_topology;
 mod discovered_set;
 mod explore;
 mod lps;
+mod permuted_lps;
 mod sequence_forest;
 mod thread_affinity;
 
@@ -27,5 +28,10 @@ pub use lps::LPS;
 pub use lps::OwnedStateEffect;
 pub use lps::StateEffect;
 pub use lps::Summand;
+pub use permuted_lps::PermutedContext;
+pub use permuted_lps::PermutedLps;
+pub use permuted_lps::PermutedSummand;
+pub use permuted_lps::inverse_permutation;
+pub use permuted_lps::validate_permutation;
 pub use sequence_forest::Slot;
 pub use thread_affinity::configure_rayon_thread_pool;
