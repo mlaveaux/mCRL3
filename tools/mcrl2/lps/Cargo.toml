@@ -12,7 +12,6 @@ path = "src/main.rs"
 doc = false
 
 [features]
-# Tracks per-summand cache and control-flow pruning counters during exploration.
 metrics = ["merc_lps/metrics"]
 
 [dependencies]
