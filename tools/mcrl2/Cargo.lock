@@ -1081,6 +1081,7 @@ dependencies = [
 name = "merc_lps"
 version = "1.0.0"
 dependencies = [
+ "clap",
  "log",
  "mcrl2",
  "merc_explore",
@@ -1348,6 +1349,7 @@ dependencies = [
  "oxidd-core",
  "rand",
  "regex",
+ "rustc-hash 2.1.3",
  "streaming-iterator",
  "thiserror",
 ]

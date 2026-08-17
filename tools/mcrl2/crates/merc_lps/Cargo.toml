@@ -11,7 +11,7 @@ version.workspace = true
 metrics = ["merc_explore/metrics"]
 
 # Derive the `clap::ValueEnum` trait.
-clap = []
+clap = ["dep:clap"]
 
 [lints]
 workspace = true
@@ -26,6 +26,7 @@ merc_unsafety.workspace = true
 merc_utilities.workspace = true
 oxidd.workspace = true
 
+clap = { workspace = true, optional = true }
 log.workspace = true
 rayon.workspace = true
 

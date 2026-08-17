@@ -17,7 +17,7 @@ metrics = ["merc_lps/metrics"]
 [dependencies]
 mcrl2.workspace = true
 merc_explore = { workspace = true, features = ["clap"] }
-merc_lps.workspace = true
+merc_lps = { workspace = true, features = ["clap"] }
 merc_lts = { workspace = true, features = ["clap"] }
 merc_symbolic = { workspace = true, features = ["clap"] }
 merc_tools.workspace = true

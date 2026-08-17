@@ -8,6 +8,7 @@ use clap::Subcommand;
 
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
+use merc_lps::LpsFormat;
 use merc_lts::AutFormat;
 use merc_lts::AutStream;
 use merc_lts::MutexLtsBuilder;
