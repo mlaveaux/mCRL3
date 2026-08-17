@@ -21,6 +21,11 @@ mod timing;
 mod traversal;
 
 pub use error::MercError;
+pub use fixed_cache_policy::CachePolicy;
+pub use fixed_cache_policy::FifoPolicy;
+pub use fixed_cache_policy::LruPolicy;
+pub use fixed_cache_policy::NoPolicy;
+pub use fixed_size_cache::FixedSizeCache;
 pub use generational_index::GenerationCounter;
 pub use generational_index::GenerationalIndex;
 pub use helper::PhantomUnsend;
@@ -37,11 +42,6 @@ pub use test_logger::test_threads;
 pub use timing::Timing;
 pub use traversal::Step;
 pub use traversal::Visit;
-pub use fixed_cache_policy::CachePolicy;
-pub use fixed_cache_policy::FifoPolicy;
-pub use fixed_cache_policy::LruPolicy;
-pub use fixed_cache_policy::NoPolicy;
-pub use fixed_size_cache::FixedSizeCache;
 
 #[cfg(kani)]
 pub use kani_rng::*;

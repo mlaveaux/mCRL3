@@ -27,3 +27,4 @@ oxidd.workspace = true
 
 clap.workspace = true
 env_logger.workspace = true
+log.workspace = true

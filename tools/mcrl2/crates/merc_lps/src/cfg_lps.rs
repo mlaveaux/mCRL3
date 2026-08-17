@@ -49,7 +49,7 @@ struct SummandCfgCounters {
 
 impl CfgLinearProcessSpecification {
     /// Builds the explicit LPS and runs the control flow graph analysis on top.
-    pub fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
+    pub fn new(lps: LinearProcessSpecification) -> Result<Self, MercError> {
         let inner = ExplicitLinearProcessSpecification::new(lps)?;
         let analysis = ControlFlowAnalysis::new(&inner);
         let summand_metrics = (0..analysis.source_constraints.len())

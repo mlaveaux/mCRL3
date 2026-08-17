@@ -303,9 +303,9 @@ impl<P: LPS> LPS for CacheLPS<P> {
 
 impl<P: LPS> CacheSummandWrapper<P> {
     /// Replays a cache hit for a summand with a positional effect.
-    /// 
+    ///
     /// # Details
-    /// 
+    ///
     /// Each cached tree holds only the values at the write positions.
     /// The remaining positions are passed through unchanged, so they
     /// must be taken from the *live* source state rather than the state
@@ -317,7 +317,7 @@ impl<P: LPS> CacheSummandWrapper<P> {
         write_positions: &[usize],
         results: &[(P::Label, Tree)],
         report: &mut F,
-    ) -> Result<(), MercError> 
+    ) -> Result<(), MercError>
     where
         F: FnMut(&P::Label, &[P::Value]) -> Result<(), MercError>,
     {
@@ -399,7 +399,7 @@ impl<P: LPS> Summand for CacheSummandWrapper<P> {
             }
             OwnedStateEffect::Opaque => self.replay_full(context, &entry.results, &mut report),
         });
-        
+
         if let Some(result) = hit {
             #[cfg(feature = "metrics")]
             self.hits.increment();

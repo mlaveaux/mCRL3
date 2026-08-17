@@ -15,11 +15,9 @@ use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::LinearSummand;
-use mcrl2::PreprocessOptions;
 use mcrl2::Protected;
 use mcrl2::free_variables_data_expression;
 use mcrl2::is_variable;
-use mcrl2::preprocess;
 use mcrl2::pretty_print_multi_action;
 use mcrl2::tau_multi_action;
 use merc_explore::CacheLPS;
@@ -56,6 +54,8 @@ pub fn lps_progress() -> TimeProgress<(usize, usize)> {
 /// Explore the linear process specification explicitly, forwarding the
 /// discovered transitions to `builder`.
 ///
+/// The LPS is explored as given, any preprocessing must be applied beforehand.
+///
 /// When `control_flow` is set, a [`ControlFlowAnalysis`] is layered on top of
 /// the explicit LPS to prune summands whose control flow guard cannot hold in
 /// the current state (see [`CfgLinearProcessSpecification`]). The pruning never
@@ -64,7 +64,7 @@ pub fn lps_progress() -> TimeProgress<(usize, usize)> {
 /// [`ControlFlowAnalysis`]: crate::control_flow::ControlFlowAnalysis
 pub fn explore_lps_explicit<B>(
     builder: &mut B,
-    lps: &LinearProcessSpecification,
+    lps: LinearProcessSpecification,
     caching: CachingStrategy,
     strategy: ExplorationStrategy,
     control_flow: bool,
@@ -163,9 +163,12 @@ where
 /// Explores the linear process specification explicitly in parallel across
 /// `threads` worker threads, streaming the discovered transitions into
 /// `builder`.
+///
+/// As for [`explore_lps_explicit`], the LPS is explored as given: preprocessing
+/// it is the caller's responsibility.
 pub fn explore_lps_explicit_parallel<B>(
     builder: &mut B,
-    lps: &LinearProcessSpecification,
+    lps: LinearProcessSpecification,
     caching: CachingStrategy,
     threads: usize,
     control_flow: bool,
@@ -348,8 +351,8 @@ fn is_mcrl2_timed_multi_action_term(term: &ATermSend) -> bool {
 /// safe to populate from several worker threads at once. Labels are the printed
 /// multi-actions of the summands.
 pub struct ExplicitLinearProcessSpecification {
-    /// The (preprocessed) underlying LPS. Retained because each per-thread
-    /// [`ExplicitContext`] builds its own [`LearnSuccessorsContext`] from it.
+    /// The underlying LPS. Retained because each per-thread [`ExplicitContext`]
+    /// builds its own [`LearnSuccessorsContext`] from it.
     lps: LinearProcessSpecification,
 
     /// Cached process parameter variables in declaration order.
@@ -379,9 +382,7 @@ type ValueMapping = ConcurrentIndexedSet<DataExpressionRef<'static>>;
 unsafe impl Sync for ExplicitLinearProcessSpecification {}
 
 impl ExplicitLinearProcessSpecification {
-    pub fn new(lps: &LinearProcessSpecification) -> Result<Self, MercError> {
-        let lps = preprocess(lps, &PreprocessOptions::default())?;
-
+    pub fn new(lps: LinearProcessSpecification) -> Result<Self, MercError> {
         let parameters = lps.parameters();
         let parameter_terms: Vec<DataVariable> = parameters.to_vec();
         let process_parameters: Vec<*const _aterm> = parameter_terms.iter().map(|param| param.address()).collect();
@@ -443,7 +444,7 @@ impl ExplicitLinearProcessSpecification {
         self.lps.parameters().to_vec()
     }
 
-    /// The (preprocessed) underlying linear process specification.
+    /// The underlying linear process specification.
     pub fn lps(&self) -> &LinearProcessSpecification {
         &self.lps
     }

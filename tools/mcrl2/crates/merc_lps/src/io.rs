@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum LpsFormat {
     /// The standard mCRL2 LPS format.

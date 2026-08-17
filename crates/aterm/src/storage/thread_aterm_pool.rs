@@ -466,7 +466,7 @@ impl ThreadTermPool {
         let mut guard = self.term_pool.write().expect("Lock poisoned!");
         guard.collect_garbage();
         guard.reset_gc_budget();
-        
+
         // Reset the counter.
         self.garbage_collection_counter.set(GC_BUDGET_CHUNK);
     }
@@ -507,7 +507,7 @@ impl ThreadTermPool {
     fn decrement_garbage_collection_counter(&self) {
         self.garbage_collection_counter
             .set(self.garbage_collection_counter.get().saturating_sub(1));
-        
+
         self.trigger_garbage_collection();
     }
 

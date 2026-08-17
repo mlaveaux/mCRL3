@@ -2,8 +2,9 @@
 //! State space exploration for mCRL2 linear process specifications (LPSs).
 //!
 //! The [`merc-lps`] binary is a thin command line wrapper around this crate: it
-//! parses the arguments, reads the LPS and then calls into one of the explorers
-//! defined here.
+//! parses the arguments, reads and preprocesses the LPS and then calls into one
+//! of the explorers defined here. The explorers take the LPS as given, so that
+//! every one of them sees the same summands as the rest of the tool.
 //!
 //! - [`explore_lps_explicit`] and [`explore_lps_explicit_parallel`] enumerate the
 //!   state space explicitly, feeding the discovered transitions into an

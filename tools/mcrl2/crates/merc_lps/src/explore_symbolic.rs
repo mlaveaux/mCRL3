@@ -14,13 +14,11 @@ use crate::explore_explicit::ExplicitLinearProcessSpecification;
 
 /// Explore the linear process specification using symbolic reachability.
 ///
-/// The summand machinery (read/write positions, condition enumeration) is reused
-/// from the explicit [`ExplicitLinearProcessSpecification`] via the generic
-/// [`SymbolicLps`] adapter, so LPS and PBES symbolic exploration share one
-/// implementation.
+/// The LPS is explored as given: any preprocessing (see [`mcrl2::preprocess`])
+/// is the caller's responsibility.
 pub fn explore_lps_symbolic(
     storage: &LDDManagerRef,
-    lps: &LinearProcessSpecification,
+    lps: LinearProcessSpecification,
     strategy: ExplorationStrategy,
     detect_deadlocks: bool,
     timing: &Timing,
@@ -43,6 +41,8 @@ mod tests {
     use std::path::Path;
     use std::process::Command;
 
+    use mcrl2::PreprocessOptions;
+    use mcrl2::preprocess;
     use mcrl2::read_lps;
     use merc_io::traced_command;
     use merc_symbolic::ExplorationStrategy;
@@ -84,10 +84,14 @@ mod tests {
 
         let lps = read_lps(lps_path.to_str().expect("LPS path is valid UTF-8")).expect("Failed to read LPS");
 
+        // The explorer takes the LPS as given, so preprocess it here exactly as
+        // the `merc-lps` tool does.
+        let lps = preprocess(&lps, &PreprocessOptions::default()).expect("Failed to preprocess LPS");
+
         let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);
         let timing = Timing::new();
 
-        let states = explore_lps_symbolic(&storage, &lps, ExplorationStrategy::default(), false, &timing)
+        let states = explore_lps_symbolic(&storage, lps, ExplorationStrategy::default(), false, &timing)
             .expect("Failed to explore LPS")
             .states;
         let num_of_states = states.len();
@@ -141,7 +145,8 @@ mod tests {
 
             // 1. merc-lps LDD path: explore the .lps directly via merc's symbolic engine.
             let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-            let lps_ldd_count = explore_lps_symbolic(&storage, &lps, ExplorationStrategy::default(), false, &timing)
+            let lps = preprocess(&lps, &PreprocessOptions::default()).expect("Failed to preprocess LPS");
+            let lps_ldd_count = explore_lps_symbolic(&storage, lps, ExplorationStrategy::default(), false, &timing)
                 .expect("Failed to explore LPS symbolically")
                 .states
                 .len();

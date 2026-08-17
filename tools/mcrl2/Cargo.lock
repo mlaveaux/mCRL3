@@ -955,6 +955,7 @@ version = "1.0.0"
 dependencies = [
  "clap",
  "env_logger",
+ "log",
  "mcrl2",
  "merc_explore",
  "merc_lps",

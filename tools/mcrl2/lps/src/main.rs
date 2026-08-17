@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 use clap::Subcommand;
+use log::info;
 
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
@@ -21,6 +22,9 @@ use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
+use mcrl2::LinearProcessSpecification;
+use mcrl2::PreprocessOptions;
+use mcrl2::preprocess;
 use mcrl2::read_lps;
 use mcrl2::read_lps_text;
 use mcrl2::set_reporting_level;
@@ -46,6 +50,10 @@ struct Cli {
 
     #[arg(long, global = true)]
     timings: bool,
+
+    /// Skip the preprocessing that mCRL2 applies to an LPS before exploring it.
+    #[arg(long, global = true, default_value_t = false)]
+    no_preprocess: bool,
 
     /// The number of worker threads for the Oxidd LDD manager.
     #[arg(long, global = true, default_value_t = 1)]
@@ -80,14 +88,42 @@ enum Commands {
     ExploreExplicit(ExploreExplicitArgs),
 }
 
+/// The input LPS shared by every subcommand.
 #[derive(clap::Args, Debug)]
-struct ExploreArgs {
+struct InputArgs {
     /// The input LPS file.
     filename: String,
 
     /// Explicitly choose the format of the input LPS file.
     #[arg(long, short('i'), value_enum)]
     format: Option<LpsFormat>,
+}
+
+impl InputArgs {
+    /// Reads the LPS in the explicitly chosen format, or the binary LPS format
+    /// when no format is given.
+    ///
+    /// If `preprocess_lps` is true, the LPS is preprocessed using the default
+    /// preprocessing options.
+    fn read(&self, timing: &Timing, preprocess_lps: bool) -> Result<LinearProcessSpecification, MercError> {
+        let lps = timing.measure("load LPS", || match self.format.unwrap_or(LpsFormat::Lps) {
+            LpsFormat::Lps => read_lps(&self.filename),
+            LpsFormat::Text => read_lps_text(&self.filename),
+        })?;
+
+        if preprocess_lps {
+            timing.measure("preprocess LPS", || preprocess(&lps, &PreprocessOptions::default()))
+        } else {
+            info!("Skipping LPS preprocessing (--no-preprocess)");
+            Ok(lps)
+        }
+    }
+}
+
+#[derive(clap::Args, Debug)]
+struct ExploreArgs {
+    #[command(flatten)]
+    input: InputArgs,
 
     /// The strategy used to apply the transition groups during reachability.
     #[arg(long, short('s'), value_enum, default_value_t = SymbolicExplorationStrategy::default())]
@@ -100,12 +136,8 @@ struct ExploreArgs {
 
 #[derive(clap::Args, Debug)]
 struct ExploreExplicitArgs {
-    /// The input LPS file.
-    filename: String,
-
-    /// Explicitly choose the format of the input LPS file.
-    #[arg(long, short('i'), value_enum)]
-    format: Option<LpsFormat>,
+    #[command(flatten)]
+    input: InputArgs,
 
     #[arg(long, short('o'), value_enum, default_value_t = AutFormat::Aut)]
     out_format: AutFormat,
@@ -164,10 +196,12 @@ fn main() -> ExitCode {
 }
 
 fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
+    let preprocess_lps = !cli.no_preprocess;
+
     if let Some(command) = &cli.commands {
         match command {
-            Commands::Explore(args) => handle_explore(cli, args, timing)?,
-            Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing)?,
+            Commands::Explore(args) => handle_explore(cli, args, timing, preprocess_lps)?,
+            Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing, preprocess_lps)?,
         }
     }
 
@@ -175,16 +209,12 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
 }
 
 /// Handles symbolic exploration of an LPS.
-fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), MercError> {
-    let format = args.format.clone().unwrap_or(LpsFormat::Lps);
-    let lps = match format {
-        LpsFormat::Lps => read_lps(&args.filename)?,
-        LpsFormat::Text => read_lps_text(&args.filename)?,
-    };
+fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing, preprocess_lps: bool) -> Result<(), MercError> {
+    let lps = args.input.read(timing, preprocess_lps)?;
 
     let storage = init_ldd_manager(cli);
 
-    let result = explore_lps_symbolic(&storage, &lps, args.strategy, args.deadlocks, timing)?;
+    let result = explore_lps_symbolic(&storage, lps, args.strategy, args.deadlocks, timing)?;
     println!("Number of states: {}", result.states.len());
     if let Some(deadlocks) = &result.deadlocks {
         println!("Number of deadlocks: {}", deadlocks.len());
@@ -194,12 +224,8 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing) -> Result<(), 
 }
 
 /// Handles the explicit exploration of an LPS.
-fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing) -> Result<(), MercError> {
-    let format = args.format.clone().unwrap_or(LpsFormat::Lps);
-    let lps = match format {
-        LpsFormat::Lps => read_lps(&args.filename)?,
-        LpsFormat::Text => read_lps_text(&args.filename)?,
-    };
+fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preprocess_lps: bool) -> Result<(), MercError> {
+    let lps = args.input.read(timing, preprocess_lps)?;
 
     if args.threads > 1 {
         // Parallel exploration adds transitions concurrently, so the AUT writer
@@ -210,7 +236,7 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing) -> Resul
             let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, args.out_format)?);
             explore_lps_explicit_parallel(
                 &mut builder,
-                &lps,
+                lps,
                 args.caching,
                 args.threads,
                 args.control_flow,
@@ -221,7 +247,7 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing) -> Resul
             // No output requested, discard the explored transitions.
             explore_lps_explicit_parallel(
                 &mut (),
-                &lps,
+                lps,
                 args.caching,
                 args.threads,
                 args.control_flow,
@@ -234,7 +260,7 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing) -> Resul
         let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format)?;
         explore_lps_explicit(
             &mut builder,
-            &lps,
+            lps,
             args.caching,
             args.strategy,
             args.control_flow,
@@ -245,7 +271,7 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing) -> Resul
         let mut builder: () = ();
         explore_lps_explicit(
             &mut builder,
-            &lps,
+            lps,
             args.caching,
             args.strategy,
             args.control_flow,

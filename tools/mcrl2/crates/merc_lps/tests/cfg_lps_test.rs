@@ -2,6 +2,9 @@ use std::fs::File;
 use std::path::Path;
 use std::process::Command;
 
+use mcrl2::LinearProcessSpecification;
+use mcrl2::PreprocessOptions;
+use mcrl2::preprocess;
 use mcrl2::read_lps;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
@@ -19,6 +22,14 @@ use merc_utilities::random_test;
 use merc_lps::Mcrl2MultiActionLabel;
 use merc_lps::explore_lps_explicit;
 
+/// Reads the LPS at `lps_path` and preprocesses it exactly as the `merc-lps`
+/// tool does, since the explorers themselves take the LPS as given. Each
+/// exploration consumes its own LPS, so this is called once per exploration.
+fn read_preprocessed_lps(lps_path: &Path) -> LinearProcessSpecification {
+    let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
+    preprocess(&lps, &PreprocessOptions::default()).expect("Failed to preprocess LPS")
+}
+
 /// Explores `lps_path` both with the plain explicit explorer and with the
 /// control-flow-pruning explorer, and asserts the two LTSs have equal
 /// state/transition counts and are strongly bisimilar. Pruning summands
@@ -29,7 +40,7 @@ fn assert_cfg_matches_explicit(lps_path: &Path) {
     let mut reference_builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut reference_builder,
-        &lps,
+        read_preprocessed_lps(lps_path),
         CachingStrategy::None,
         ExplorationStrategy::Dfs,
         false,
@@ -44,7 +55,7 @@ fn assert_cfg_matches_explicit(lps_path: &Path) {
     let mut cfg_builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut cfg_builder,
-        &lps,
+        read_preprocessed_lps(lps_path),
         CachingStrategy::None,
         ExplorationStrategy::Dfs,
         true,

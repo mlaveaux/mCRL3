@@ -3,6 +3,9 @@ use std::io::Cursor;
 use std::path::Path;
 use std::process::Command;
 
+use mcrl2::LinearProcessSpecification;
+use mcrl2::PreprocessOptions;
+use mcrl2::preprocess;
 use mcrl2::read_lps;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
@@ -26,6 +29,14 @@ use merc_utilities::random_test;
 use merc_lps::Mcrl2MultiActionLabel;
 use merc_lps::explore_lps_explicit;
 use merc_lps::explore_lps_explicit_parallel;
+
+/// Reads the LPS at `lps_path` and preprocesses it exactly as the `merc-lps`
+/// tool does, since the explorers themselves take the LPS as given. Each
+/// exploration consumes its own LPS, so this is called once per exploration.
+fn read_preprocessed_lps(lps_path: &Path) -> LinearProcessSpecification {
+    let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
+    preprocess(&lps, &PreprocessOptions::default()).expect("Failed to preprocess LPS")
+}
 
 /// Runs `mcrl22lps` and `lps2lts` on a `.mcrl2` specification, explores the
 /// LPS with `explore_lps_explicit`, and asserts strong bisimilarity between
@@ -75,7 +86,7 @@ fn compare_with_lps2lts_caching(spec_relative_path: &str, strategy: CachingStrat
     let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut builder,
-        &lps,
+        read_preprocessed_lps(&lps_path),
         strategy,
         ExplorationStrategy::Dfs,
         false,
@@ -216,7 +227,7 @@ fn compare_random_lps_with_lps2lts(strategy: CachingStrategy) {
         let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
         explore_lps_explicit(
             &mut builder,
-            &lps,
+            read_preprocessed_lps(&lps_path),
             strategy,
             ExplorationStrategy::Dfs,
             false,
@@ -256,13 +267,11 @@ fn compare_random_lps_with_lps2lts(strategy: CachingStrategy) {
 /// assertion below), so its LTS carries extra unreachable deadlock states and
 /// the comparison is only up to bisimulation rather than on exact counts.
 fn assert_parallel_matches_sequential(lps_path: &Path) {
-    let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-
     // Sequential reference, relabelled to strings for comparison.
     let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut builder,
-        &lps,
+        read_preprocessed_lps(lps_path),
         CachingStrategy::None,
         ExplorationStrategy::Bfs,
         false,
@@ -282,7 +291,7 @@ fn assert_parallel_matches_sequential(lps_path: &Path) {
         let mut builder = MutexLtsBuilder::new(AutStream::new_mcrl2(&mut buffer).unwrap());
         explore_lps_explicit_parallel(
             &mut builder,
-            &lps,
+            read_preprocessed_lps(lps_path),
             CachingStrategy::None,
             4,
             false,
