@@ -6,7 +6,7 @@ use crate::LTS;
 use crate::LabelIndex;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilder;
-use crate::LtsBuilderFast;
+use crate::LtsBuilderMem;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
@@ -75,9 +75,9 @@ where
 
     let num_reachable = new_to_old.len();
 
-    // Use LtsBuilderFast to collect the reachable transitions with renumbered state indices.
+    // Use LtsBuilderMem to collect the reachable transitions with renumbered state indices.
     let labels = lts.labels().to_vec();
-    let mut builder = LtsBuilderFast::new(labels, vec![]);
+    let mut builder = LtsBuilderMem::new(labels, vec![]);
     builder.require_num_of_states(num_reachable);
 
     for &old_state in &new_to_old {

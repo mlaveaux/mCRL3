@@ -13,7 +13,7 @@ use merc_explore::combine_lts;
 use merc_io::LargeFormatter;
 use merc_lts::GenericLts;
 use merc_lts::LTS;
-use merc_lts::LtsBuilderFast;
+use merc_lts::LtsBuilderMem;
 use merc_lts::LtsFormat;
 use merc_lts::LtsMultiAction;
 use merc_lts::SimpleAction;
@@ -608,7 +608,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let mut builder = LtsBuilderFast::new(Vec::new(), Vec::new());
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
             let result = builder.finish(StateIndex::new(0), false);
 
@@ -631,7 +631,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let mut builder = LtsBuilderFast::new(Vec::new(), Vec::new());
+            let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
             let result = builder.finish(StateIndex::new(0), false);
 

@@ -345,6 +345,17 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
         self.data.reserve(additional * self.bytes_per_entry);
     }
 
+    /// Releases any excess allocated capacity back to the allocator.
+    ///
+    /// Like [`Vec::shrink_to_fit`], this is a hint: the allocator is not
+    /// required to actually shrink the allocation. In particular, shrinking
+    /// after [`Self::resize_with`] has truncated the vector is useful because
+    /// truncation (like `Vec::truncate`) only reduces the logical length, it
+    /// never releases the underlying allocation on its own.
+    pub fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+    }
+
     /// Resizes all entries in the vector to the given length.
     fn resize_entries(&mut self, new_bytes_required: usize) {
         if new_bytes_required > self.bytes_per_entry {
@@ -577,6 +588,32 @@ mod tests {
             value.to_bytes(&mut bytes);
             assert_eq!(usize::from_bytes(&bytes), value);
         });
+    }
+
+    #[test]
+    fn test_shrink_to_fit() {
+        let mut vec = ByteCompressedVec::with_capacity(1000, 1);
+        for i in 0..1000 {
+            vec.push(i);
+        }
+        vec.resize_with(10, || 0);
+        assert!(
+            vec.data.capacity() > 10,
+            "truncation alone should not have released the excess capacity"
+        );
+
+        let capacity_before_shrink = vec.data.capacity();
+        vec.shrink_to_fit();
+        assert!(
+            vec.data.capacity() < capacity_before_shrink,
+            "shrink_to_fit should release most of the excess capacity"
+        );
+        assert_eq!(vec.len(), 10);
+
+        // Content must be unaffected by shrinking.
+        for i in 0..10 {
+            assert_eq!(vec.index(i), i);
+        }
     }
 
     #[test]

@@ -120,7 +120,7 @@ fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransiti
 
     info!("Finished reading LTS");
 
-    builder.finish(initial_state)
+    Ok(builder.finish(initial_state, false))
 }
 
 /// Write a labelled transition system in plain text in Aldebaran format to the

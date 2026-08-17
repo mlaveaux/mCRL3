@@ -8,7 +8,7 @@ use oxidd::util::OutOfMemory;
 
 use merc_lts::LTS;
 use merc_lts::LabelledTransitionSystem;
-use merc_lts::LtsBuilderFast;
+use merc_lts::LtsBuilderMem;
 use merc_lts::TransitionLabel;
 use merc_symbolic::CubeIterAll;
 use merc_symbolic::FormatConfigSet;
@@ -65,7 +65,7 @@ pub fn project_feature_transition_system<L: TransitionLabel>(
     fts: &FeatureTransitionSystem<L>,
     feature_selection: &BDDFunction,
 ) -> Result<LabelledTransitionSystem<FeaturedLabel<L>>, MercError> {
-    let mut builder = LtsBuilderFast::new(fts.labels().to_vec(), Vec::new());
+    let mut builder = LtsBuilderMem::new(fts.labels().to_vec(), Vec::new());
 
     debug!("Projecting on feature selection {}", FormatConfigSet(feature_selection));
 

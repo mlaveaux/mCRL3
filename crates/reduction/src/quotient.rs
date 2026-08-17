@@ -6,7 +6,7 @@ use merc_lts::LTS;
 use merc_lts::LabelIndex;
 use merc_lts::LabelledTransitionSystem;
 use merc_lts::LtsBuilder;
-use merc_lts::LtsBuilderFast;
+use merc_lts::LtsBuilderMem;
 use merc_lts::StateIndex;
 use merc_lts::reachability;
 
@@ -30,9 +30,17 @@ pub fn quotient_lts_naive<L: LTS, P: Partition>(
     eliminate_inert_taus: bool,
     eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
-    // Introduce the transitions based on the block numbers. Seed the capacity
-    // with at least one transition per block; the builder grows as needed.
-    let mut builder = LtsBuilderFast::with_capacity(lts.labels().into(), Vec::new(), partition.num_of_blocks());
+    // Introduce the transitions based on the block numbers. `lts.num_of_transitions()`
+    // is an exact upper bound on the quotient's transition count (quotienting only
+    // ever drops or merges transitions), and `partition.num_of_blocks()` is its exact
+    // state count.
+    let mut builder = LtsBuilderMem::with_capacity(
+        lts.labels().into(),
+        Vec::new(),
+        lts.num_of_labels(),
+        partition.num_of_blocks(),
+        lts.num_of_transitions(),
+    );
 
     for state_index in lts.iter_states() {
         for transition in lts.outgoing_transitions(state_index) {
@@ -84,7 +92,13 @@ pub(crate) fn quotient_lts_weak<L: LTS, P: Partition>(
 
 /// Weak bisimulation quotient that removes redundant transitions.
 fn remove_redundant_transitions<L: LTS>(lts: &L) -> LabelledTransitionSystem<L::Label> {
-    let mut builder = LtsBuilderFast::with_capacity(lts.labels().into(), Vec::new(), lts.num_of_transitions());
+    let mut builder = LtsBuilderMem::with_capacity(
+        lts.labels().into(),
+        Vec::new(),
+        lts.num_of_labels(),
+        lts.num_of_states(),
+        lts.num_of_transitions(),
+    );
     builder.require_num_of_states(lts.num_of_states());
 
     for from in lts.iter_states() {
@@ -181,7 +195,13 @@ pub fn quotient_lts_block<L: LTS, const BRANCHING: bool>(
     partition: &BlockPartition,
     eliminate_tau_loops: bool,
 ) -> LabelledTransitionSystem<L::Label> {
-    let mut builder = LtsBuilderFast::new(lts.labels().into(), Vec::new());
+    let mut builder = LtsBuilderMem::with_capacity(
+        lts.labels().into(),
+        Vec::new(),
+        lts.num_of_labels(),
+        partition.num_of_blocks(),
+        lts.num_of_transitions(),
+    );
 
     // Reused across blocks to find bottom states when BRANCHING.
     let mut visited = vec![false; lts.num_of_states()];

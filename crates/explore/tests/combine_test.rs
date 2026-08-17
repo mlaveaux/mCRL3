@@ -10,7 +10,7 @@ use merc_io::temp_dir;
 use merc_io::traced_command;
 use merc_lts::LTS;
 use merc_lts::LtsAction;
-use merc_lts::LtsBuilderFast;
+use merc_lts::LtsBuilderMem;
 use merc_lts::LtsMultiAction;
 use merc_lts::StateIndex;
 use merc_lts::TransitionLabel;
@@ -174,7 +174,7 @@ fn test_mcrl2_ltscombine() {
         let expected_path = temp_dir.path().join("expected.aut");
         write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 
-        let mut result: LtsBuilderFast<LtsMultiAction<LtsAction>> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        let mut result: LtsBuilderMem<LtsMultiAction<LtsAction>> = LtsBuilderMem::new(Vec::new(), Vec::new());
         combine_lts(
             &mut result,
             vec![left_lts, right_lts],

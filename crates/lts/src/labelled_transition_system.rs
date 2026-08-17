@@ -435,7 +435,7 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     }
 
     /// Returns metrics about the LTS.
-    pub(crate) fn metrics(&self) -> LtsMetrics {
+    pub fn metrics(&self) -> LtsMetrics {
         LtsMetrics {
             num_of_states: self.num_of_states(),
             num_of_labels: self.num_of_labels(),
@@ -496,7 +496,7 @@ impl<L: TransitionLabel> LTS for LabelledTransitionSystem<L> {
 
 /// Metrics for a labelled transition system.
 #[derive(Debug, Clone)]
-pub(crate) struct LtsMetrics {
+pub struct LtsMetrics {
     /// The number of states in the LTS.
     pub num_of_states: usize,
     pub state_metrics: CompressedVecMetrics,

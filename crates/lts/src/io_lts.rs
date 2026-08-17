@@ -120,7 +120,7 @@ pub fn read_lts<R: Read>(
     }
     info!("Finished reading LTS.");
 
-    builder.finish(initial_state.ok_or("Missing initial state")?)
+    Ok(builder.finish(initial_state.ok_or("Missing initial state")?, false))
 }
 
 /// Write a labelled transition system in binary 'lts' format to the given

@@ -9,7 +9,7 @@ use merc_utilities::MercError;
 use crate::LTS;
 use crate::LabelledTransitionSystem;
 use crate::LtsBuilder;
-use crate::LtsBuilderFast;
+use crate::LtsBuilderMem;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
@@ -47,7 +47,15 @@ pub fn random_lts<L: TransitionLabel, R: Rng>(
         labels.push(L::from_index(i as usize));
     }
 
-    let mut builder = LtsBuilderFast::with_capacity(labels.clone(), Vec::new(), num_of_states);
+    // Each state gets `0..num_of_labels` outgoing transitions, so `num_of_labels / 2`
+    // is a reasonable expected-transition-count hint for the initial byte width.
+    let mut builder = LtsBuilderMem::with_capacity(
+        labels.clone(),
+        Vec::new(),
+        labels.len(),
+        num_of_states,
+        num_of_states * num_of_labels as usize / 2,
+    );
 
     for state_index in 0..num_of_states {
         // Introduce outgoing transitions for this state based on the desired out degree.
@@ -80,7 +88,7 @@ pub fn mutate_lts<L: LTS, R: Rng>(
     rng: &mut R,
     num_of_mutations: usize,
 ) -> Result<LabelledTransitionSystem<L::Label>, MercError> {
-    let mut builder = LtsBuilderFast::new(lts.labels().to_vec(), Vec::new());
+    let mut builder = LtsBuilderMem::new(lts.labels().to_vec(), Vec::new());
     builder.require_num_of_states(lts.num_of_states());
 
     let removed_transition = if num_of_mutations > 0 {
