@@ -37,6 +37,8 @@ pub use random_test::random_test;
 pub use random_test::random_test_threads;
 pub use sharded_counter::ShardedCounter;
 pub use span::Span;
+pub use span::Spanned;
+pub use span::respan;
 pub use tagged_index::MercIndex;
 pub use tagged_index::TagIndex;
 pub use test_logger::test_logger;
