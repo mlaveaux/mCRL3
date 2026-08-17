@@ -7,7 +7,9 @@ use merc_explore::ExplorationStrategy;
 use merc_io::temp_dir;
 use merc_io::traced_command;
 use merc_utilities::Timing;
+use merc_vpg::ParityGameBuilder;
 use merc_vpg::Set;
+use merc_vpg::VertexIndex;
 use merc_vpg::solve_zielonka;
 
 use merc_pbes::explore_srf_pbes;
@@ -72,7 +74,8 @@ fn compare_text_pbes_with_pbessolve_caching(text_pbes_relative_path: &str, cachi
     let reference = pbessolve_result(&pbessolve, &pbes_path);
 
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
-    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching, &Timing::new())
+    let builder = ParityGameBuilder::new(VertexIndex::new(0));
+    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching, &Timing::new(), builder)
         .expect("Failed to build parity game");
     let (solution, _) = solve_zielonka(&game, false);
     let result = solution[0][0];
@@ -135,7 +138,8 @@ fn compare_mcrl2_spec_with_pbessolve_caching(
     let reference = pbessolve_result(&pbessolve, &pbes_path);
 
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
-    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching, &Timing::new())
+    let builder = ParityGameBuilder::new(VertexIndex::new(0));
+    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching, &Timing::new(), builder)
         .expect("Failed to build parity game");
     let (solution, _) = solve_zielonka(&game, false);
     let result = solution[0][0];
@@ -154,8 +158,15 @@ fn compare_mcrl2_spec_with_pbessolve_caching(
 fn assert_parallel_matches_sequential_pbes(pbes_path: &Path) {
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
 
-    let sequential = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None, &Timing::new())
-        .expect("Sequential exploration failed");
+    let builder = ParityGameBuilder::new(VertexIndex::new(0));
+    let sequential = explore_srf_pbes(
+        &pbes,
+        ExplorationStrategy::Bfs,
+        CachingStrategy::None,
+        &Timing::new(),
+        builder,
+    )
+    .expect("Sequential exploration failed");
     let (sequential_solution, _) = solve_zielonka(&sequential, false);
 
     // The parallel explorer must agree with the sequential one regardless of
@@ -174,8 +185,9 @@ fn assert_parallel_caching_matches_sequential(
     sequential_solution: &[Set; 2],
     caching: CachingStrategy,
 ) {
-    let parallel =
-        explore_srf_pbes_parallel(pbes, 4, caching, false, &Timing::new()).expect("Parallel exploration failed");
+    let builder = ParityGameBuilder::new(VertexIndex::new(0));
+    let parallel = explore_srf_pbes_parallel(pbes, 4, caching, false, &Timing::new(), builder)
+        .expect("Parallel exploration failed");
 
     // The parallel explorer numbers vertices sparsely (see `explore_parallel`),
     // so its game has extra unreachable deadlock vertices and thus more
