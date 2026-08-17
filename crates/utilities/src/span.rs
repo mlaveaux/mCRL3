@@ -1,3 +1,9 @@
+use std::cmp::Ordering;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::ops::Deref;
+use std::ops::DerefMut;
+
 /// Source location information, spanning from start to end in the source text.
 #[derive(Clone, Default, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct Span {
