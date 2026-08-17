@@ -31,11 +31,18 @@ use crate::LtsBuilderMem;
 use crate::LtsMultiAction;
 use crate::StateIndex;
 
-/// Loads a labelled transition system from the binary 'lts' format of the mCRL2 toolset.
+/// Loads a labelled transition system from the binary 'lts' format of the mCRL2 toolset,
+/// together with the data specification that its action arguments are typed over.
 pub fn read_lts<R: Read>(
     reader: R,
     read_state_labels: bool,
-) -> Result<LabelledTransitionSystem<LtsMultiAction<LtsAction>>, MercError> {
+) -> Result<
+    (
+        LabelledTransitionSystem<LtsMultiAction<LtsAction>>,
+        Mcrl2DataSpecification,
+    ),
+    MercError,
+> {
     info!("Reading LTS in .lts format...");
 
     let mut reader = BinaryATermReader::new(BufReader::new(reader))?;
@@ -45,7 +52,7 @@ pub fn read_lts<R: Read>(
     }
 
     // Read the data specification, parameters, and actions.
-    let _data_spec = Mcrl2DataSpecification::read(&mut reader)?;
+    let data_spec = Mcrl2DataSpecification::read(&mut reader)?;
     let _parameters = reader.read_aterm()?;
     let _actions = reader.read_aterm()?;
 
@@ -120,7 +127,10 @@ pub fn read_lts<R: Read>(
     }
     info!("Finished reading LTS.");
 
-    Ok(builder.finish(initial_state.ok_or("Missing initial state")?, false))
+    Ok((
+        builder.finish(initial_state.ok_or("Missing initial state")?, false),
+        data_spec,
+    ))
 }
 
 /// Write a labelled transition system in binary 'lts' format to the given
@@ -155,7 +165,7 @@ pub fn read_lts<R: Read>(
 ///
 /// state_label (index derived from order of appearance):
 ///    `state_label: ATermList::<DataExpression>`
-pub(crate) fn write_lts<L, W>(writer: &mut W, lts: &L) -> Result<(), MercError>
+pub fn write_lts<L, W>(writer: &mut W, lts: &L, data_spec: &Mcrl2DataSpecification) -> Result<(), MercError>
 where
     L: LTS<Label = LtsMultiAction<LtsAction>>,
     W: Write,
@@ -167,7 +177,7 @@ where
     writer.write_aterm(&lts_marker())?;
 
     // Write the data specification, parameters, and actions.
-    Mcrl2DataSpecification::default().write(&mut writer)?;
+    data_spec.write(&mut writer)?;
     writer.write_aterm(&ATermList::<ATerm>::empty().into())?; // Empty parameters
     writer.write_aterm(&ATermList::<ATerm>::empty().into())?; // Empty action labels
 
@@ -234,6 +244,7 @@ fn probabilistic_transition_mark() -> ATerm {
 
 #[cfg(test)]
 mod tests {
+    use merc_data::Mcrl2DataSpecification;
     use merc_utilities::random_test;
 
     use super::write_lts;
@@ -246,7 +257,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)] // Tests are too slow under miri.
     fn test_read_lts() {
-        let lts = read_lts(include_bytes!("../../../examples/lts/abp.lts").as_ref(), true).unwrap();
+        let (lts, _data_spec) = read_lts(include_bytes!("../../../examples/lts/abp.lts").as_ref(), true).unwrap();
 
         assert_eq!(lts.num_of_states(), 74);
         assert_eq!(lts.num_of_transitions(), 92);
@@ -260,9 +271,9 @@ mod tests {
             let lts = random_lts::<LtsMultiAction<LtsAction>, _>(rng, 1000, 3);
 
             let mut buffer: Vec<u8> = Vec::new();
-            write_lts(&mut buffer, &lts).unwrap();
+            write_lts(&mut buffer, &lts, &Mcrl2DataSpecification::default()).unwrap();
 
-            let result_lts = read_lts(&buffer[0..], false).unwrap();
+            let (result_lts, _data_spec) = read_lts(&buffer[0..], false).unwrap();
 
             crate::check_equivalent(&lts, &result_lts);
         })

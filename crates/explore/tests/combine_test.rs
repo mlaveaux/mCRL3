@@ -170,7 +170,7 @@ fn test_mcrl2_ltscombine() {
         let status = traced_command(&mut command).expect("Failed to run ltscombine");
         assert!(status.success(), "ltscombine failed with status: {status}");
 
-        let expected_lts = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
+        let (expected_lts, _data_spec) = read_lts(&File::open(&output_path).unwrap(), false).unwrap();
         let expected_path = temp_dir.path().join("expected.aut");
         write_mcrl2_aut(&mut File::create(&expected_path).unwrap(), &expected_lts).unwrap();
 

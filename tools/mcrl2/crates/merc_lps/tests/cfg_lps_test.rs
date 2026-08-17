@@ -8,7 +8,7 @@ use merc_explore::ExplorationStrategy;
 use merc_io::temp_dir;
 use merc_io::traced_command;
 use merc_lts::LTS;
-use merc_lts::LtsBuilderFast;
+use merc_lts::LtsBuilderMem;
 use merc_lts::StateIndex;
 use merc_reduction::Equivalence;
 use merc_reduction::compare_lts;
@@ -26,7 +26,7 @@ use merc_lps::explore_lps_explicit;
 fn assert_cfg_matches_explicit(lps_path: &Path) {
     let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
 
-    let mut reference_builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+    let mut reference_builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut reference_builder,
         &lps,
@@ -41,7 +41,7 @@ fn assert_cfg_matches_explicit(lps_path: &Path) {
         .relabel(|label| Ok(label.to_string()))
         .unwrap();
 
-    let mut cfg_builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+    let mut cfg_builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut cfg_builder,
         &lps,

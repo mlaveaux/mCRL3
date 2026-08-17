@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::path::Path;
 
+use merc_data::Mcrl2DataSpecification;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -20,9 +21,13 @@ use crate::read_mcrl2_aut;
 /// Convenience macro to call `GenericLts::apply` with the same function for all variants.
 /// Useful with generic functions that can be monomorphized for all label types.
 ///
+/// The closure receives the LTS, its associated extra data `E` (the
+/// [`merc_data::Mcrl2DataSpecification`] for the [`GenericLts::Lts`] variant, `()` for the
+/// others), and the arguments.
+///
 /// Examples:
-/// - apply_lts!(lts, my_fn)
-/// - apply_lts!(lts, |lts| do_something(lts))
+/// - apply_lts!(lts, args, my_fn)
+/// - apply_lts!(lts, args, |lts, extra, args| do_something(lts))
 #[macro_export]
 macro_rules! apply_lts {
     ($lts:expr, $arguments:expr, $f:path) => {
@@ -36,9 +41,13 @@ macro_rules! apply_lts {
 /// Convenience macro to apply a function to a pair of `GenericLts` only when both
 /// are the same variant; returns an error otherwise.
 ///
+/// The closure receives both LTSs, their associated extra data `E` (a pair of
+/// [`merc_data::Mcrl2DataSpecification`] for the [`GenericLts::Lts`] variant, `()` for the
+/// others), and the arguments.
+///
 /// Examples:
 /// - apply_lts_pair!(lhs, rhs, args, my_fn)
-/// - apply_lts_pair!(lhs, rhs, args, |a, b, args| do_something(a, b, args))
+/// - apply_lts_pair!(lhs, rhs, args, |a, b, extra, args| do_something(a, b, args))
 #[macro_export]
 macro_rules! apply_lts_pair {
     ($lhs:expr, $rhs:expr, $arguments:expr, $f:path) => {
@@ -105,9 +114,13 @@ pub enum GenericLts {
     /// The mCRL2 LTS in the Aldebaran format. Multi-action labels are stored as
     /// [`SimpleAction`]s so the label name and string arguments are accessible.
     AutMcrl2(LabelledTransitionSystem<LtsMultiAction<SimpleAction>>),
-    /// The LTS in the mCRL2 binary `.lts` format. Multi-action labels are
-    /// stored as proper terms so they can be written back via [`crate::io_lts::write_lts`].
-    Lts(LabelledTransitionSystem<LtsMultiAction<LtsAction>>),
+    /// The LTS in the mCRL2 binary `.lts` format, together with the data specification its
+    /// action arguments are typed over. Multi-action labels are stored as proper terms so they
+    /// can be written back via [`crate::io_lts::write_lts`], which requires that specification.
+    Lts(
+        LabelledTransitionSystem<LtsMultiAction<LtsAction>>,
+        Mcrl2DataSpecification,
+    ),
     /// The LTS in the CADP BCG format.
     Bcg(LabelledTransitionSystem<String>),
 }
@@ -115,6 +128,10 @@ pub enum GenericLts {
 impl GenericLts {
     /// Applies the given function to both LTSs when they are the same variant.
     /// Returns an error if the variants do not match.
+    ///
+    /// Besides the two LTSs and the `arguments`, every closure also receives the extra data
+    /// associated with the variant: a pair of [`Mcrl2DataSpecification`] for [`GenericLts::Lts`],
+    /// and `()` for the other variants.
     pub fn apply_pair<T, FAut, FAutMcrl2, FLts, R>(
         self,
         other: GenericLts,
@@ -124,38 +141,45 @@ impl GenericLts {
         apply_lts: FLts,
     ) -> R
     where
-        FAut: FnOnce(LabelledTransitionSystem<String>, LabelledTransitionSystem<String>, T) -> R,
+        FAut: FnOnce(LabelledTransitionSystem<String>, LabelledTransitionSystem<String>, (), T) -> R,
         FAutMcrl2: FnOnce(
             LabelledTransitionSystem<LtsMultiAction<SimpleAction>>,
             LabelledTransitionSystem<LtsMultiAction<SimpleAction>>,
+            (),
             T,
         ) -> R,
         FLts: FnOnce(
             LabelledTransitionSystem<LtsMultiAction<LtsAction>>,
             LabelledTransitionSystem<LtsMultiAction<LtsAction>>,
+            (Mcrl2DataSpecification, Mcrl2DataSpecification),
             T,
         ) -> R,
     {
         match (self, other) {
-            (GenericLts::Aut(a), GenericLts::Aut(b)) => apply_aut(a, b, arguments),
-            (GenericLts::AutMcrl2(a), GenericLts::AutMcrl2(b)) => apply_aut_mcrl2(a, b, arguments),
-            (GenericLts::Lts(a), GenericLts::Lts(b)) => apply_lts(a, b, arguments),
-            (GenericLts::Bcg(a), GenericLts::Bcg(b)) => apply_aut(a, b, arguments),
+            (GenericLts::Aut(a), GenericLts::Aut(b)) => apply_aut(a, b, (), arguments),
+            (GenericLts::AutMcrl2(a), GenericLts::AutMcrl2(b)) => apply_aut_mcrl2(a, b, (), arguments),
+            (GenericLts::Lts(a, da), GenericLts::Lts(b, db)) => apply_lts(a, b, (da, db), arguments),
+            (GenericLts::Bcg(a), GenericLts::Bcg(b)) => apply_aut(a, b, (), arguments),
             _ => unreachable!("Mismatched GenericLts variants in apply_pair; this indicates a programming error"),
         }
     }
 
+    /// Applies the given function to the LTS.
+    ///
+    /// Besides the LTS and the `arguments`, the closure also receives the extra data associated
+    /// with the variant: the [`Mcrl2DataSpecification`] for [`GenericLts::Lts`], and `()` for the
+    /// other variants.
     pub fn apply<T, F, G, H, R>(self, arguments: T, apply_aut: F, apply_aut_mcrl2: G, apply_lts: H) -> R
     where
-        F: FnOnce(LabelledTransitionSystem<String>, T) -> R,
-        G: FnOnce(LabelledTransitionSystem<LtsMultiAction<SimpleAction>>, T) -> R,
-        H: FnOnce(LabelledTransitionSystem<LtsMultiAction<LtsAction>>, T) -> R,
+        F: FnOnce(LabelledTransitionSystem<String>, (), T) -> R,
+        G: FnOnce(LabelledTransitionSystem<LtsMultiAction<SimpleAction>>, (), T) -> R,
+        H: FnOnce(LabelledTransitionSystem<LtsMultiAction<LtsAction>>, Mcrl2DataSpecification, T) -> R,
     {
         match self {
-            GenericLts::Aut(lts) => apply_aut(lts, arguments),
-            GenericLts::AutMcrl2(lts) => apply_aut_mcrl2(lts, arguments),
-            GenericLts::Lts(lts) => apply_lts(lts, arguments),
-            GenericLts::Bcg(lts) => apply_aut(lts, arguments),
+            GenericLts::Aut(lts) => apply_aut(lts, (), arguments),
+            GenericLts::AutMcrl2(lts) => apply_aut_mcrl2(lts, (), arguments),
+            GenericLts::Lts(lts, data_spec) => apply_lts(lts, data_spec, arguments),
+            GenericLts::Bcg(lts) => apply_aut(lts, (), arguments),
         }
     }
 
@@ -166,7 +190,7 @@ impl GenericLts {
         match self {
             GenericLts::Aut(lts) => lts.num_of_states(),
             GenericLts::AutMcrl2(lts) => lts.num_of_states(),
-            GenericLts::Lts(lts) => lts.num_of_states(),
+            GenericLts::Lts(lts, _) => lts.num_of_states(),
             GenericLts::Bcg(lts) => lts.num_of_states(),
         }
     }
@@ -176,7 +200,7 @@ impl GenericLts {
         match self {
             GenericLts::Aut(lts) => lts.num_of_transitions(),
             GenericLts::AutMcrl2(lts) => lts.num_of_transitions(),
-            GenericLts::Lts(lts) => lts.num_of_transitions(),
+            GenericLts::Lts(lts, _) => lts.num_of_transitions(),
             GenericLts::Bcg(lts) => lts.num_of_transitions(),
         }
     }
@@ -223,12 +247,12 @@ where
                 .collect();
             Ok(apply_aut_mcrl2(aut_lts?, arguments))
         }
-        GenericLts::Lts(_) => {
+        GenericLts::Lts(..) => {
             let lts_lts: Result<Vec<&LabelledTransitionSystem<LtsMultiAction<LtsAction>>>, MercError> = lts_slice
                 .iter()
                 .enumerate()
                 .map(|(idx, lts)| match lts {
-                    GenericLts::Lts(lts_obj) => Ok(lts_obj),
+                    GenericLts::Lts(lts_obj, _) => Ok(lts_obj),
                     _ => Err(format!("Expected Lts variant at index {}, got a different variant", idx).into()),
                 })
                 .collect();
@@ -252,7 +276,8 @@ pub fn read_explicit_lts(path: &Path, format: LtsFormat, timing: &mut Timing) ->
             }
             LtsFormat::Lts => {
                 let file = File::open(path)?;
-                GenericLts::Lts(read_lts(&file, false)?)
+                let (lts, data_spec) = read_lts(&file, false)?;
+                GenericLts::Lts(lts, data_spec)
             }
             LtsFormat::Bcg => GenericLts::Bcg(read_bcg(path)?),
         };

@@ -26,6 +26,7 @@ use merc_lts::read_lts;
 use merc_lts::read_mcrl2_aut;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
+use merc_lts::write_lts;
 use merc_lts::write_mcrl2_aut;
 use merc_reduction::Equivalence;
 use merc_reduction::reduce_lts;
@@ -288,7 +289,7 @@ fn handle_info(args: &InfoArgs, timing: &mut Timing) -> Result<(), MercError> {
         LargeFormatter(lts.num_of_transitions())
     );
 
-    apply_lts!(lts, (), |lts, _| {
+    apply_lts!(lts, (), |lts, _data_spec, _| {
         println!("Labels:");
         for label in lts.labels() {
             println!("  {}", label);
@@ -323,7 +324,7 @@ fn handle_reduce(args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError
         LargeFormatter(lts.num_of_transitions())
     );
 
-    apply_lts!(lts, timing, |lts, timing| -> Result<(), MercError> {
+    apply_lts!(lts, timing, |lts, _data_spec, timing| -> Result<(), MercError> {
         let reduced_lts = reduce_lts(lts, args.equivalence, !args.no_preprocess, timing);
 
         info!(
@@ -367,6 +368,7 @@ fn handle_refinement(args: &RefinesArgs, timing: &mut Timing) -> Result<(), Merc
 
     apply_lts_pair!(impl_lts, spec_lts, timing, |left,
                                                  right,
+                                                 _data_specs,
                                                  timing|
      -> Result<(), MercError> {
         let (result, counter_example) = refines(
@@ -426,6 +428,7 @@ fn handle_compare(args: &CompareArgs, timing: &mut Timing) -> Result<(), MercErr
 
     apply_lts_pair!(left_lts, right_lts, timing, |left,
                                                   right,
+                                                  _data_specs,
                                                   timing|
      -> Result<(), MercError> {
         let (equivalent, counter_example) = merc_reduction::compare_lts(
@@ -472,6 +475,12 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
         return Err("Either output path or output file format must be specified.".into());
     };
 
+    // Only the mCRL2 binary .lts format carries a real data specification (read from the file
+    // itself). The other formats have no notion of one, so a plain default specification would
+    // not actually describe the action arguments; reject conversion to LTS format from those
+    // until we can construct a proper data specification for them.
+    const NO_DATA_SPEC_FOR_LTS: &str = "Conversion to LTS format requires a data specification, which is not available when reading this format. This is not yet supported.";
+
     match input_lts {
         GenericLts::Aut(lts) => match output_format {
             LtsFormat::Bcg => {
@@ -484,8 +493,11 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
             LtsFormat::Aut => {
                 return Err("Conversion from AUT to AUT is not useful.".into());
             }
-            _ => {
+            LtsFormat::AutMcrl2 => {
                 return Err(format!("Conversion to {output_format:?} format is not yet implemented.").into());
+            }
+            LtsFormat::Lts => {
+                return Err(NO_DATA_SPEC_FOR_LTS.into());
             }
         },
         GenericLts::AutMcrl2(lts) => match output_format {
@@ -504,10 +516,10 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
                 }
             }
             LtsFormat::Lts => {
-                return Err("Conversion from AutMcrl2 to LTS is not yet implemented.".into());
+                return Err(NO_DATA_SPEC_FOR_LTS.into());
             }
         },
-        GenericLts::Lts(lts) => match output_format {
+        GenericLts::Lts(lts, data_spec) => match output_format {
             LtsFormat::Aut | LtsFormat::AutMcrl2 => {
                 if let Some(path) = &args.output {
                     write_aut(&mut File::create(path)?, &lts.relabel(|label| Ok(label.to_string()))?)?;
@@ -523,7 +535,11 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
                 }
             }
             LtsFormat::Lts => {
-                return Err("Conversion from LTS to LTS is not useful.".into());
+                if let Some(path) = &args.output {
+                    write_lts(&mut File::create(path)?, &lts, &data_spec)?;
+                } else {
+                    write_lts(&mut stdout(), &lts, &data_spec)?;
+                }
             }
         },
         GenericLts::Bcg(lts) => match output_format {
@@ -533,6 +549,9 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
                 } else {
                     write_aut(&mut stdout(), &lts)?;
                 }
+            }
+            LtsFormat::Lts => {
+                return Err(NO_DATA_SPEC_FOR_LTS.into());
             }
             _ => {
                 return Err(format!("Conversion to {output_format:?}LTS format is not yet implemented.").into());
@@ -627,7 +646,10 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
                 .iter()
                 .map(|path| -> Result<_, MercError> {
                     let file = File::open(path)?;
-                    read_lts(&file, false)
+                    // The data specification is not needed here since the result is always
+                    // written in the AutMcrl2 format.
+                    let (lts, _data_spec) = read_lts(&file, false)?;
+                    Ok(lts)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 

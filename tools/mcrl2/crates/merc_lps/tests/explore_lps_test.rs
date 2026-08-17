@@ -10,7 +10,7 @@ use merc_io::temp_dir;
 use merc_io::traced_command;
 use merc_lts::AutStream;
 use merc_lts::LTS;
-use merc_lts::LtsBuilderFast;
+use merc_lts::LtsBuilderMem;
 use merc_lts::LtsMultiAction;
 use merc_lts::MutexLtsBuilder;
 use merc_lts::SimpleAction;
@@ -72,7 +72,7 @@ fn compare_with_lps2lts_caching(spec_relative_path: &str, strategy: CachingStrat
         .unwrap();
 
     let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-    let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+    let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut builder,
         &lps,
@@ -213,7 +213,7 @@ fn compare_random_lps_with_lps2lts(strategy: CachingStrategy) {
         let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap()).expect("Failed to read reference .aut");
 
         let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-        let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+        let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
         explore_lps_explicit(
             &mut builder,
             &lps,
@@ -259,7 +259,7 @@ fn assert_parallel_matches_sequential(lps_path: &Path) {
     let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
 
     // Sequential reference, relabelled to strings for comparison.
-    let mut builder: LtsBuilderFast<Mcrl2MultiActionLabel> = LtsBuilderFast::new(Vec::new(), Vec::new());
+    let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut builder,
         &lps,

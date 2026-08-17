@@ -38,6 +38,7 @@ pub use io_aut_stream::AutFormat;
 pub use io_aut_stream::AutStream;
 pub use io_bcg::write_bcg;
 pub use io_lts::read_lts;
+pub use io_lts::write_lts;
 pub use labelled_transition_system::LabelledTransitionSystem;
 pub use labelled_transition_system::LtsMetrics;
 pub use lts::AsGraph;
