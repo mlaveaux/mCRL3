@@ -71,11 +71,19 @@ pub trait TransitionGroup: fmt::Debug {
     fn meta(&self) -> &LDDFunction;
 
     /// Learns the successors of `todo` and incorporates them into [Self::relation].
+    ///
+    /// When `cached` is set the group remembers the projections of the states it has already learned
+    /// from (its *domain*) and only learns the successors of the projections it has not seen before.
+    /// Since the relation is projected on the read parameters, a state whose read projection is
+    /// already in the domain cannot contribute a transition that is not in the relation yet, so this
+    /// does not change the learned relation — it only trades memory for enumeration work. Groups that
+    /// have nothing to learn ignore the flag.
     fn learn_successors(
         &mut self,
         context: &mut Self::Context,
         manager: &LDDManagerRef,
         todo: &LDDFunction,
+        cached: bool,
     ) -> Result<(), MercError>;
 }
 
@@ -198,6 +206,7 @@ impl TransitionGroup for SummandGroup {
         _context: &mut (),
         _storage: &LDDManagerRef,
         _todo: &LDDFunction,
+        _cached: bool,
     ) -> Result<(), MercError> {
         Ok(())
     }

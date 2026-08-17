@@ -1,6 +1,8 @@
 use std::fmt;
 use std::rc::Rc;
 
+use log::debug;
+
 use merc_collections::IndexedSet;
 use merc_explore::LPS;
 use merc_explore::Summand;
@@ -12,9 +14,16 @@ use oxidd::ldd::RelationProductMeta;
 use oxidd::ldd::Value;
 use streaming_iterator::StreamingIterator;
 
+use crate::ReadWritePattern;
+use crate::SummandGrouping;
 use crate::SymbolicLPS;
 use crate::TransitionGroup;
+use crate::VariableOrder;
+use crate::inverse_order;
 use crate::iter;
+use crate::print_read_write_patterns;
+use crate::print_transition_groups;
+use crate::transition_group_pattern;
 
 /// A symbolic LDD view of any [`merc_explore::LPS`].
 ///
@@ -33,7 +42,7 @@ pub struct SymbolicLps<L: LPS> {
     /// `prepare`/`enumerate` machinery. Shared immutably with every group.
     lps: Rc<L>,
 
-    /// One symbolic transition group per summand.
+    /// The symbolic transition groups, as determined by the [`SummandGrouping`].
     groups: Vec<SymbolicLpsGroup<L>>,
 
     /// The encoded initial state.
@@ -52,44 +61,110 @@ pub struct SymbolicContext<L: LPS> {
     columns: Vec<IndexedSet<L::Value>>,
 }
 
+/// The choices that shape the symbolic encoding of an [`merc_explore::LPS`], mirroring the `--groups`
+/// and `--reorder` options of the mCRL2 symbolic tools.
+///
+/// Neither option changes the reachable set, only the size of the decision diagrams and the amount of
+/// work per exploration step.
+#[derive(Clone, Debug, Default)]
+pub struct SymbolicLpsOptions {
+    /// How the summands are distributed over the transition groups.
+    pub grouping: SummandGrouping,
+
+    /// The order in which the state vector positions are stored in the diagram.
+    pub order: VariableOrder,
+}
+
 impl<L: LPS> SymbolicLps<L> {
-    /// Wraps `lps` into a symbolic LDD view, encoding its initial state.
+    /// Wraps `lps` into a symbolic LDD view, encoding its initial state, with one transition group
+    /// per summand.
     pub fn new(manager: &LDDManagerRef, lps: L) -> Result<Self, MercError> {
+        SymbolicLps::with_options(manager, lps, &SymbolicLpsOptions::default())
+    }
+
+    /// Wraps `lps` into a symbolic LDD view, encoding its initial state, distributing its summands
+    /// over the transition groups according to `grouping`.
+    ///
+    /// Joining summands into a single group trades the number of relational products per exploration
+    /// step against the size of each transition relation; it does not change the reachable set.
+    pub fn with_grouping(manager: &LDDManagerRef, lps: L, grouping: &SummandGrouping) -> Result<Self, MercError> {
+        let options = SymbolicLpsOptions {
+            grouping: grouping.clone(),
+            ..SymbolicLpsOptions::default()
+        };
+        SymbolicLps::with_options(manager, lps, &options)
+    }
+
+    /// Wraps `lps` into a symbolic LDD view, encoding its initial state, with the given grouping of
+    /// its summands and order of its state vector positions.
+    pub fn with_options(manager: &LDDManagerRef, lps: L, options: &SymbolicLpsOptions) -> Result<Self, MercError> {
         let lps = Rc::new(lps);
 
         let initial_values = lps.initial_state();
         let num_positions = initial_values.len();
 
+        let patterns = read_write_patterns(&*lps, num_positions)?;
+        debug!(
+            "Read/write matrix of the summands:\n{}",
+            print_read_write_patterns(&patterns)
+        );
+
+        // `order[level]` is the state vector position stored at `level` of the diagram, and
+        // `level_of[position]` its inverse. The `columns` and the states of the wrapped `LPS` stay in
+        // position space; only the short vectors and their metas live in level space. The order is
+        // used here only: every group stores the positions its short vectors carry, so learning needs
+        // no translation between the two spaces.
+        let order = options.order.compute(&patterns, num_positions)?;
+        let level_of = inverse_order(&order);
+
         let mut columns: Vec<IndexedSet<L::Value>> = (0..num_positions).map(|_| IndexedSet::new()).collect();
 
         // Encode the initial state, interning each value into its column.
         let mut initial_vector: Vec<Value> = Vec::with_capacity(num_positions);
-        for (position, value) in initial_values.iter().enumerate() {
-            let (index, _) = columns[position].insert(*value);
+        for &position in order.iter() {
+            let (index, _) = columns[position].insert(initial_values[position]);
             initial_vector.push(*index as Value);
         }
         let initial_state = manager.with_manager_shared(|m| LDDFunction::singleton(m, &initial_vector))?;
 
-        // Build one symbolic group per summand.
-        let mut groups = Vec::with_capacity(lps.summands().len());
-        for (index, summand) in lps.summands().iter().enumerate() {
-            // A symbolic transition relation is inherently positional: it stores
-            // only the read and write columns, so there is no encoding for a
-            // summand whose next states change shape.
-            let effect = summand.effect();
-            let write_positions = effect.positions().ok_or_else(|| {
-                MercError::from(format!(
-                    "summand {index} has an opaque state effect, which symbolic exploration cannot encode"
-                ))
-            })?;
+        // Distribute the summands over the transition groups, and derive the read/write pattern each
+        // group has to cover.
+        let group_indices = options.grouping.compute(&patterns)?;
+        let group_patterns = group_indices
+            .iter()
+            .map(|indices| transition_group_pattern(&patterns, indices))
+            .collect::<Result<Vec<_>, MercError>>()?;
 
-            let mut read_indices: Vec<Value> = summand.read_positions().iter().map(|&p| p as Value).collect();
-            let mut write_indices: Vec<Value> = write_positions.iter().map(|&p| p as Value).collect();
-            // The short-vector encoding requires sorted read/write indices.
-            read_indices.sort_unstable();
-            write_indices.sort_unstable();
+        if !matches!(options.grouping, SummandGrouping::None) || !matches!(options.order, VariableOrder::None) {
+            // Shown in the variable order, i.e. the way the transition relations store it.
+            let permuted = group_patterns
+                .iter()
+                .map(|pattern| pattern.permute(&order))
+                .collect::<Result<Vec<_>, MercError>>()?;
 
-            let (project_ldd, meta, read_positions, write_positions, relation) =
+            debug!(
+                "Read/write matrix of the transition groups (grouping {}):\n{}",
+                options.grouping,
+                print_transition_groups(&group_indices, &permuted)
+            );
+        }
+
+        let mut groups = Vec::with_capacity(group_indices.len());
+        for (indices, pattern) in group_indices.into_iter().zip(group_patterns) {
+            // The short-vector encoding requires sorted read/write indices, in level space. Sort
+            // (level, position) pairs so that the state vector position of every short vector entry
+            // is kept alongside the level it is stored at.
+            let mut read_pairs: Vec<(Value, usize)> =
+                pattern.read_positions().map(|p| (level_of[p] as Value, p)).collect();
+            let mut write_pairs: Vec<(Value, usize)> =
+                pattern.write_positions().map(|p| (level_of[p] as Value, p)).collect();
+            read_pairs.sort_unstable();
+            write_pairs.sort_unstable();
+
+            let (read_indices, read_full_positions): (Vec<Value>, Vec<usize>) = read_pairs.into_iter().unzip();
+            let (write_indices, write_full_positions): (Vec<Value>, Vec<usize>) = write_pairs.into_iter().unzip();
+
+            let (project_ldd, meta, read_positions, write_positions, relation, domain) =
                 manager.with_manager_shared(|m| -> Result<_, MercError> {
                     let project_ldd = LDDFunction::projection_meta(m, &read_indices)?;
                     let RelationProductMeta {
@@ -98,19 +173,23 @@ impl<L: LPS> SymbolicLps<L> {
                         write_positions,
                     } = LDDFunction::relation_product_meta(m, &read_indices, &write_indices)?;
                     let relation = LDDFunction::empty_set(m)?;
-                    Ok((project_ldd, meta, read_positions, write_positions, relation))
+                    let domain = LDDFunction::empty_set(m)?;
+                    Ok((project_ldd, meta, read_positions, write_positions, relation, domain))
                 })?;
 
             groups.push(SymbolicLpsGroup {
                 lps: Rc::clone(&lps),
-                index,
+                indices,
                 read_indices,
                 write_indices,
+                read_full_positions,
+                write_full_positions,
                 read_positions,
                 write_positions,
                 project_ldd,
                 meta,
                 relation,
+                domain,
             });
         }
 
@@ -136,6 +215,28 @@ impl<L: LPS> SymbolicLps<L> {
     }
 }
 
+/// Returns the read/write pattern of every summand of `lps` over the `num_positions` positions of its
+/// state vector.
+fn read_write_patterns<L: LPS>(lps: &L, num_positions: usize) -> Result<Vec<ReadWritePattern>, MercError> {
+    lps.summands()
+        .iter()
+        .enumerate()
+        .map(|(index, summand)| {
+            // A symbolic transition relation is inherently positional: it stores only the read and
+            // write columns, so there is no encoding for a summand whose next states change shape.
+            let effect = summand.effect();
+            let write_positions = effect.positions().ok_or_else(|| {
+                MercError::from(format!(
+                    "summand {index} has an opaque state effect, which symbolic exploration cannot encode"
+                ))
+            })?;
+
+            ReadWritePattern::from_indices(num_positions, summand.read_positions(), write_positions)
+                .map_err(|error| MercError::from(format!("summand {index}: {error}")))
+        })
+        .collect()
+}
+
 impl<L: LPS> SymbolicLPS for SymbolicLps<L> {
     type Group = SymbolicLpsGroup<L>;
 
@@ -159,20 +260,28 @@ impl<L: LPS> SymbolicLPS for SymbolicLps<L> {
     }
 }
 
-/// A single summand of a [`SymbolicLps`], encoded as a short-vector LDD
+/// A group of summands of a [`SymbolicLps`], encoded as a single short-vector LDD
 /// transition relation that is learned on the fly during reachability.
 pub struct SymbolicLpsGroup<L: LPS> {
     /// The wrapped `LPS`, shared immutably with [SymbolicLps].
     lps: Rc<L>,
 
-    /// Index of this summand within `lps.summands()`.
-    index: usize,
+    /// Indices of the summands in this group within `lps.summands()`, in increasing order.
+    indices: Vec<usize>,
 
-    /// Full state-vector positions read by the summand (sorted).
+    /// Diagram levels read by the group (sorted).
     read_indices: Vec<Value>,
 
-    /// Full state-vector positions written by the summand (sorted).
+    /// Diagram levels written by the group (sorted).
     write_indices: Vec<Value>,
+
+    /// State vector positions of `read_indices`, i.e. the position whose value the `k`-th entry of a
+    /// short read vector holds. This is where the variable order enters the group; it needs no other
+    /// knowledge of it.
+    read_full_positions: Vec<usize>,
+
+    /// State vector positions of `write_indices`, see [Self::read_full_positions].
+    write_full_positions: Vec<usize>,
 
     /// Interleaved short-vector positions of `read_indices`.
     read_positions: Vec<usize>,
@@ -188,6 +297,10 @@ pub struct SymbolicLpsGroup<L: LPS> {
 
     /// The learned transition relation `T' -> U'`, grown on the fly.
     relation: LDDFunction,
+
+    /// The domain of [Self::relation]: the projections on `read_indices` whose successors have
+    /// already been learned. Only grown when learning is requested with caching, and empty otherwise.
+    domain: LDDFunction,
 }
 
 impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
@@ -218,8 +331,17 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         context: &mut SymbolicContext<L>,
         storage: &LDDManagerRef,
         todo: &LDDFunction,
+        cached: bool,
     ) -> Result<(), MercError> {
-        let proj = todo.project(&self.project_ldd)?;
+        let projection = todo.project(&self.project_ldd)?;
+
+        // With caching only the projections that have not been learned from before are enumerated;
+        // the ones in the domain already contributed all their transitions to the relation.
+        let proj = if cached {
+            projection.minus(&self.domain)?
+        } else {
+            projection.clone()
+        };
 
         // Borrow the backend and the interning as disjoint fields so the
         // enumeration callback can grow the interning while the backend call is
@@ -239,7 +361,8 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         // have to borrow `self`.
         let mut relation = self.relation.clone();
 
-        let summand = &self.lps.summands()[self.index];
+        // Reused buffer for the summands of this group that fire from the current state.
+        let mut applicable: Vec<usize> = Vec::with_capacity(self.indices.len());
 
         let mut states = iter(&proj);
         while let Some(short_state) = states.next() {
@@ -252,40 +375,53 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
             // Overlay the short read values into the full state buffer and the
             // interleaved read positions.
             for (k, &value) in short_state.iter().enumerate() {
-                let full_pos = self.read_indices[k] as usize;
+                let full_pos = self.read_full_positions[k];
                 full_state[full_pos] = *columns[full_pos]
                     .get_by_index(value as usize)
                     .expect("read value must already be interned");
                 interleaved[self.read_positions[k]] = value;
             }
 
-            // Prepare the backend assignments for this state and check whether
-            // this group's summand may fire from it.
-            let applicable = self.lps.prepare(enumerate, &full_state).any(|i| i == self.index);
-            if !applicable {
-                continue;
+            // Prepare the backend assignments for this state and collect the summands of this group
+            // that may fire from it.
+            applicable.clear();
+            applicable.extend(
+                self.lps
+                    .prepare(enumerate, &full_state)
+                    .filter(|i| self.indices.binary_search(i).is_ok()),
+            );
+
+            // Enumerate the successors of every applicable summand, building the write side of each
+            // short transition vector and unioning it into the relation.
+            //
+            // A summand that does not write one of the group's write positions leaves it untouched
+            // (the [`StateEffect::Positions`] contract), so `next_state` carries the source value
+            // there, which the group reads by construction of its read positions.
+            for &index in &applicable {
+                let write_full_positions = &self.write_full_positions;
+                let write_positions = &self.write_positions;
+                let interleaved = &mut interleaved;
+                let relation = &mut relation;
+
+                self.lps.summands()[index].enumerate(enumerate, &full_state, |_label, next_state| {
+                    for (m, &full_pos) in write_full_positions.iter().enumerate() {
+                        let (value, _) = columns[full_pos].insert(next_state[full_pos]);
+                        interleaved[write_positions[m]] = *value as Value;
+                    }
+
+                    let cube = storage.with_manager_shared(|m| LDDFunction::singleton(m, interleaved.as_slice()))?;
+                    *relation = relation.union(&cube)?;
+                    Ok(())
+                })?;
             }
-
-            // Enumerate the successors, building the write side of each short
-            // transition vector and unioning it into the relation.
-            let write_indices = &self.write_indices;
-            let write_positions = &self.write_positions;
-            let interleaved = &mut interleaved;
-            let relation = &mut relation;
-
-            summand.enumerate(enumerate, &full_state, |_label, next_state| {
-                for (m, &full_pos) in write_indices.iter().enumerate() {
-                    let (index, _) = columns[full_pos as usize].insert(next_state[full_pos as usize]);
-                    interleaved[write_positions[m]] = *index as Value;
-                }
-
-                let cube = storage.with_manager_shared(|m| LDDFunction::singleton(m, interleaved.as_slice()))?;
-                *relation = relation.union(&cube)?;
-                Ok(())
-            })?;
         }
 
         self.relation = relation;
+        if cached {
+            // Only extend the domain once every projection above was enumerated successfully,
+            // otherwise a failed learning call would hide the states it never reached.
+            self.domain = self.domain.union(&projection)?;
+        }
         Ok(())
     }
 }
@@ -304,8 +440,8 @@ impl<L: LPS> fmt::Debug for SymbolicLpsGroup<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "group {} (read {:?}, write {:?})",
-            self.index, self.read_indices, self.write_indices
+            "summands {:?} (read {:?}, write {:?})",
+            self.indices, self.read_indices, self.write_indices
         )
     }
 }

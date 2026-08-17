@@ -146,6 +146,7 @@ impl TransitionGroup for SylvanTransitionGroup {
         _context: &mut (),
         _manager: &LDDManagerRef,
         _todo: &LDDFunction,
+        _cached: bool,
     ) -> Result<(), MercError> {
         // All states are already explored.
         Ok(())

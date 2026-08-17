@@ -1438,6 +1438,7 @@ dependencies = [
  "env_logger",
  "log",
  "merc_utilities",
+ "which",
  "winapi",
 ]
 

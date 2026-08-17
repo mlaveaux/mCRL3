@@ -25,6 +25,12 @@ Furthermore, this crate can also compute variable ordering, for now only using
 the MINCE algorithm for a given dependency graph. This requires the
 [kahypar](https://github.com/kahypar/kahypar) tool.
 
+The summands of a linear process can be distributed over the transition groups
+used for symbolic reachability, using the `SummandGrouping` strategies of the
+mCRL2 toolset (`none`, `used`, `simple` or a user defined partition). The
+grouping does not change the reachable set, only the number and shape of the
+transition relations.
+
 ## Changelog
 
 ### 3.0.0

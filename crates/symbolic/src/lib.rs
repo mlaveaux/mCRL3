@@ -5,9 +5,11 @@ mod dependency_graph;
 mod io;
 mod ldd;
 mod mince_variable_order;
+mod summand_grouping;
 mod symbolic_lps;
 mod symbolic_lps_explore;
 mod util;
+mod variable_order;
 
 #[cfg(test)]
 mod random_symbolic_lts;
@@ -19,6 +21,7 @@ pub(crate) use dependency_graph::*;
 pub(crate) use ldd::*;
 pub(crate) use symbolic_lps::*;
 pub(crate) use util::*;
+pub(crate) use variable_order::*;
 
 #[cfg(test)]
 pub(crate) use random_symbolic_lts::*;
@@ -53,9 +56,16 @@ pub use ldd::read_sylvan;
 pub use ldd::read_symbolic_lts;
 pub use ldd::write_symbolic_lts;
 pub use mince_variable_order::reorder;
+pub use summand_grouping::ReadWritePattern;
+pub use summand_grouping::SummandGrouping;
+pub use summand_grouping::print_read_write_patterns;
+pub use summand_grouping::print_transition_groups;
+pub use summand_grouping::transition_group_pattern;
 pub use symbolic_lps::SymbolicLPS;
 pub use symbolic_lps::TransitionGroup;
 pub use symbolic_lps_explore::SymbolicLps;
+pub use symbolic_lps_explore::SymbolicLpsOptions;
 pub use util::SatCount;
 pub use util::SatCountCache;
 pub use util::approx_satcount;
+pub use variable_order::VariableOrder;
