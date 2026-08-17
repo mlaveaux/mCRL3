@@ -296,6 +296,15 @@ impl PbesSrfLps {
                 let condition_de: DataExpression = srf_summand.condition().into();
                 let mut read_vars = free_variables_data_expression(&condition_de.copy());
 
+                // The summand's own existentially quantified variables. A target
+                // argument that is syntactically identical to a process parameter is
+                // only a genuine pass-through if it is *not* one of these: SRF
+                // conversion is free to reuse a process parameter's name and sort for
+                // a summation variable, in which case the argument refers to the
+                // fresh quantified value, not the outer state parameter, even though
+                // the two terms compare equal.
+                let summation_vars: Vec<DataVariable> = srf_summand.parameters().iter().collect();
+
                 // Position 0 (equation index) is always read; extend with positions
                 // whose parameter appears free in the condition or a *written* target
                 // argument. Also compute write positions: position 0 is always written;
@@ -314,7 +323,9 @@ impl PbesSrfLps {
                 let mut read_positions = vec![0usize];
                 let mut write_positions = vec![0usize];
                 for (k, (param, arg)) in params_vec.iter().zip(target_pvi.arguments().iter()).enumerate() {
-                    if Into::<DataExpressionRef<'_>>::into(param.copy()) == arg.copy() {
+                    if Into::<DataExpressionRef<'_>>::into(param.copy()) == arg.copy()
+                        && !summation_vars.contains(param)
+                    {
                         continue;
                     }
                     read_vars.extend(free_variables_data_expression(&arg.copy()));
