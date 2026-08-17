@@ -36,6 +36,7 @@ use merc_symbolic::refine_bisimulation;
 use merc_symbolic::reorder;
 use merc_symbolic::sigref_symbolic;
 use merc_symbolic::write_symbolic_lts;
+use merc_tools::KaHyParArgs;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -144,13 +145,8 @@ struct ReorderArgs {
     #[arg(long)]
     mcrl2_path: Option<PathBuf>,
 
-    /// Explicit path to the kahypar tools
-    #[arg(long)]
-    kahypar_path: Option<PathBuf>,
-
-    /// Explicit path to the kahypar.ini file to use.
-    #[arg(long)]
-    kahypar_ini_path: Option<PathBuf>,
+    #[command(flatten)]
+    kahypar: KaHyParArgs,
 
     /// The input linear process specification file in the mCRL2 .lps format.
     filename: PathBuf,
@@ -304,6 +300,9 @@ fn handle_reachability(cli: &Cli, args: &ReachabilityArgs, timing: &Timing) -> R
     let options = ReachabilityOptions {
         strategy: args.strategy,
         detect_deadlocks: args.detect_deadlocks,
+        // A symbolic LTS read from file has its transition relations already learned in full, so
+        // there is no domain worth caching.
+        cached: false,
     };
 
     let mut file = File::open(&args.filename)?;
@@ -397,37 +396,7 @@ fn handle_reachability_bdd(cli: &Cli, args: &ReachabilityBddArgs, timing: &Timin
 
 /// Computes a variable reordering for the output of lpsreach.
 fn handle_reorder(args: &ReorderArgs, _timing: &Timing) -> Result<(), MercError> {
-    // Find kahypar
-    let kahypar_path = if let Some(path) = &args.kahypar_path {
-        which_in("KaHyPar", Some(path), std::env::current_dir()?).map_err(|_e| "Cannot find KaHyPar")?
-    } else {
-        which::which("KaHyPar").map_err(|_e| "Cannot find KaHyPar in PATH")?
-    };
-
-    let kahypar_ini_path = if let Some(path) = &args.kahypar_ini_path {
-        if !path.is_file() {
-            return Err(format!(
-                "The specified kahypar.ini path '{}' does not exist or is not a file.",
-                path.display()
-            )
-            .into());
-        }
-        path.clone()
-    } else {
-        // Get path relative to the current executable, and obtain a path to the `kahypar.ini` configuration file.
-        let mut default_kahypar_ini_path = std::env::current_exe()?;
-        default_kahypar_ini_path.pop(); // remove the executable filename
-        default_kahypar_ini_path.push("kahypar.ini");
-
-        if !default_kahypar_ini_path.is_file() {
-            return Err(format!(
-                "Could not find '{}'. The 'kahypar.ini' file must be present next to the executable, or passed via --kahypar-ini-path.",
-                default_kahypar_ini_path.display()
-            )
-            .into());
-        }
-        default_kahypar_ini_path
-    };
+    let (kahypar_path, kahypar_ini_path) = args.kahypar.resolve()?;
 
     if args.filename.extension() == Some(OsStr::new("lps")) {
         // Find lpsreach

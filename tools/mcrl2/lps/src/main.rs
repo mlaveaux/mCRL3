@@ -14,6 +14,11 @@ use merc_lts::AutFormat;
 use merc_lts::AutStream;
 use merc_lts::MutexLtsBuilder;
 use merc_symbolic::ExplorationStrategy as SymbolicExplorationStrategy;
+use merc_symbolic::ReachabilityOptions;
+use merc_symbolic::SummandGrouping;
+use merc_symbolic::SymbolicLpsOptions;
+use merc_symbolic::VariableOrder;
+use merc_tools::KaHyParArgs;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -129,9 +134,48 @@ struct ExploreArgs {
     #[arg(long, short('s'), value_enum, default_value_t = SymbolicExplorationStrategy::default())]
     strategy: SymbolicExplorationStrategy,
 
+    /// How the summands are distributed over the transition groups: 'none' (one group per summand),
+    /// 'used' (join summands using the same parameters), 'simple' (join summands with the same
+    /// read/write pattern) or a partition of the summand indices, e.g. '0; 1 3 4; 2 5'.
+    #[arg(long, default_value_t = SummandGrouping::default(), value_parser = parse_grouping)]
+    groups: SummandGrouping,
+
+    /// Reorder the process parameters with the MINCE algorithm before exploring, which requires the
+    /// KaHyPar tool. The reachable states are unaffected, only the size of the decision diagrams.
+    #[arg(long)]
+    reorder: bool,
+
+    #[command(flatten)]
+    kahypar: KaHyParArgs,
+
     /// Detect and report deadlock states (reachable states with no outgoing transition).
     #[arg(long)]
     deadlocks: bool,
+
+    /// Cache the domain of every transition relation, so that successors are only learned for
+    /// process parameter values that a group has not seen before.
+    #[arg(long)]
+    cached: bool,
+}
+
+impl ExploreArgs {
+    /// Returns the variable order to explore with, resolving the KaHyPar tool when `--reorder` is set.
+    fn variable_order(&self) -> Result<VariableOrder, MercError> {
+        if !self.reorder {
+            return Ok(VariableOrder::None);
+        }
+
+        let (kahypar_path, kahypar_ini_path) = self.kahypar.resolve()?;
+        Ok(VariableOrder::Mince {
+            kahypar_path,
+            kahypar_ini_path,
+        })
+    }
+}
+
+/// Parses the `--groups` argument, since [`MercError`] is not a [`std::error::Error`] that clap accepts.
+fn parse_grouping(text: &str) -> Result<SummandGrouping, String> {
+    text.parse::<SummandGrouping>().map_err(|error| error.to_string())
 }
 
 #[derive(clap::Args, Debug)]
@@ -214,7 +258,18 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing, preprocess_lps
 
     let storage = init_ldd_manager(cli);
 
-    let result = explore_lps_symbolic(&storage, lps, args.strategy, args.deadlocks, timing)?;
+    let options = ReachabilityOptions {
+        strategy: args.strategy,
+        detect_deadlocks: args.deadlocks,
+        cached: args.cached,
+    };
+
+    let encoding = SymbolicLpsOptions {
+        grouping: args.groups.clone(),
+        order: args.variable_order()?,
+    };
+
+    let result = explore_lps_symbolic(&storage, lps, &encoding, &options, timing)?;
     println!("Number of states: {}", result.states.len());
     if let Some(deadlocks) = &result.deadlocks {
         println!("Number of deadlocks: {}", deadlocks.len());

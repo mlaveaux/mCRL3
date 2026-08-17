@@ -3,8 +3,10 @@ use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 
 use mcrl2::Pbes;
+use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SymbolicLps;
-use merc_symbolic::reachability;
+use merc_symbolic::SymbolicLpsOptions;
+use merc_symbolic::reachability_with_options;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
 
@@ -17,11 +19,27 @@ use crate::explore_srf::PbesSrfLps;
 /// machinery (equation-index gating via `prepare`, condition enumeration,
 /// read/write positions) is reused from the explicit [`PbesSrfLps`] through the
 /// generic [`SymbolicLps`] adapter, shared with LPS symbolic exploration.
-pub fn explore_pbes_symbolic(storage: &LDDManagerRef, pbes: &Pbes, timing: &Timing) -> Result<LDDFunction, MercError> {
+///
+/// The `encoding` decides how the equations are distributed over the transition
+/// groups and in which order their parameters are stored, mirroring the
+/// `--groups` and `--reorder` options of mCRL2's `pbessolvesymbolic`, and
+/// `cached` its `--cached` option: every group then remembers the parameter
+/// values it has already learned successors for, instead of re-enumerating them.
+pub fn explore_pbes_symbolic(
+    storage: &LDDManagerRef,
+    pbes: &Pbes,
+    encoding: &SymbolicLpsOptions,
+    cached: bool,
+    timing: &Timing,
+) -> Result<LDDFunction, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
-    let mut symbolic = SymbolicLps::new(storage, lps)?;
+    let mut symbolic = SymbolicLps::with_options(storage, lps, encoding)?;
 
     debug!("{symbolic:?}");
 
-    reachability(storage, &mut symbolic, timing)
+    let options = ReachabilityOptions {
+        cached,
+        ..ReachabilityOptions::default()
+    };
+    Ok(reachability_with_options(storage, &mut symbolic, &options, timing)?.states)
 }

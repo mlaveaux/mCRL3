@@ -14,6 +14,10 @@ use log::warn;
 use mcrl2::Pbes;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
+use merc_symbolic::SummandGrouping;
+use merc_symbolic::SymbolicLpsOptions;
+use merc_symbolic::VariableOrder;
+use merc_tools::KaHyParArgs;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
 use merc_tools::VersionFlag;
@@ -126,7 +130,7 @@ enum Commands {
     /// Explore a PBES explicitly into a parity game.
     ExploreExplicit(ExploreExplicitArgs),
     /// Explore a PBES symbolically using LDD-based reachability.
-    ExploreSymbolic(InputArgs),
+    ExploreSymbolic(ExploreSymbolicArgs),
     /// Solve a PBES by exploring it into a parity game and solving the game.
     Solve(SolveArgs),
 }
@@ -265,6 +269,52 @@ struct ExploreExplicitArgs {
 
     #[command(flatten)]
     explore: ExploreArgs,
+}
+
+/// The PBES to explore symbolically, and how its equations are grouped and ordered.
+#[derive(clap::Args, Debug)]
+struct ExploreSymbolicArgs {
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// How the equations are distributed over the transition groups: 'none' (one group per equation),
+    /// 'used' (join equations using the same parameters), 'simple' (join equations with the same
+    /// read/write pattern) or a partition of the equation indices, e.g. '0; 1 3 4; 2 5'.
+    #[arg(long, default_value_t = SummandGrouping::default(), value_parser = parse_grouping)]
+    groups: SummandGrouping,
+
+    /// Reorder the parameters with the MINCE algorithm before exploring, which requires the KaHyPar
+    /// tool. The reachable states are unaffected, only the size of the decision diagrams.
+    #[arg(long)]
+    reorder: bool,
+
+    #[command(flatten)]
+    kahypar: KaHyParArgs,
+
+    /// Cache the domain of every transition relation, so that successors are only learned for
+    /// parameter values that a group has not seen before.
+    #[arg(long)]
+    cached: bool,
+}
+
+impl ExploreSymbolicArgs {
+    /// Returns the variable order to explore with, resolving the KaHyPar tool when `--reorder` is set.
+    fn variable_order(&self) -> Result<VariableOrder, MercError> {
+        if !self.reorder {
+            return Ok(VariableOrder::None);
+        }
+
+        let (kahypar_path, kahypar_ini_path) = self.kahypar.resolve()?;
+        Ok(VariableOrder::Mince {
+            kahypar_path,
+            kahypar_ini_path,
+        })
+    }
+}
+
+/// Parses the `--groups` argument, since [`MercError`] is not a [`std::error::Error`] that clap accepts.
+fn parse_grouping(text: &str) -> Result<SummandGrouping, String> {
+    text.parse::<SummandGrouping>().map_err(|error| error.to_string())
 }
 
 #[derive(clap::Args, Debug)]
@@ -483,10 +533,20 @@ fn handle_print(args: &PrintArgs, timing: &Timing, preprocess: bool) -> Result<(
 
 /// Handles symbolic exploration of a PBES, reporting the number of reachable
 /// BES equations (states).
-fn handle_explore_symbolic(cli: &Cli, args: &InputArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
-    let pbes = args.read(timing, preprocess)?;
+fn handle_explore_symbolic(
+    cli: &Cli,
+    args: &ExploreSymbolicArgs,
+    timing: &Timing,
+    preprocess: bool,
+) -> Result<(), MercError> {
+    let pbes = args.input.read(timing, preprocess)?;
     let storage = init_ldd_manager(cli);
-    let states = explore_pbes_symbolic(&storage, &pbes, timing)?;
+    let encoding = SymbolicLpsOptions {
+        grouping: args.groups.clone(),
+        order: args.variable_order()?,
+    };
+
+    let states = explore_pbes_symbolic(&storage, &pbes, &encoding, args.cached, timing)?;
     println!("Number of states: {}", states.len());
     Ok(())
 }

@@ -3,6 +3,7 @@ use std::path::Path;
 use mcrl2::Pbes;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
+use merc_symbolic::SymbolicLpsOptions;
 use merc_utilities::Timing;
 use merc_vpg::PG;
 use merc_vpg::ParityGameBuilder;
@@ -37,7 +38,8 @@ fn assert_symbolic_matches_explicit(text_pbes_relative_path: &str) {
 
     let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);
     let timing = Timing::new();
-    let states = explore_pbes_symbolic(&storage, &pbes, &timing).expect("Failed to explore PBES symbolically");
+    let states = explore_pbes_symbolic(&storage, &pbes, &SymbolicLpsOptions::default(), false, &timing)
+        .expect("Failed to explore PBES symbolically");
 
     assert_eq!(
         states.len() as usize,
