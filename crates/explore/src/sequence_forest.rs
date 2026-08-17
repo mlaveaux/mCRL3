@@ -86,8 +86,8 @@ const ROOT_EMPTY: u64 = (1u64 << (64 - MAX_HEIGHT_BITS)) - 1;
 /// invalidated by [`SequenceForest::clear`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct Tree {
-    /// Bits [63:6] hold the root node index; bits [5:0] hold the height.
-    /// When bits [63:6] equal `ROOT_EMPTY` the tree is empty.
+    /// Bits \[63:6\] hold the root node index; bits \[5:0\] hold the height.
+    /// When bits \[63:6\] equal `ROOT_EMPTY` the tree is empty.
     packed: u64,
 }
 

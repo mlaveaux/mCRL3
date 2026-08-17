@@ -14,7 +14,7 @@ use merc_syntax::UntypedDataSpecification;
 const FUNCTION_UPDATE_NAME: &str = "@func_update";
 
 /// Lowers every data expression in the equations of `spec` with
-/// [lower_data_expr], so later passes only see [DataExpr::Application] for
+/// [lower_data_expr], so later passes only see [DataExprKind::Application] for
 /// operators.
 pub(crate) fn lower_data_expressions(spec: &mut UntypedDataSpecification) {
     for eqn_spec in &mut spec.equation_declarations {

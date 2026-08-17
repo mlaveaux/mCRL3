@@ -22,7 +22,7 @@ use crate::apply_sorts_in_spec;
 /// `struct` would not terminate.
 ///
 /// Terminates on every specification that
-/// [`check_aliases`](crate::alias::check_aliases) accepts. The `visited` stack
+/// [`check_aliases`](super::alias::check_aliases) accepts. The `visited` stack
 /// keeps any alias reached again during its own expansion as a named
 /// representative, so a cycle is never unfolded — including a cycle that closes
 /// through an inline `struct`, which `check_aliases` permits (recursion through

@@ -147,7 +147,7 @@ where
 }
 
 /// Rewrites every `Reference` node of `sort` to `Resolved(name, DefId)` using
-/// the sort-name index built by [resolve_names], or fails on an undeclared name.
+/// the sort-name index built by [resolve_sort_ids], or fails on an undeclared name.
 fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Result<SortExpression, WellTypedError> {
     sort.clone().apply(|expr| {
         if let SortExpressionKind::Reference(name) = &expr.node {

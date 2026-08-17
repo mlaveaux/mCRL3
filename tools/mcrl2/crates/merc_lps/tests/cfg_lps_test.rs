@@ -35,8 +35,6 @@ fn read_preprocessed_lps(lps_path: &Path) -> LinearProcessSpecification {
 /// state/transition counts and are strongly bisimilar. Pruning summands
 /// whose guard cannot hold must never change the explored transition system.
 fn assert_cfg_matches_explicit(lps_path: &Path) {
-    let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
-
     let mut reference_builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut reference_builder,

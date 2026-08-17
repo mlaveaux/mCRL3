@@ -482,14 +482,14 @@ impl<'a, L: LTS, E> Translation<'a, L, E> {
         Ok(())
     }
 
-    /// Translates a modality vertex (s, [a]Ψ) or (s, <a>Ψ) into the variability parity game vertex and its outgoing edges.
+    /// Translates a modality vertex `(s, [a]Ψ)` or `(s, <a>Ψ)` into the variability parity game vertex and its outgoing edges.
     ///
     /// # Details
     ///
     /// Applies the following transformations:
     ///
-    /// > (s, [a] Ψ) → odd, (s', Ψ) for all s' with s -a-> s', 0
-    /// > (s, <a> Ψ) → even, (s', Ψ) for all s' with s -a-> s', 0
+    /// > `(s, [a] Ψ)` → odd, `(s', Ψ)` for all s' with s -a-> s', 0
+    /// > `(s, <a> Ψ)` → even, `(s', Ψ)` for all s' with s -a-> s', 0
     #[allow(clippy::too_many_arguments)]
     fn translate_modality_vertex<F, C>(
         &mut self,

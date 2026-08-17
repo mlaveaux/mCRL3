@@ -57,7 +57,7 @@ pub fn read_mcrl2_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<Str
     read_aut_impl(reader, MCRL2_TAU_LABEL)
 }
 
-/// The implementation of [read_aut] and [read_aut_mcrl2].
+/// The implementation of [read_aut] and [read_mcrl2_aut].
 ///
 /// The `tau_label` specifics which label is considered as the internal transition.
 fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransitionSystem<String>, MercError> {

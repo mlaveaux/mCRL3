@@ -294,7 +294,7 @@ fn compute_weak_act<L: LTS>(
 /// # Details
 ///
 /// Requires s.tau_mark iff s ->> B.
-/// For all a in A sets s.marked[a] iff s =[a]> B.
+/// For all a in A sets s.marked\[a\] iff s =\[a\]> B.
 ///
 /// Note that `B` is only used for debugging checks, and is not used in the actual algorithm.
 fn compute_weak_acts<L: LTS>(
@@ -352,7 +352,7 @@ fn compute_weak_acts<L: LTS>(
     }
 }
 
-/// The inner implementation of [compute_weak_acts]. For all action a, sets s.marked[a] iff s =[a]> B, where B is the given block.
+/// The inner implementation of [compute_weak_acts]. For all action a, sets s.marked\[a\] iff s =\[a\]> B, where B is the given block.
 ///
 /// # Details
 ///

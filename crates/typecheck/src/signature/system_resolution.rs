@@ -23,7 +23,7 @@ use crate::query_sort_of_def;
 /// Resolves the constructor and mapping declarations of the *basic-sort* part
 /// of the system-defined specification onto the interned sort lattice.
 ///
-/// `system` must be the *basic-sort* specification ([basic_sort_data_specification]),
+/// `system` must be the *basic-sort* specification ([`basic_sort_data_specification`](crate::basic_sort_data_specification)),
 /// not the full system-defined specification `build_system_defined_specification`
 /// produces: the container operations are looked up polymorphically instead
 /// (`POLYMORPHIC_SIGNATURE`), because resolving their per-sort instantiations

@@ -318,7 +318,7 @@ unsafe fn cast_to_shared_term_ptr<T>(ptr: &StablePointer<T>, arity: usize) -> St
 
 /// Storage for ATerms with a fixed number of arguments.
 ///
-/// Should be the same layout as [`crate::SharedTerm`] for the shared fields.
+/// Should be the same layout as [SharedTerm] for the shared fields.
 #[repr(C)]
 #[derive(Hash, Eq, PartialEq)]
 pub(crate) struct SharedTermFixed<const N: usize> {
@@ -332,7 +332,7 @@ unsafe impl<const N: usize> BlockAllocatorSafe for SharedTermFixed<N> {}
 
 /// Storage for integer ATerms.
 ///
-/// Should be the same layout as [`crate::SharedTerm`] for the shared fields.
+/// Should be the same layout as [SharedTerm] for the shared fields.
 #[repr(C)]
 #[derive(Hash, Eq, PartialEq)]
 pub(crate) struct SharedTermInt {

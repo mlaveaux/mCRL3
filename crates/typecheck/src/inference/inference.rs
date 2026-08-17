@@ -160,7 +160,7 @@ enum EquationRole {
 /// Returns the typing of one user equation, keyed by the id of its enclosing
 /// equation specification block and its own id within that block (assigned by
 /// [assign_declaration_ids](crate::assign_declaration_ids)). Memoized on
-/// [TypeckContext::equation_typing].
+/// [TypeCheckContext::equation_typing].
 pub(crate) fn query_equation_typing(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,

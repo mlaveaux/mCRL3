@@ -517,7 +517,7 @@ where
 pub struct Return<T> {
     term: T,
 
-    /// The recursive read guard borrows from the [RecursiveLock] owned by this thread's
+    /// The recursive read guard borrows from the [`RecursiveLock`](merc_sharedmutex::RecursiveLock) owned by this thread's
     /// [crate::storage::ThreadTermPool]. It is wrapped in [ManuallyDrop] so that its own
     /// [Drop] (which dereferences that lock) never runs implicitly; instead [Return::drop]
     /// releases it through [THREAD_TERM_POOL], which panics if the thread-local pool is already

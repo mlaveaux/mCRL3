@@ -111,7 +111,7 @@ fn group_and_merge(
 /// sorts and the Appendix-B operator names, and is not re-checked against the
 /// user-oriented well-typedness rules.
 ///
-/// `basics` is the [basic_sort_data_specification], passed in because the
+/// `basics` is the [`basic_sort_data_specification`](crate::basic_sort_data_specification), passed in because the
 /// caller also needs it separately for the system signature.
 ///
 /// Returns the merged specification alongside the [SystemEquationGroup]s its

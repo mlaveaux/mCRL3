@@ -113,7 +113,7 @@ impl SabreRewriter {
         (result, stats)
     }
 
-    /// The _aux function splits the [TermPool] pool and the [SetAutomaton] to make borrow checker happy.
+    /// The _aux function splits the [ThreadTermPool] pool and the [SetAutomaton] to make borrow checker happy.
     /// We can now mutate the term pool and read the state and transition information at the same time
     fn stack_based_normalise_aux(
         tp: &ThreadTermPool,

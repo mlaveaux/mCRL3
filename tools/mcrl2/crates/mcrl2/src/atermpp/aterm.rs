@@ -262,7 +262,7 @@ impl ATerm {
         THREAD_TERM_POOL.with_borrow(|tp| tp.from_string(s))
     }
 
-    /// Constructs an ATerm from a UniquePtr<aterm>. Note that we still do the
+    /// Constructs an ATerm from a `UniquePtr<aterm>`. Note that we still do the
     /// protection here, so the term is copied into the thread local term pool.
     pub(crate) fn from_unique_ptr(term: UniquePtr<aterm>) -> Self {
         debug_assert!(!term.is_null(), "Cannot create ATerm from null unique ptr");

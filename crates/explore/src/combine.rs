@@ -323,7 +323,7 @@ fn hide_action<L: CombineLabel>(hide: &[String], mut action: LtsMultiAction<L>) 
     action
 }
 
-/// Reusable scratch buffers for [`CartesianProduct`].
+/// Reusable scratch buffers for iterating the cartesian product of the active LTSs.
 ///
 /// Holding these buffers in a long-lived context avoids re-allocating per
 /// iteration.

@@ -222,6 +222,7 @@ fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
 
 /// Applies `RHS` to the given formula.
 ///
+/// ```text
 /// RHS(true) = true
 /// RHS(false) = false
 /// RHS(<a>f) = <a>RHS(f)
@@ -231,6 +232,7 @@ fn apply_e(equations: &mut Vec<Equation>, formula: &StateFrm) {
 /// RHS(X) = X
 /// RHS(mu X. f) = X(args)
 /// RHS(nu X. f) = X(args)
+/// ```
 fn rhs(formula: &StateFrm) -> StateFrm {
     let result = formula.clone().apply::<Infallible, _>(|formula| match &formula.node {
         // RHS(mu X. phi) = X(args)

@@ -11,7 +11,7 @@ use crate::ResolvedSortId;
 use crate::TypeCheckContext;
 
 /// Returns the resolved sort of the constructor with the given [ConstructorId],
-/// memoized on [TypeckContext::sort_of_constructor]. Requires
+/// memoized on [TypeCheckContext::sort_of_constructor]. Requires
 /// `id` to originate from `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
@@ -30,7 +30,7 @@ pub(crate) fn query_sort_of_constructor(
 }
 
 /// Returns the resolved sort of the map with the given [MapId], memoized on
-/// [TypeckContext::sort_of_map]. Requires `id` to originate from
+/// [TypeCheckContext::sort_of_map]. Requires `id` to originate from
 /// `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
@@ -50,7 +50,7 @@ pub(crate) fn query_sort_of_map(
 
 /// Returns the resolved sort of the `var_id`-th variable in the equation
 /// block identified by `eqn_spec_id`, memoized on
-/// [TypeckContext::sort_of_equation_var]. Requires both ids to originate from
+/// [TypeCheckContext::sort_of_equation_var]. Requires both ids to originate from
 /// `assign_declaration_ids` on `spec`.
 ///
 /// Covers the user specification only; the system-defined specification is
@@ -134,7 +134,7 @@ fn resolve_function_domain(
 
 /// Returns the resolved sort denoted by a sort declaration: the nominal sort
 /// for an abstract sort or struct representative (no alias body), or the
-/// resolved body for an alias. Memoized on [TypeckContext::sort_of_def].
+/// resolved body for an alias. Memoized on [TypeCheckContext::sort_of_def].
 ///
 /// Requires `def` to originate from name resolution of `spec`, so it indexes
 /// `sort_declarations`. Cyclic aliases were rejected by `check_aliases`, so the

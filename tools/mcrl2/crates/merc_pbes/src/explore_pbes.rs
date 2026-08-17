@@ -48,7 +48,7 @@ use crate::explore_common::compute_priorities;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
 
-/// Tag values occupy the top 4 bits of a state[0] word so they never collide
+/// Tag values occupy the top 4 bits of a `state[0]` word so they never collide
 /// with equation indices (which are small) or with usize::MAX (the sequence
 /// forest's empty-slot sentinel).
 const TAG_MASK: usize = 0xF << (usize::BITS - 4);
