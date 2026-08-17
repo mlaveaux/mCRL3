@@ -5,6 +5,7 @@ use pest::error::ErrorVariant;
 
 use merc_pest_consume::Error;
 use merc_pest_consume::match_nodes;
+use merc_utilities::Span;
 
 use crate::ActDecl;
 use crate::ActFrm;
@@ -49,7 +50,6 @@ use crate::Rule;
 use crate::SortDecl;
 use crate::SortExpression;
 use crate::SortExpressionKind;
-use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmKind;
 use crate::StateVarAssignment;

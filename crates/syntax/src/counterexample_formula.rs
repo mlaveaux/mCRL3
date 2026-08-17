@@ -1,3 +1,8 @@
+use merc_lts::TransitionLabel;
+use merc_reduction::DistinguishingFormula;
+use merc_refinement::CounterExample;
+use merc_utilities::Span;
+
 use crate::ActFrmKind;
 use crate::Action;
 use crate::FixedPointOperator;
@@ -5,14 +10,10 @@ use crate::ModalityOperator;
 use crate::MultiAction;
 use crate::RegFrm;
 use crate::RegFrmKind;
-use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmKind;
 use crate::StateFrmOp;
 use crate::StateVarDecl;
-use merc_lts::TransitionLabel;
-use merc_reduction::DistinguishingFormula;
-use merc_refinement::CounterExample;
 
 /// Generates a formula that characterizes the counter example trace.
 pub fn generate_refinement_formula<L: TransitionLabel>(counter_example: &CounterExample<L>) -> StateFrm {

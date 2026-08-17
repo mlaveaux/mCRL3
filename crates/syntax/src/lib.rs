@@ -19,6 +19,7 @@ pub(crate) use syntax_tree::*;
 
 pub use counterexample_formula::generate_distinguishing_formula;
 pub use counterexample_formula::generate_refinement_formula;
+pub use merc_utilities::Span;
 pub use parse::Mcrl2Parser;
 pub use parse::Rule;
 pub use parse::parse_action_names;
@@ -30,7 +31,6 @@ pub use random_data_expression::random_integer_data_expression;
 pub use random_lps::make_process_specification;
 pub use random_lps::random_lps;
 pub use random_pbes::random_pbes;
-pub use spanned::Span;
 pub use spanned::Spanned;
 pub use spanned::respan;
 pub use syntax_tree::ActFrm;

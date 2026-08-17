@@ -2,6 +2,8 @@ use std::fmt;
 
 use itertools::Itertools;
 
+use merc_utilities::Span;
+
 use crate::ActDecl;
 use crate::ActFrm;
 use crate::ActFrmBinaryOp;
@@ -42,7 +44,6 @@ use crate::Sort;
 use crate::SortDecl;
 use crate::SortExpression;
 use crate::SortExpressionKind;
-use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmKind;
 use crate::StateFrmOp;

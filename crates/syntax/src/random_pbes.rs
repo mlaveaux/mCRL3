@@ -2,6 +2,8 @@ use rand::Rng;
 use rand::RngExt;
 use rand::seq::IndexedRandom;
 
+use merc_utilities::Span;
+
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
 use crate::DataExprKind;
@@ -16,7 +18,6 @@ use crate::PropVarInst;
 use crate::Quantifier;
 use crate::Sort;
 use crate::SortExpressionKind;
-use crate::Span;
 use crate::UntypedPbes;
 use crate::random_boolean_data_expression;
 use crate::random_integer_data_expression;

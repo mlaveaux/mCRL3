@@ -7,6 +7,7 @@ use pest::pratt_parser::Op;
 use pest::pratt_parser::PrattParser;
 
 use merc_pest_consume::Node;
+use merc_utilities::Span;
 
 use crate::ActFrm;
 use crate::ActFrmBinaryOp;
@@ -34,7 +35,6 @@ use crate::RegFrm;
 use crate::RegFrmKind;
 use crate::Rule;
 use crate::Sort;
-use crate::Span;
 use crate::StateFrm;
 use crate::StateFrmKind;
 use crate::StateFrmOp;

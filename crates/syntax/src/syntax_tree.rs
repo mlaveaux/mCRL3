@@ -1,9 +1,9 @@
 use std::hash::Hash;
 
+use merc_utilities::Span;
 use merc_utilities::TagIndex;
 
-use crate::Span;
-use crate::Spanned;
+use crate::spanned::Spanned;
 
 /// A unique type for sort declarations.
 pub struct DefTag;
