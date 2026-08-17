@@ -297,16 +297,28 @@ impl PbesSrfLps {
                 let mut read_vars = free_variables_data_expression(&condition_de.copy());
 
                 // Position 0 (equation index) is always read; extend with positions
-                // whose parameter appears free in the condition or any target argument.
-                // Also compute write positions: position 0 is always written; position
-                // k+1 is written iff the k-th target argument is not the identity (param_k).
+                // whose parameter appears free in the condition or a *written* target
+                // argument. Also compute write positions: position 0 is always written;
+                // position k+1 is written iff the k-th target argument is not the
+                // identity (param_k).
+                //
+                // An identity argument contributes neither a write position nor a read
+                // dependency: the effect is [`StateEffect::Positions`], so a position
+                // outside the write set is replayed from the *live* source state rather
+                // than from the cache, and the value the summand was originally
+                // enumerated for is irrelevant. Adding it to the key would only split
+                // cache entries that could be shared. This matters because
+                // [`SrfPbes::unify_parameters`] above gives every equation the full
+                // parameter vector, which turns each parameter an equation merely passes
+                // through into exactly such an identity argument.
                 let mut read_positions = vec![0usize];
                 let mut write_positions = vec![0usize];
                 for (k, (param, arg)) in params_vec.iter().zip(target_pvi.arguments().iter()).enumerate() {
-                    read_vars.extend(free_variables_data_expression(&arg.copy()));
-                    if Into::<DataExpressionRef<'_>>::into(param.copy()) != arg.copy() {
-                        write_positions.push(k + 1);
+                    if Into::<DataExpressionRef<'_>>::into(param.copy()) == arg.copy() {
+                        continue;
                     }
+                    read_vars.extend(free_variables_data_expression(&arg.copy()));
+                    write_positions.push(k + 1);
                 }
                 for (i, param) in params_vec.iter().enumerate() {
                     if read_vars.contains(param) {
