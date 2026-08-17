@@ -57,6 +57,10 @@ pub struct ReachabilityOptions {
 
     /// Whether to detect and report deadlock states (states without outgoing transitions).
     pub detect_deadlocks: bool,
+
+    /// Whether every transition group caches the domain of its learned relation, so that it only
+    /// learns the successors of read projections it has not seen before.
+    pub cached: bool,
 }
 
 /// The result of a reachability run.
@@ -108,30 +112,34 @@ pub fn reachability_with_options<L: SymbolicLPS>(
         1,
     );
 
+    // The chaining and saturation strategies compute an entire fixpoint inside a single step, so the
+    // progress above can stay silent for a very long time. This one reports the frontier as it grows.
+    let step_progress = TimeProgress::new(
+        |(group, num_of_states)| {
+            info!("found {} todo state(s) up to transition group {}", num_of_states, group);
+        },
+        1,
+    );
+
     timing.measure("reachability", || {
         while !todo.is_empty() {
             debug!("Iteration {}: todo size = {}", iteration, todo.len());
 
-            let (todo1, step_deadlocks) = step(
-                storage,
-                lts,
-                &mut context,
-                &todo,
-                options.strategy,
-                options.detect_deadlocks,
-                timing,
-            )?;
+            let (todo1, step_deadlocks) = step(storage, lts, &mut context, &todo, options, timing, &step_progress)?;
 
             trace!("todo1 = {}", LddDisplay::new(&todo1));
 
             todo = todo1.minus(&states)?;
             states = states.union(&todo)?;
+
             if let Some(accumulated) = &mut deadlocks {
                 *accumulated = accumulated.union(&step_deadlocks)?;
             }
+
             if progress.is_due() {
                 progress.print((iteration, states.len()));
             }
+
             iteration += 1;
         }
 
@@ -142,25 +150,29 @@ pub fn reachability_with_options<L: SymbolicLPS>(
 /// Performs a single exploration step from the frontier `todo`.
 ///
 /// Returns `(todo1, deadlocks)`: the states reachable this step (the caller subtracts the already
-/// visited states) and, when `detect_deadlocks` is set, the subset of `todo` with no outgoing
-/// transition in any group. The transition relations are learned on the fly.
+/// visited states) and, when [ReachabilityOptions::detect_deadlocks] is set, the subset of `todo`
+/// with no outgoing transition in any group. The transition relations are learned on the fly.
+///
+/// For the chaining and saturation strategies a single step is a fixpoint computation that can take
+/// arbitrarily long, so `progress` reports `(group, frontier size)` while that fixpoint is computed.
 fn step<L: SymbolicLPS>(
     storage: &LDDManagerRef,
     lts: &mut L,
     context: &mut <L::Group as TransitionGroup>::Context,
     todo: &LDDFunction,
-    strategy: ExplorationStrategy,
-    detect_deadlocks: bool,
+    options: &ReachabilityOptions,
     timing: &Timing,
+    progress: &TimeProgress<(usize, usize)>,
 ) -> Result<(LDDFunction, LDDFunction), MercError> {
     let chaining = matches!(
-        strategy,
+        options.strategy,
         ExplorationStrategy::Chaining | ExplorationStrategy::SaturationChaining
     );
     let saturation = matches!(
-        strategy,
+        options.strategy,
         ExplorationStrategy::Saturation | ExplorationStrategy::SaturationChaining
     );
+    let detect_deadlocks = options.detect_deadlocks;
 
     let groups = lts.transition_groups_mut();
 
@@ -184,7 +196,7 @@ fn step<L: SymbolicLPS>(
             trace!("Learning successors for transition group {}:", i);
             let source = if chaining { todo1.clone() } else { todo.clone() };
             timing.measure(&format!("learn_successors_{}", i), || {
-                transition.learn_successors(context, storage, &source)
+                transition.learn_successors(context, storage, &source, options.cached)
             })?;
 
             let result = source.relational_product(transition.relation(), transition.meta())?;
@@ -192,6 +204,12 @@ fn step<L: SymbolicLPS>(
 
             if detect_deadlocks {
                 deadlocks = remove_states_with_successor(&todo1, transition, &deadlocks)?;
+            }
+
+            // Only chaining accumulates the frontier across groups; for breadth-first every group
+            // starts from `todo` again and the per-iteration progress already covers it.
+            if chaining && progress.is_due() {
+                progress.print((i, todo1.len()));
             }
         }
 
@@ -204,7 +222,7 @@ fn step<L: SymbolicLPS>(
         for i in 0..groups.len() {
             trace!("Learning successors for transition group {}:", i);
             timing.measure(&format!("learn_successors_{}", i), || {
-                groups[i].learn_successors(context, storage, &todo1)
+                groups[i].learn_successors(context, storage, &todo1, options.cached)
             })?;
 
             // Apply group i repeatedly until it no longer adds new states.
@@ -214,6 +232,10 @@ fn step<L: SymbolicLPS>(
                 todo1 = todo1.union(&result)?;
                 if todo1 == old {
                     break;
+                }
+
+                if progress.is_due() {
+                    progress.print((i, todo1.len()));
                 }
             }
 
@@ -231,6 +253,10 @@ fn step<L: SymbolicLPS>(
                     }
                     if todo1 == old {
                         break;
+                    }
+
+                    if progress.is_due() {
+                        progress.print((i, todo1.len()));
                     }
                 }
             }
@@ -277,6 +303,8 @@ mod test {
         let options = ReachabilityOptions {
             strategy,
             detect_deadlocks: false,
+            // The groups of a Sylvan fixture are fully explored, so there is nothing to cache.
+            cached: false,
         };
         reachability_with_options(&ldd_manager, &mut lts, &options, &Timing::new())
             .expect("Reachability should work correctly")
@@ -360,6 +388,7 @@ mod test {
             let options = ReachabilityOptions {
                 strategy,
                 detect_deadlocks: true,
+                cached: false,
             };
             let result = reachability_with_options(&manager, &mut lts, &options, &Timing::new())
                 .expect("Reachability should work correctly");
