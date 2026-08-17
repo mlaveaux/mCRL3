@@ -193,7 +193,6 @@ fn rec_test(rec_files: Vec<&str>, expected_result: &str, check_steps: bool) {
     }
 }
 
-
 #[cfg_attr(miri, ignore)]
 #[test_case(vec![include_str!("../../../examples/REC/rec/calls.rec")], include_str!("snapshot/result_calls.txt") ; "calls")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/check1.rec")], include_str!("snapshot/result_check1.txt") ; "check1")]
@@ -337,7 +336,7 @@ fn test_rec_specification_release_duplicating(rec_files: Vec<&str>, expected_res
 #[test_case(vec![include_str!("../../../examples/REC/rec/hanoi12.rec"), include_str!("../../../examples/REC/rec/hanoi.rec")], include_str!("snapshot/result_hanoi12.txt") ; "hanoi12")]
 #[test_case(vec![include_str!("../../../examples/REC/rec/permutations7.rec"), include_str!("../../../examples/REC/rec/permutations.rec")], include_str!("snapshot/result_permutations7.txt") ; "permutations7")]
 fn test_rec_specification_largestack(rec_files: Vec<&str>, expected_result: &str) {
-    rec_test(rec_files, expected_result,true);
+    rec_test(rec_files, expected_result, true);
 }
 
 // The deep-recursion specifications that also lost the step-count invariant; see
@@ -351,7 +350,7 @@ fn test_rec_specification_largestack(rec_files: Vec<&str>, expected_result: &str
 #[test_case(vec![include_str!("../../../examples/REC/rec/factorial8.rec"), include_str!("../../../examples/REC/rec/factorial.rec")], include_str!("snapshot/result_factorial8.txt") ; "factorial8")]
 // #[test_case(vec![include_str!("../../../examples/REC/rec/factorial9.rec"), include_str!("../../../examples/REC/rec/factorial.rec")], include_str!("snapshot/result_factorial9.txt") ; "factorial9")]
 fn test_rec_specification_largestack_todo_stepcount_regression(rec_files: Vec<&str>, expected_result: &str) {
-    rec_test(rec_files, expected_result,false);
+    rec_test(rec_files, expected_result, false);
 }
 
 // // These REC tests have META data that is not supported by the current implementation.

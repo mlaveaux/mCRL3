@@ -314,7 +314,9 @@ impl ThreadTermPool {
             let mut protection_set = self.protection_set.write_exclusive();
             debug_trace!(
                 "Dropped term {:?}, index {}, protection set {}",
-                term.term, term.root, self.index
+                term.term,
+                term.root,
+                self.index
             );
             // SAFETY: `term.root` was returned by a matching `protect` and the
             // owning `ATerm` is dropped exactly once, so it is unprotected once.
@@ -328,7 +330,8 @@ impl ThreadTermPool {
             let mut container_protection_set = self.container_protection_set.write_exclusive();
             debug_trace!(
                 "Dropped container index {}, protection set {}",
-                container_root, self.index
+                container_root,
+                self.index
             );
             // SAFETY: `container_root` was returned by a matching `protect` and
             // the owning handle is dropped exactly once, so it is unprotected once.
@@ -366,7 +369,9 @@ impl ThreadTermPool {
         let term = unsafe { ATermRef::new(term) };
         debug_trace!(
             "Protected term {:?}, index {}, protection set {}",
-            term, root, self.index
+            term,
+            root,
+            self.index
         );
 
         let result = ATerm::from_ref(term, root);
