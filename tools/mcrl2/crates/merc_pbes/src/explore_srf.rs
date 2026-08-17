@@ -28,7 +28,7 @@ use merc_explore::Summand;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
-use merc_vpg::ParityGame;
+use merc_vpg::PGBuilder;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 
@@ -40,41 +40,45 @@ use crate::explore_common::compute_priorities;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
 
-/// Builds a [`ParityGame`] by exploring the given PBES in SRF format.
-pub fn explore_srf_pbes(
+/// Builds a parity game by exploring the given PBES in SRF format, using
+/// `builder` to accumulate the result - see [`PGBuilder`].
+pub fn explore_srf_pbes<B: PGBuilder>(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
     timing: &Timing,
-) -> Result<ParityGame, MercError> {
+    builder: B,
+) -> Result<B::PG, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
 
     match caching {
-        CachingStrategy::None => explore_pbes_impl(&lps, strategy, timing),
+        CachingStrategy::None => explore_pbes_impl(&lps, strategy, timing, builder),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_impl(&cached, strategy, timing)?;
+            let game = explore_pbes_impl(&cached, strategy, timing, builder)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }
     }
 }
 
-/// Builds a [`ParityGame`] by exploring the given PBES in SRF format in parallel.
-pub fn explore_srf_pbes_parallel(
+/// Builds a parity game by exploring the given PBES in SRF format in
+/// parallel, using `builder` to accumulate the result - see [`PGBuilder`].
+pub fn explore_srf_pbes_parallel<B: PGBuilder>(
     pbes: &Pbes,
     threads: usize,
     caching: CachingStrategy,
     pinned: bool,
     timing: &Timing,
-) -> Result<ParityGame, MercError> {
+    builder: B,
+) -> Result<B::PG, MercError> {
     let lps = PbesSrfLps::new(pbes)?;
 
     match caching {
-        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned, timing),
+        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned, timing, builder),
         _ => {
             let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_parallel_impl(&cached, threads, pinned, timing)?;
+            let game = explore_pbes_parallel_impl(&cached, threads, pinned, timing, builder)?;
             debug!("{}", cached.metrics());
             Ok(game)
         }

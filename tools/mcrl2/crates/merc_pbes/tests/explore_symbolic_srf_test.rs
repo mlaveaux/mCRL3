@@ -5,6 +5,8 @@ use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_utilities::Timing;
 use merc_vpg::PG;
+use merc_vpg::ParityGameBuilder;
+use merc_vpg::VertexIndex;
 
 use merc_pbes::explore_pbes_symbolic;
 use merc_pbes::explore_srf_pbes;
@@ -24,8 +26,14 @@ fn assert_symbolic_matches_explicit(text_pbes_relative_path: &str) {
 
     let pbes = Pbes::from_text_file(text_pbes_path.to_str().unwrap()).expect("Failed to read text PBES");
 
-    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, CachingStrategy::None, &Timing::new())
-        .expect("Failed to build parity game");
+    let game = explore_srf_pbes(
+        &pbes,
+        ExplorationStrategy::Bfs,
+        CachingStrategy::None,
+        &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
+    )
+    .expect("Failed to build parity game");
 
     let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);
     let timing = Timing::new();

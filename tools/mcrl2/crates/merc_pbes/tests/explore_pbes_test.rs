@@ -8,6 +8,8 @@ use merc_io::temp_dir;
 use merc_io::traced_command;
 use merc_utilities::Timing;
 use merc_vpg::PG;
+use merc_vpg::ParityGameBuilder;
+use merc_vpg::VertexIndex;
 use merc_vpg::solve_zielonka;
 
 use merc_pbes::explore_pbes;
@@ -26,6 +28,7 @@ fn assert_general_matches_srf(pbes: &Pbes) {
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("SRF exploration failed");
     let game_gen = explore_pbes(
@@ -33,6 +36,7 @@ fn assert_general_matches_srf(pbes: &Pbes) {
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("General exploration failed");
 
@@ -156,6 +160,7 @@ fn assert_cached_matches_uncached(pbes: &Pbes) {
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("uncached exploration failed");
     let game_cached = explore_pbes(
@@ -163,6 +168,7 @@ fn assert_cached_matches_uncached(pbes: &Pbes) {
         ExplorationStrategy::Bfs,
         CachingStrategy::Local,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("cached exploration failed");
 
@@ -269,13 +275,21 @@ fn assert_parallel_matches_sequential(pbes: &Pbes) {
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("sequential exploration failed");
     let (sol_sequential, _) = solve_zielonka(&sequential, false);
 
     for caching in [CachingStrategy::None, CachingStrategy::Local] {
-        let parallel = explore_pbes_parallel(normalised.clone(), 4, caching, false, &Timing::new())
-            .expect("parallel exploration failed");
+        let parallel = explore_pbes_parallel(
+            normalised.clone(),
+            4,
+            caching,
+            false,
+            &Timing::new(),
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )
+        .expect("parallel exploration failed");
         let (sol_parallel, _) = solve_zielonka(&parallel, false);
 
         assert_eq!(
@@ -316,8 +330,14 @@ fn test_parallel_data_param_with_pvi() {
 fn test_initial_state_is_rewritten() {
     let pbes = Pbes::from_text("pbes nu X(n: Nat) = val(n >= 3) || X(n + 1);\ninit X(1 + 1);").expect("parse failed");
 
-    let game = explore_pbes(pbes, ExplorationStrategy::Bfs, CachingStrategy::None, &Timing::new())
-        .expect("an initial state that needs rewriting must still be explorable");
+    let game = explore_pbes(
+        pbes,
+        ExplorationStrategy::Bfs,
+        CachingStrategy::None,
+        &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
+    )
+    .expect("an initial state that needs rewriting must still be explorable");
 
     // X(2), X(3) and the true sink: X(1 + 1) is X(2), not a state of its own.
     assert_eq!(game.num_of_vertices(), 3);
@@ -335,7 +355,8 @@ fn test_preprocess_instantiates_global_variables() {
             unprocessed,
             ExplorationStrategy::Bfs,
             CachingStrategy::None,
-            &Timing::new()
+            &Timing::new(),
+            ParityGameBuilder::new(VertexIndex::new(0)),
         )
         .is_err(),
         "an uninstantiated global variable cannot be rewritten to a value"
@@ -348,6 +369,7 @@ fn test_preprocess_instantiates_global_variables() {
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("after preprocessing the global variable has a value");
 }
@@ -382,6 +404,7 @@ fn test_shared_subformula_is_one_vertex() {
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         &Timing::new(),
+        ParityGameBuilder::new(VertexIndex::new(0)),
     )
     .expect("general exploration failed");
 

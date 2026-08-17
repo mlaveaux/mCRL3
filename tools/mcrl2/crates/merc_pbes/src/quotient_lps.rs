@@ -200,6 +200,8 @@ mod tests {
     use merc_utilities::MercError;
     use merc_utilities::Timing;
     use merc_vpg::PG;
+    use merc_vpg::ParityGameBuilder;
+    use merc_vpg::VertexIndex;
     use merc_vpg::solve_zielonka;
 
     use crate::bsgs::Bsgs;
@@ -233,11 +235,21 @@ init X(true);"#;
         let bsgs = Arc::new(Bsgs::from_generators(&[], n, &gap_config())?);
 
         let timing = Timing::new();
-        let plain_game = explore_pbes_impl(&lps, ExplorationStrategy::Bfs, &timing)?;
+        let plain_game = explore_pbes_impl(
+            &lps,
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         let lps2 = PbesSrfLps::new(&pbes)?;
         let qlps = QuotientLps::new(lps2, bsgs, 1);
-        let quot_game = explore_pbes_impl(&qlps, ExplorationStrategy::Bfs, &timing)?;
+        let quot_game = explore_pbes_impl(
+            &qlps,
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         assert_eq!(plain_game.num_of_vertices(), quot_game.num_of_vertices());
         assert_eq!(plain_game.num_of_edges(), quot_game.num_of_edges());
@@ -261,7 +273,12 @@ init X(true);"#;
         let qlps = QuotientLps::new(cached, bsgs, 1);
 
         let timing = Timing::new();
-        let game = explore_pbes_impl(&qlps, ExplorationStrategy::Bfs, &timing)?;
+        let game = explore_pbes_impl(
+            &qlps,
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
         assert!(game.num_of_vertices() > 0);
         Ok(())
     }
@@ -284,13 +301,23 @@ init X(0, 1);"#;
         let pbes = mcrl2::Pbes::from_text(SYMMETRIC_PBES)?;
         let timing = Timing::new();
 
-        let plain = explore_pbes_impl(&PbesLps::new(pbes.clone())?, ExplorationStrategy::Bfs, &timing)?;
+        let plain = explore_pbes_impl(
+            &PbesLps::new(pbes.clone())?,
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         let lps = PbesLps::new(pbes)?;
         let n = lps.num_params();
         let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
         let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &gap_config())?);
-        let quotient = explore_pbes_impl(&QuotientLps::new(lps, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
+        let quotient = explore_pbes_impl(
+            &QuotientLps::new(lps, bsgs, 1),
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         assert!(
             quotient.num_of_vertices() < plain.num_of_vertices(),
@@ -321,7 +348,12 @@ init X(0, 1);"#;
         let pbes = mcrl2::Pbes::from_text(SYMMETRIC_PBES)?;
         let timing = Timing::new();
 
-        let plain = explore_pbes_impl(&PbesSrfLps::new(&pbes)?, ExplorationStrategy::Bfs, &timing)?;
+        let plain = explore_pbes_impl(
+            &PbesSrfLps::new(&pbes)?,
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         let lps = PbesSrfLps::new(&pbes)?;
         assert_eq!(
@@ -333,7 +365,12 @@ init X(0, 1);"#;
         // whichever of the two orders `unify_parameters` happened to produce.
         let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
         let bsgs = Arc::new(Bsgs::from_generators(&generators, lps.num_params(), &gap_config())?);
-        let quotient = explore_pbes_impl(&QuotientLps::new(lps, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
+        let quotient = explore_pbes_impl(
+            &QuotientLps::new(lps, bsgs, 1),
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         assert!(
             quotient.num_of_vertices() < plain.num_of_vertices(),
@@ -367,10 +404,16 @@ init X(0, 1);"#;
             &QuotientLps::new(lps, Arc::clone(&bsgs), 1),
             ExplorationStrategy::Bfs,
             &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
         )?;
 
         let cached = CacheLPS::new(PbesLps::new(pbes)?, CachingStrategy::Local);
-        let cached = explore_pbes_impl(&QuotientLps::new(cached, bsgs, 1), ExplorationStrategy::Bfs, &timing)?;
+        let cached = explore_pbes_impl(
+            &QuotientLps::new(cached, bsgs, 1),
+            ExplorationStrategy::Bfs,
+            &timing,
+            ParityGameBuilder::new(VertexIndex::new(0)),
+        )?;
 
         assert_eq!(uncached.num_of_vertices(), cached.num_of_vertices());
         assert_eq!(uncached.num_of_edges(), cached.num_of_edges());

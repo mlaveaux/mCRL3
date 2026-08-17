@@ -17,8 +17,7 @@ use merc_lts::StateIndex;
 use merc_utilities::MercError;
 use merc_utilities::ShardedCounter;
 use merc_utilities::Timing;
-use merc_vpg::ParityGame;
-use merc_vpg::ParityGameBuilder;
+use merc_vpg::PGBuilder;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 use merc_vpg::VertexIndex;
@@ -232,14 +231,23 @@ pub fn bes_progress() -> TimeProgress<(VertexCounts, usize)> {
     )
 }
 
-/// Builds a [`ParityGame`] by exploring any LPS that produces unit labels and
-/// [`PbesVertex`] state info (i.e. a parity game vertex description).
-pub fn explore_pbes_impl<M>(lps: &M, strategy: ExplorationStrategy, timing: &Timing) -> Result<ParityGame, MercError>
+/// Builds a parity game by exploring any LPS that produces unit labels and
+/// [`PbesVertex`] state info (i.e. a parity game vertex description), using
+/// `builder` to accumulate the result.
+///
+/// `builder` is generic over [`PGBuilder`] so a caller that does not need the
+/// resulting game (only its side effects, such as the vertex/edge counts
+/// logged below) can pass `()` and skip materialising it - see [`PGBuilder`].
+pub fn explore_pbes_impl<M, B>(
+    lps: &M,
+    strategy: ExplorationStrategy,
+    timing: &Timing,
+    mut builder: B,
+) -> Result<B::PG, MercError>
 where
     M: LPS<Value = usize, Label = (), StateInfo = PbesVertex>,
+    B: PGBuilder,
 {
-    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
-
     let progress = bes_progress();
     let counts = Cell::new(VertexCounts::default());
     let edges = Cell::new(0usize);
@@ -249,12 +257,12 @@ where
         strategy,
         timing,
         &mut builder,
-        |b: &mut ParityGameBuilder, state: StateIndex, info: &PbesVertex| {
+        |b: &mut B, state: StateIndex, info: &PbesVertex| {
             counts.set(counts.get().with(info.kind));
             b.add_vertex(VertexIndex::new(state.value()), info.player, info.priority);
             Ok(())
         },
-        |b: &mut ParityGameBuilder, from: StateIndex, _label: &(), to: StateIndex| {
+        |b: &mut B, from: StateIndex, _label: &(), to: StateIndex| {
             edges.set(edges.get() + 1);
             progress.print((counts.get(), edges.get()));
             b.add_edge(VertexIndex::new(from.value()), VertexIndex::new(to.value()));
@@ -276,16 +284,24 @@ pub struct PbesPartition {
     pub edges: Vec<(VertexIndex, VertexIndex)>,
 }
 
-/// Builds a [`ParityGame`] by exploring any sync-safe LPS in parallel.
-pub fn explore_pbes_parallel_impl<M>(
+/// Builds a parity game by exploring any sync-safe LPS in parallel, using
+/// `builder` to accumulate the result.
+///
+/// Unlike [`explore_pbes_impl`], a discarding `builder` (`()`) only skips the
+/// final merge into the game below - every worker still buffers its own
+/// vertices and edges in a [`PbesPartition`] during exploration regardless of
+/// `B`, since that partitioning happens independently of the builder.
+pub fn explore_pbes_parallel_impl<M, B>(
     lps: &M,
     threads: usize,
     pinned: bool,
     timing: &Timing,
-) -> Result<ParityGame, MercError>
+    mut builder: B,
+) -> Result<B::PG, MercError>
 where
     M: LPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <M::Summand as Summand>::Context: Send,
+    B: PGBuilder,
 {
     let pool = configure_rayon_thread_pool(threads, pinned)?;
     let instantiations = ShardedCounter::new();
@@ -334,7 +350,6 @@ where
     let total_edges: usize = partitions.iter().map(|p| p.edges.len()).sum();
     report_counts(counts, total_edges);
 
-    let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
     for partition in &partitions {
         for &(index, vertex) in &partition.vertices {
             builder.add_vertex(index, vertex.player, vertex.priority);
