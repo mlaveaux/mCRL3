@@ -10,6 +10,9 @@ version.workspace = true
 # Tracks per-summand cache and control-flow pruning counters during exploration.
 metrics = ["merc_explore/metrics"]
 
+# Derive the `clap::ValueEnum` trait.
+clap = []
+
 [lints]
 workspace = true
 

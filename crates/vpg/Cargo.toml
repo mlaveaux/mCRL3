@@ -35,6 +35,7 @@ oxidd.workspace = true
 oxidd-core.workspace = true
 rand.workspace = true
 regex.workspace = true
+rustc-hash.workspace = true
 streaming-iterator.workspace = true
 thiserror.workspace = true
 

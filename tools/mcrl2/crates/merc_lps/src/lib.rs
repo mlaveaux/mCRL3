@@ -19,6 +19,7 @@ pub mod cfg_lps;
 pub mod control_flow;
 pub mod explore_explicit;
 pub mod explore_symbolic;
+pub mod io;
 
 pub use cfg_lps::CfgLinearProcessSpecification;
 pub use cfg_lps::CfgMetrics;
@@ -29,3 +30,4 @@ pub use explore_explicit::Mcrl2MultiActionLabel;
 pub use explore_explicit::explore_lps_explicit;
 pub use explore_explicit::explore_lps_explicit_parallel;
 pub use explore_symbolic::explore_lps_symbolic;
+pub use io::LpsFormat;

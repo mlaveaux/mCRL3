@@ -50,8 +50,12 @@ use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::Summand;
 use merc_vpg::PG;
+use merc_vpg::PGBuilder;
+use merc_vpg::ParityGame;
+use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::Solver;
+use merc_vpg::VertexIndex;
 use merc_vpg::solve_priority_promotion;
 use merc_vpg::solve_zielonka;
 use merc_vpg::verify_solution;
@@ -381,9 +385,15 @@ impl InputArgs {
 }
 
 impl ExploreArgs {
-    /// Explores `pbes` into a parity game, applying symmetry reduction when
-    /// generators are supplied or detected, and writes the game to `--output`.
-    fn explore(&self, pbes: Pbes, timing: &Timing) -> Result<merc_vpg::ParityGame, MercError> {
+    /// Explores `pbes` into a parity game using `builder`, applying symmetry
+    /// reduction when generators are supplied or detected.
+    ///
+    /// Generic over [`PGBuilder`] so a caller that only needs the exploration's
+    /// side effects (timing, or the vertex/edge counts the exploration loop
+    /// itself logs) can pass `()` and skip materialising the game - see
+    /// [`ExploreArgs::write_output`] for writing a real one to `--output`
+    /// afterwards.
+    fn explore<B: PGBuilder>(&self, pbes: Pbes, timing: &Timing, builder: B) -> Result<B::PG, MercError> {
         // Explicit generators take precedence over detection: giving both means
         // the user already knows the group and only detection would be redundant.
         let bsgs = if !self.quotient.is_empty() {
@@ -399,41 +409,55 @@ impl ExploreArgs {
             None
         };
 
-        let game = if let Some(bsgs) = bsgs {
-            explore_with_symmetry(&pbes, self, bsgs, timing)?
+        if let Some(bsgs) = bsgs {
+            explore_with_symmetry(&pbes, self, bsgs, timing, builder)
         } else if self.threads > 1 && self.srf {
-            explore_srf_pbes_parallel(&pbes, self.threads, self.caching, self.pinned, timing)?
+            explore_srf_pbes_parallel(&pbes, self.threads, self.caching, self.pinned, timing, builder)
         } else if self.threads > 1 {
-            explore_pbes_parallel(pbes, self.threads, self.caching, self.pinned, timing)?
+            explore_pbes_parallel(pbes, self.threads, self.caching, self.pinned, timing, builder)
         } else if self.srf {
-            explore_srf_pbes(&pbes, self.strategy, self.caching, timing)?
+            explore_srf_pbes(&pbes, self.strategy, self.caching, timing, builder)
         } else {
-            explore_pbes(pbes, self.strategy, self.caching, timing)?
-        };
+            explore_pbes(pbes, self.strategy, self.caching, timing, builder)
+        }
+    }
 
+    /// Writes `game` to `--output` in PGSolver format, if requested. A no-op
+    /// when `--output` was not given.
+    fn write_output(&self, game: &ParityGame) -> Result<(), MercError> {
         if let Some(output) = &self.output {
             let mut output_file = File::create(output)?;
-            write_pg(&mut output_file, &game)?;
+            write_pg(&mut output_file, game)?;
             info!("Parity game written to '{}'", output.display());
         }
-
-        Ok(game)
+        Ok(())
     }
 }
 
 fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
-    let game = args.explore.explore(args.input.read(timing, preprocess)?, timing)?;
+    let pbes = args.input.read(timing, preprocess)?;
 
-    // Reported as log key-values so that `format_key_values_json` renders them as
-    // a JSON object next to the human-readable message, which makes the sizes
-    // machine-consumable without parsing the message text.
-    info!(
-        vertices = game.num_of_vertices(),
-        edges = game.num_of_edges();
-        "Parity game: {} vertices, {} edges",
-        game.num_of_vertices(),
-        game.num_of_edges()
-    );
+    if args.explore.output.is_some() {
+        let game = args
+            .explore
+            .explore(pbes, timing, ParityGameBuilder::new(VertexIndex::new(0)))?;
+        args.explore.write_output(&game)?;
+
+        // Reported as log key-values so that `format_key_values_json` renders them as
+        // a JSON object next to the human-readable message, which makes the sizes
+        // machine-consumable without parsing the message text.
+        info!(
+            vertices = game.num_of_vertices(),
+            edges = game.num_of_edges();
+            "Parity game: {} vertices, {} edges",
+            game.num_of_vertices(),
+            game.num_of_edges()
+        );
+    } else {
+        // No output requested, discard the explored game - the exploration loop
+        // itself already logs the vertex/edge counts as it goes.
+        args.explore.explore(pbes, timing, ())?;
+    }
 
     Ok(())
 }
@@ -550,13 +574,15 @@ fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str, timing: &Timing) -> Result<A
     Ok(bsgs)
 }
 
-/// Explore `pbes` into a parity game, canonicalizing every next-state via `bsgs`.
-fn explore_with_symmetry(
+/// Explore `pbes` into a parity game using `builder`, canonicalizing every
+/// next-state via `bsgs`.
+fn explore_with_symmetry<B: PGBuilder>(
     pbes: &Pbes,
     args: &ExploreArgs,
     bsgs: Arc<Bsgs>,
     timing: &Timing,
-) -> Result<merc_vpg::ParityGame, MercError> {
+    builder: B,
+) -> Result<B::PG, MercError> {
     // Both explorers unify with the same flags as `symmetry_parameter_basis`, so
     // they are expected to agree with it; SRF normalisation is the one that could
     // still add or reorder parameters on the way, since it introduces equations
@@ -566,21 +592,23 @@ fn explore_with_symmetry(
     if args.srf {
         let lps = PbesSrfLps::new(pbes)?;
         check_parameter_basis(&basis, &lps.parameters(), "SRF")?;
-        quotient_explore(&lps, args, bsgs, timing)
+        quotient_explore(&lps, args, bsgs, timing, builder)
     } else {
         let lps = PbesLps::new(pbes.clone())?;
         check_parameter_basis(&basis, &lps.parameters(), "structure-graph")?;
-        quotient_explore(&lps, args, bsgs, timing)
+        quotient_explore(&lps, args, bsgs, timing, builder)
     }
 }
 
-/// Explore `lps` into a parity game, canonicalizing every next-state via `bsgs`.
-fn quotient_explore<P>(
+/// Explore `lps` into a parity game using `builder`, canonicalizing every
+/// next-state via `bsgs`.
+fn quotient_explore<P, B: PGBuilder>(
     lps: &P,
     args: &ExploreArgs,
     bsgs: Arc<Bsgs>,
     timing: &Timing,
-) -> Result<merc_vpg::ParityGame, MercError>
+    builder: B,
+) -> Result<B::PG, MercError>
 where
     P: ParameterLayoutLPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <P::Summand as Summand>::Context: Send,
@@ -589,9 +617,9 @@ where
         CachingStrategy::None => {
             let qlps = QuotientLps::new(lps, bsgs, 1);
             if args.threads > 1 {
-                explore_pbes_parallel_impl(&qlps, args.threads, args.pinned, timing)
+                explore_pbes_parallel_impl(&qlps, args.threads, args.pinned, timing, builder)
             } else {
-                explore_pbes_impl(&qlps, args.strategy, timing)
+                explore_pbes_impl(&qlps, args.strategy, timing, builder)
             }
         }
         caching => {
@@ -601,9 +629,9 @@ where
             let cached = CacheLPS::new(lps, caching);
             let qlps = QuotientLps::new(&cached, bsgs, 1);
             let game = if args.threads > 1 {
-                explore_pbes_parallel_impl(&qlps, args.threads, args.pinned, timing)
+                explore_pbes_parallel_impl(&qlps, args.threads, args.pinned, timing, builder)
             } else {
-                explore_pbes_impl(&qlps, args.strategy, timing)
+                explore_pbes_impl(&qlps, args.strategy, timing, builder)
             }?;
             debug!("{}", cached.metrics());
             Ok(game)
@@ -614,7 +642,13 @@ where
 /// Handles the solve command, which explores a PBES into a parity game and
 /// solves the game, printing the solution of the initial vertex.
 fn handle_solve(args: &SolveArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
-    let game = args.explore.explore(args.input.read(timing, preprocess)?, timing)?;
+    // Solving always needs the actual game, unlike plain `explore-explicit`.
+    let game = args.explore.explore(
+        args.input.read(timing, preprocess)?,
+        timing,
+        ParityGameBuilder::new(VertexIndex::new(0)),
+    )?;
+    args.explore.write_output(&game)?;
 
     let (solution, strategy) = timing.measure("solve", || match args.solver {
         Solver::Zielonka => solve_zielonka(&game, args.verify_solution),

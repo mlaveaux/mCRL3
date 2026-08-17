@@ -89,11 +89,13 @@ impl ModalEquationSystem {
     }
 
     /// Returns the number of equations in the system.
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.equations.len()
     }
 
     /// Returns true if the system contains no equations.
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.equations.is_empty()
     }

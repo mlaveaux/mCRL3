@@ -30,6 +30,7 @@ pub(crate) use zielonka::*;
 pub use feature_transition_system::FeatureDiagram;
 pub use feature_transition_system::read_fts;
 pub use parity_games::PG;
+pub use parity_games::PGBuilder;
 pub use parity_games::ParityGame;
 pub use parity_games::ParityGameBuilder;
 pub use parity_games::ParityGameFormat;

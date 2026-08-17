@@ -300,8 +300,10 @@ impl Mcrl2MultiActionLabel {
     }
 
     /// Protects the multi-action term on the current thread for use with the
-    /// mCRL2 FFI, which expects a thread-local [`ATerm`].
-    fn as_aterm(&self) -> ATerm {
+    /// mCRL2 FFI, which expects a thread-local [`ATerm`]. Exposed so consumers
+    /// can inspect the individual actions and their arguments, which `Display`
+    /// flattens into a single pretty-printed string.
+    pub fn as_aterm(&self) -> ATerm {
         self.term.protect_local()
     }
 }
@@ -597,6 +599,12 @@ impl ExplicitSummand {
     /// The non-identity assignments (write parameters) of this summand.
     pub fn write_assignments(&self) -> &ATermList<ATerm> {
         &self.write_assignments
+    }
+
+    /// The multi-action template of this summand, before rewriting under any
+    /// particular source state.
+    pub fn multi_action(&self) -> &Mcrl2MultiActionLabel {
+        &self.multi_action
     }
 }
 
