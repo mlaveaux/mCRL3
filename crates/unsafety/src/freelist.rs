@@ -95,19 +95,6 @@ impl<T: FreeListEntry> FreeList<T> {
         }
     }
 
-    /// Returns a mutable iterator over freelist entries.
-    ///
-    /// # Safety
-    ///
-    /// Every node reachable from the head must remain valid for the duration of
-    /// the walk, and no two yielded `&mut T` may alias (the list must be acyclic).
-    pub unsafe fn iter_mut(&mut self) -> FreeListIteratorMut<'_, T> {
-        FreeListIteratorMut {
-            current: NonNull::new(self.head.get()),
-            marker: PhantomData,
-        }
-    }
-
     /// Clears the freelist head.
     pub fn clear(&mut self) {
         self.head.set(std::ptr::null_mut());
@@ -144,29 +131,6 @@ impl<T: FreeListEntry> Iterator for FreeListIterator<T> {
                 self.current = NonNull::new(T::get_next(current.as_ptr()));
             }
             Some(current)
-        } else {
-            None
-        }
-    }
-}
-
-/// Mutable iterator over entries in a [`FreeList`].
-pub struct FreeListIteratorMut<'a, T: FreeListEntry> {
-    current: Option<NonNull<T>>,
-    marker: PhantomData<&'a mut T>,
-}
-
-impl<'a, T: FreeListEntry> Iterator for FreeListIteratorMut<'a, T> {
-    type Item = &'a mut T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(current) = self.current {
-            // Safety: `current` is a freelist node; its link field is valid to read.
-            unsafe {
-                let current_ptr = current.as_ptr();
-                self.current = NonNull::new(T::get_next(current_ptr));
-                Some(&mut *current_ptr)
-            }
         } else {
             None
         }

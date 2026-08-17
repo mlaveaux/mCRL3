@@ -51,12 +51,14 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
     }
 
     /// Returns true iff the antichain is empty.
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.storage.is_empty()
     }
 
     /// Returns the number of pairs in the antichain, i.e., the number of items
     /// yielded by [`Antichain::iter`].
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.storage.values().map(|values| values.len()).sum()
     }

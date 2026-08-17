@@ -10,8 +10,6 @@ pub mod matching;
 pub mod test_utility;
 pub mod utilities;
 
-pub(crate) use sabre_rewriter::*;
-
 pub use innermost_rewriter::AnnouncementInnermost;
 pub use innermost_rewriter::InnermostRewriter;
 pub use naive_rewriter::NaiveRewriter;

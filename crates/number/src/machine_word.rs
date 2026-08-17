@@ -1,6 +1,3 @@
-//! Native implementations of the machine-word (`@word`) operations declared in
-//! `crates/syntax/spec/machine_word.mcrl2`.
-
 use num::BigUint;
 use num::integer::Roots;
 

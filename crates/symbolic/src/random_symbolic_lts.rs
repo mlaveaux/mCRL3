@@ -58,6 +58,7 @@ pub fn random_symbolic_lts<R: Rng>(
         } else {
             rng.random_range(0..parameters.len())
         };
+        
         let read_parameters = parameters
             .sample(rng, num_of_read_variables)
             .cloned()
@@ -68,6 +69,7 @@ pub fn random_symbolic_lts<R: Rng>(
         } else {
             rng.random_range(0..parameters.len())
         };
+
         let write_parameters = parameters
             .sample(rng, num_of_write_variables)
             .cloned()

@@ -43,10 +43,6 @@ impl<T: ?Sized + Erasable> Thin<T> {
         self.ptr
     }
 
-    pub fn as_ptr(&self) -> *mut T {
-        unsafe { T::unerase(self.ptr) }.as_ptr()
-    }
-
     pub fn as_nonnull(&self) -> NonNull<T> {
         unsafe { T::unerase(self.ptr) }
     }
