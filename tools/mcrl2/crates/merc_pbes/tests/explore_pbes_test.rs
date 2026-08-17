@@ -12,7 +12,10 @@ use merc_vpg::ParityGameBuilder;
 use merc_vpg::VertexIndex;
 use merc_vpg::solve_zielonka;
 
+use merc_explore::CacheLPS;
+use merc_pbes::PbesLps;
 use merc_pbes::explore_pbes;
+use merc_pbes::explore_pbes_impl;
 use merc_pbes::explore_pbes_parallel;
 use merc_pbes::explore_srf_pbes;
 
@@ -34,7 +37,6 @@ fn assert_general_matches_srf(pbes: &Pbes) {
     let game_gen = explore_pbes(
         normalised,
         ExplorationStrategy::Bfs,
-        CachingStrategy::None,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )
@@ -151,6 +153,12 @@ fn test_multiple_equations_data() {
 }
 
 /// Explores `pbes` with local caching and asserts the result matches the uncached exploration.
+///
+/// [`explore_pbes`] itself no longer offers caching, since none of [`PbesLps`]'s
+/// summands can benefit from it. Its state effects are still consumed whenever a
+/// [`CacheLPS`] is composed with it — which is what [`crate::quotient_lps`] does —
+/// so the declarations still have to be honest, and this builds that composition
+/// explicitly to keep checking them.
 fn assert_cached_matches_uncached(pbes: &Pbes) {
     let mut normalised = pbes.clone();
     normalised.normalize();
@@ -166,7 +174,6 @@ fn assert_cached_matches_uncached(pbes: &Pbes) {
     let game_cached = explore_pbes(
         normalised,
         ExplorationStrategy::Bfs,
-        CachingStrategy::Local,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )
@@ -273,7 +280,6 @@ fn assert_parallel_matches_sequential(pbes: &Pbes) {
     let sequential = explore_pbes(
         normalised.clone(),
         ExplorationStrategy::Bfs,
-        CachingStrategy::None,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )
@@ -333,7 +339,6 @@ fn test_initial_state_is_rewritten() {
     let game = explore_pbes(
         pbes,
         ExplorationStrategy::Bfs,
-        CachingStrategy::None,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )
@@ -354,7 +359,6 @@ fn test_preprocess_instantiates_global_variables() {
         explore_pbes(
             unprocessed,
             ExplorationStrategy::Bfs,
-            CachingStrategy::None,
             &Timing::new(),
             ParityGameBuilder::new(VertexIndex::new(0)),
         )
@@ -367,7 +371,6 @@ fn test_preprocess_instantiates_global_variables() {
     explore_pbes(
         preprocessed,
         ExplorationStrategy::Bfs,
-        CachingStrategy::None,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )
@@ -402,7 +405,6 @@ fn test_shared_subformula_is_one_vertex() {
     let game = explore_pbes(
         normalised,
         ExplorationStrategy::Bfs,
-        CachingStrategy::None,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )

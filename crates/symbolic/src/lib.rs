@@ -21,7 +21,6 @@ pub(crate) use dependency_graph::*;
 pub(crate) use ldd::*;
 pub(crate) use symbolic_lps::*;
 pub(crate) use util::*;
-pub(crate) use variable_order::*;
 
 #[cfg(test)]
 pub(crate) use random_symbolic_lts::*;

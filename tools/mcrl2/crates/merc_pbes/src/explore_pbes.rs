@@ -4,7 +4,6 @@ use std::iter;
 use std::ops::Range;
 use std::sync::Arc;
 
-use log::debug;
 use mcrl2::_aterm;
 use mcrl2::ATermStringRef;
 use mcrl2::DataExpression;
@@ -28,8 +27,6 @@ use mcrl2::is_pbes_propositional_variable_instantiation;
 use mcrl2::is_pbes_true;
 use mcrl2::is_variable;
 use mcrl2::variable_occurrences_data_expression;
-use merc_explore::CacheLPS;
-use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::LPS;
 use merc_explore::OwnedStateEffect;
@@ -112,6 +109,31 @@ unsafe fn name_key(name: ATermStringRef<'_>) -> ATermStringRef<'static> {
 /// - FALSE sink: `[FALSE_SINK]`
 /// - Subformula AND: `[AND_OP, subformula_idx]`
 /// - Subformula OR:  `[OR_OP,  subformula_idx]`
+///
+/// # Why this explorer is not wrapped in a [`merc_explore::CacheLPS`]
+///
+/// Unlike [`crate::explore_srf::PbesSrfLps`], which caching speeds up
+/// substantially, none of this explorer's summands can benefit:
+///
+/// - An explorer enumerates each state exactly once, so a cache hit needs *two
+///   distinct* states to share a key. The sink and subformula summands read
+///   `[0]` and `[0, 1]` respectively, which is their entire state, so their keys
+///   are injective and they never hit — measured on `alloc3`, the subformula
+///   summand stored one entry per subformula vertex for zero hits.
+/// - An equation summand is [`StateEffect::Opaque`] unless its right-hand side is
+///   a bare instantiation (see [`formula_positions`]). Under an opaque effect the
+///   whole next state is captured, so every parameter the right-hand side merely
+///   passes through has to be part of the key as well, which widens the key to
+///   the point where distinct states rarely share one.
+/// - The expensive work — the quantifier-enumerating rewrite of the right-hand
+///   side — happens in [`LPS::prepare`], which
+///   [`merc_explore::CacheLPS`] forwards uncached. Even on a hit that cost is
+///   already paid, leaving only the cheap walk over the rewritten formula to save.
+///
+/// Making caching worthwhile here would need a state effect that can describe
+/// "either an opaque vector or the source with these positions overwritten", so
+/// that pass-through values could be replayed from the live source state instead
+/// of joining the key.
 pub struct PbesLps {
     /// The unified PBES; retained so the terms borrowed by the summands stay
     /// alive, and read back by [`PbesLps::parameters`].
@@ -675,31 +697,28 @@ where
 
 /// Builds a parity game by exploring the given PBES directly (no SRF
 /// conversion), using `builder` to accumulate the result - see [`PGBuilder`].
+///
+/// # Why there is no caching option
+///
+/// Enumeration caching ([`merc_explore::CacheLPS`]) cannot pay off for this
+/// explorer, so it is deliberately not offered; see [`PbesLps`] for the details.
 pub fn explore_pbes<B: PGBuilder>(
     pbes: Pbes,
     strategy: ExplorationStrategy,
-    caching: CachingStrategy,
     timing: &Timing,
     builder: B,
 ) -> Result<B::PG, MercError> {
     let lps = PbesLps::new(pbes)?;
-    match caching {
-        CachingStrategy::None => explore_pbes_impl(&lps, strategy, timing, builder),
-        _ => {
-            let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_impl(&cached, strategy, timing, builder)?;
-            debug!("{}", cached.metrics());
-            Ok(game)
-        }
-    }
+    explore_pbes_impl(&lps, strategy, timing, builder)
 }
 
 /// Builds a parity game by exploring the given PBES directly in parallel,
 /// using `builder` to accumulate the result - see [`PGBuilder`].
+///
+/// Caching is not offered here either, for the reasons given on [`explore_pbes`].
 pub fn explore_pbes_parallel<B: PGBuilder>(
     pbes: Pbes,
     threads: usize,
-    caching: CachingStrategy,
     pinned: bool,
     timing: &Timing,
     builder: B,

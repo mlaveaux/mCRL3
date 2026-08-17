@@ -162,7 +162,10 @@ struct ExploreArgs {
     #[arg(long, value_enum, default_value_t = ExplorationStrategy::Bfs)]
     strategy: ExplorationStrategy,
 
-    /// Caching strategy to use during exploration.
+    /// Caching strategy to use during exploration. Only affects `--srf`, whose
+    /// summands have the positional state effect that makes a cache key narrow
+    /// enough to be shared; the direct structure-graph explorer cannot benefit
+    /// (see `PbesLps`) and ignores this.
     #[arg(long, value_enum, default_value_t = CachingStrategy::None)]
     caching: CachingStrategy,
 
@@ -464,11 +467,11 @@ impl ExploreArgs {
         } else if self.threads > 1 && self.srf {
             explore_srf_pbes_parallel(&pbes, self.threads, self.caching, self.pinned, timing, builder)
         } else if self.threads > 1 {
-            explore_pbes_parallel(pbes, self.threads, self.caching, self.pinned, timing, builder)
+            explore_pbes_parallel(pbes, self.threads, self.pinned, timing, builder)
         } else if self.srf {
             explore_srf_pbes(&pbes, self.strategy, self.caching, timing, builder)
         } else {
-            explore_pbes(pbes, self.strategy, self.caching, timing, builder)
+            explore_pbes(pbes, self.strategy, timing, builder)
         }
     }
 
@@ -652,11 +655,11 @@ fn explore_with_symmetry<B: PGBuilder>(
     if args.srf {
         let lps = PbesSrfLps::new(pbes)?;
         check_parameter_basis(&basis, &lps.parameters(), "SRF")?;
-        quotient_explore(&lps, args, bsgs, timing, builder)
+        quotient_explore(&lps, args, bsgs, args.cahcing, timing, builder)
     } else {
         let lps = PbesLps::new(pbes.clone())?;
         check_parameter_basis(&basis, &lps.parameters(), "structure-graph")?;
-        quotient_explore(&lps, args, bsgs, timing, builder)
+        quotient_explore(&lps, args, bsgs, CachingStrategy::None, timing, builder)
     }
 }
 
@@ -665,6 +668,7 @@ fn explore_with_symmetry<B: PGBuilder>(
 fn quotient_explore<P, B: PGBuilder>(
     lps: &P,
     args: &ExploreArgs,
+    caching: CachingStrategy,
     bsgs: Arc<Bsgs>,
     timing: &Timing,
     builder: B,
@@ -673,7 +677,7 @@ where
     P: ParameterLayoutLPS<Value = usize, Label = (), StateInfo = PbesVertex> + Sync,
     <P::Summand as Summand>::Context: Send,
 {
-    match args.caching {
+    match caching {
         CachingStrategy::None => {
             let qlps = QuotientLps::new(lps, bsgs, 1);
             if args.threads > 1 {
