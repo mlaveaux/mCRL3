@@ -655,11 +655,11 @@ fn explore_with_symmetry<B: PGBuilder>(
     if args.srf {
         let lps = PbesSrfLps::new(pbes)?;
         check_parameter_basis(&basis, &lps.parameters(), "SRF")?;
-        quotient_explore(&lps, args, bsgs, args.cahcing, timing, builder)
+        quotient_explore(&lps, args, args.caching, bsgs, timing, builder)
     } else {
         let lps = PbesLps::new(pbes.clone())?;
         check_parameter_basis(&basis, &lps.parameters(), "structure-graph")?;
-        quotient_explore(&lps, args, bsgs, CachingStrategy::None, timing, builder)
+        quotient_explore(&lps, args, CachingStrategy::None, bsgs, timing, builder)
     }
 }
 

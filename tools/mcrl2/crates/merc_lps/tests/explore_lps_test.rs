@@ -82,7 +82,6 @@ fn compare_with_lps2lts_caching(spec_relative_path: &str, strategy: CachingStrat
         .relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label))
         .unwrap();
 
-    let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
     let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
     explore_lps_explicit(
         &mut builder,
@@ -222,10 +221,8 @@ fn compare_random_lps_with_lps2lts(strategy: CachingStrategy) {
         assert!(status.success(), "lps2lts failed with status: {status}");
 
         let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap()).expect("Failed to read reference .aut");
-
-        let lps = read_lps(lps_path.to_str().unwrap()).expect("Failed to read LPS");
         let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
-        explore_lps_explicit(
+        let result_lts = explore_lps_explicit(
             &mut builder,
             read_preprocessed_lps(&lps_path),
             strategy,
@@ -234,7 +231,6 @@ fn compare_random_lps_with_lps2lts(strategy: CachingStrategy) {
             &Timing::new(),
         )
         .expect("Failed to explore LPS");
-        let result_lts = builder.finish(StateIndex::new(0), false);
 
         assert_eq!(
             reference_lts.num_of_states(),

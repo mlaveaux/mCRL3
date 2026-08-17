@@ -724,15 +724,7 @@ pub fn explore_pbes_parallel<B: PGBuilder>(
     builder: B,
 ) -> Result<B::PG, MercError> {
     let lps = PbesLps::new(pbes)?;
-    match caching {
-        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned, timing, builder),
-        _ => {
-            let cached = CacheLPS::new(&lps, caching);
-            let game = explore_pbes_parallel_impl(&cached, threads, pinned, timing, builder)?;
-            debug!("{}", cached.metrics());
-            Ok(game)
-        }
-    }
+    explore_pbes_parallel_impl(&lps, threads, pinned, timing, builder)
 }
 
 /// Computes the read positions and the state effect of an equation summand.

@@ -12,10 +12,7 @@ use merc_vpg::ParityGameBuilder;
 use merc_vpg::VertexIndex;
 use merc_vpg::solve_zielonka;
 
-use merc_explore::CacheLPS;
-use merc_pbes::PbesLps;
 use merc_pbes::explore_pbes;
-use merc_pbes::explore_pbes_impl;
 use merc_pbes::explore_pbes_parallel;
 use merc_pbes::explore_srf_pbes;
 
@@ -166,7 +163,6 @@ fn assert_cached_matches_uncached(pbes: &Pbes) {
     let game_uncached = explore_pbes(
         normalised.clone(),
         ExplorationStrategy::Bfs,
-        CachingStrategy::None,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )
@@ -290,7 +286,6 @@ fn assert_parallel_matches_sequential(pbes: &Pbes) {
         let parallel = explore_pbes_parallel(
             normalised.clone(),
             4,
-            caching,
             false,
             &Timing::new(),
             ParityGameBuilder::new(VertexIndex::new(0)),
