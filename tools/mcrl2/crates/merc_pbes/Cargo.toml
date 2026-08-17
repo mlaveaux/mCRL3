@@ -6,6 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[features]
+# Tracks per-summand cache and control-flow pruning counters during exploration.
+metrics = ["merc_explore/metrics"]
+
 [lints]
 workspace = true
 

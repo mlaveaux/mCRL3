@@ -977,6 +977,7 @@ dependencies = [
  "mcrl2",
  "merc_explore",
  "merc_pbes",
+ "merc_symbolic",
  "merc_tools",
  "merc_unsafety",
  "merc_utilities",
