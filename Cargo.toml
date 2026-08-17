@@ -26,6 +26,7 @@ members = [
     "crates/explore",
     "crates/io",
     "crates/lts",
+    "crates/lts/benchmarks",
     "crates/macros",
     "crates/number",
     "crates/rec-tests",

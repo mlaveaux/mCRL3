@@ -33,7 +33,8 @@ let mut builder = LtsBuilderMem::new(vec!["a".to_string(), "b".to_string()], vec
 builder.add_transition(StateIndex::new(0), "a", StateIndex::new(1));
 builder.add_transition(StateIndex::new(1), "b", StateIndex::new(1));
 
-let lts = builder.finish(StateIndex::new(0)).expect("Should not fail");
+// The `remove_duplicates` flag additionally removes duplicate transitions.
+let lts = builder.finish(StateIndex::new(0), false);
 assert_eq!(lts.num_of_states(), 2);
 assert_eq!(lts.num_of_transitions(), 2);
 ```

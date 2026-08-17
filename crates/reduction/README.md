@@ -59,7 +59,7 @@ some convenience traits.
 This crate was developed by Maurice Laveaux and Jan Martens. The main
 signature based branching bisimulation algorithm is described in the paper:
 
-> Maurice Laveaux and Jan J.M. Martens. Faster Signature Refinement for Branching Bisimilarity Minimization. TACAS 2026.
+> Jan J.M. Martens and Maurice Laveaux. Faster Signature Refinement for Branching Bisimilarity Minimization. TACAS 2026.
 
 ## Safety
 
