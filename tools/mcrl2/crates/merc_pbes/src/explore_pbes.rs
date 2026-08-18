@@ -51,6 +51,15 @@ use crate::explore_common::explore_pbes_parallel_impl;
 /// Tag values occupy the top 4 bits of a `state[0]` word so they never collide
 /// with equation indices (which are small) or with usize::MAX (the sequence
 /// forest's empty-slot sentinel).
+///
+/// `[AND_OP/OR_OP, subformula_idx]` is how an *intermediate* vertex of the
+/// parity game graph is represented — a nested and/or sub-formula that has no
+/// equation of its own, produced when flattening ([`enumerate_formula_children`])
+/// can't remove a connective nested inside the other one (e.g. the `||` in
+/// `(A || B) && C`). `AND_OP`/`OR_OP` says which connective it is (also fixing
+/// its owner, the same way [`player_of`] does for an equation), and
+/// `subformula_idx` is its slot in `subformula_mapping`; together they are all
+/// [`emit_as_target`] needs to create such a vertex and later re-expand it.
 const TAG_MASK: usize = 0xF << (usize::BITS - 4);
 /// Source state is a true-sink (self-loop, Even wins).
 const TRUE_SINK: usize = 0x1 << (usize::BITS - 4);
@@ -350,6 +359,11 @@ impl PbesLps {
             ));
         }
 
+        // Three summands, fixed in number regardless of PBES size, are appended
+        // after the num_equations equation summands: `prepare` dispatches on
+        // `state[0]`'s tag bits alone (TAG_MASK), so one shared summand serves
+        // every state carrying a given tag rather than one summand per vertex.
+
         // A sink's only transition is the self-loop, so nothing changes.
         let true_sink_summand = summands.len();
         summands.push(make_summand(
@@ -635,6 +649,13 @@ where
 /// A sub-formula target is always a strict subterm of `expr`'s parent formula,
 /// which is what makes the subformula subgraph acyclic and lets those vertices
 /// share [`SUBFORMULA_PRIORITY`] regardless of which equation reached them.
+///
+/// A subformula vertex needs no stored record of its enclosing equation's
+/// parameter values: by the time `expr` reaches here it is a subterm of
+/// `psi`, the right-hand side [`PbesLps::prepare`] already instantiated with
+/// those values, so every parameter reference in it is already substituted
+/// away. The interned term is therefore closed — `subformula_idx` alone is
+/// enough to re-expand it later.
 fn emit_as_target<F>(
     expr: PbesExpressionRef<'_>,
     tables: TargetTables<'_>,

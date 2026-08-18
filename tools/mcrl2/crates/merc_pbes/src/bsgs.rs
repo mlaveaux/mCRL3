@@ -99,19 +99,18 @@ impl SchreierLevel {
 /// allocates nothing.
 #[derive(Default)]
 pub(crate) struct CanonicalizeContext {
-    /// The candidate prefixes of the current level, concatenated as image
-    /// vectors: candidate `k` is `current[k * n..(k + 1) * n]`.
+    /// The surviving candidate prefixes after the positions decided so far,
+    /// concatenated as image vectors: candidate `k` is `current[k * n..(k + 1) * n]`.
     current: Vec<usize>,
 
-    /// The same arena for the level being built; swapped with `current` per level.
+    /// The same arena for the survivors of the position being decided; swapped
+    /// with `current` after each position.
     next: Vec<usize>,
 
     /// Indices `(candidate, transversal slot)` of the pairs that achieve the
-    /// level's best value.
+    /// best value at a base point. Unused when pruning a non-base position,
+    /// since there `current` is filtered directly into `next`.
     survivors: Vec<(usize, usize)>,
-
-    /// The lex-least full image found in the final comparison.
-    best: Vec<usize>,
 }
 
 /// A base and strong generating set, stored as a stabilizer chain.
@@ -199,7 +198,8 @@ impl Bsgs {
     ///
     /// # Details
     ///
-    /// Pruned transversal walk over the stabilizer chain. Writing the image as
+    /// Pruned transversal walk over the stabilizer chain, deciding one image
+    /// position at a time in index order `j = 0, …, n-1`. Writing the image as
     /// `w[j] = params[σ(j)]` for `σ ∈ G`, each `σ` factorises uniquely as
     /// `σ = u_1 ∘ … ∘ u_k` with `u_i ∈ U_i`. Every factor beyond level `i` lies in
     /// the stabilizer of `β_i`, so `σ(β_i) = (u_1 ∘ … ∘ u_i)(β_i)` is already fixed
@@ -207,13 +207,17 @@ impl Bsgs {
     /// level `i` we can keep only the prefixes minimising `w[β_i]` and discard the
     /// rest, because no later choice can change that entry.
     ///
-    /// Deciding positions in base order equals deciding them in index order
-    /// because the base is strictly increasing and any position skipped by the base
-    /// is fixed by the whole group at that level, hence contributes the same value
-    /// to every candidate.
+    /// A position `j` the base skips is fixed by the stabilizer at that depth, so
+    /// it is invariant across every way of *extending* one fixed prefix — but not
+    /// across prefixes that only tied at an earlier level via different coset
+    /// representatives, since those genuinely differ on `j`. So `j` still has to
+    /// be scored and pruned on before moving to the next base point; it's just
+    /// pruned by evaluating `params[prefix[j]]` directly rather than searching a
+    /// transversal, since no factor remains to choose there.
     ///
-    /// Cost: Σ |U_i| transversal scans and one composition per surviving candidate,
-    /// versus |orbit|·n for the naive BFS.
+    /// Cost: Σ |U_i| transversal scans, one comparison per surviving candidate for
+    /// each skipped position, and one composition per surviving candidate per
+    /// level — versus |orbit|·n for the naive BFS.
     pub(crate) fn canonicalize(&self, state: &[usize], param_offset: usize) -> Vec<usize> {
         let mut out = Vec::with_capacity(state.len());
         self.canonicalize_into(state, param_offset, &mut CanonicalizeContext::default(), &mut out);
@@ -251,59 +255,74 @@ impl Bsgs {
             current,
             next,
             survivors,
-            best,
         } = scratch;
 
         // Candidate prefixes `u_1 ∘ … ∘ u_i` that all achieve the lex-min entries
-        // at base points β_1, …, β_i decided so far, as concatenated image vectors.
+        // at every position decided so far, as concatenated image vectors.
         current.clear();
         current.extend(0..n); // the identity, the empty product
 
-        for level in &self.chain {
-            // Score every extension without building it. Extending on the right
-            // gives `(prefix ∘ u)(β_i) = prefix(u(β_i))`, and `u(β_i)` is exactly
-            // the orbit point the transversal entry is paired with, so the image
-            // entry `w[β_i] = params[(prefix ∘ u)(β_i)]` is one lookup away.
-            survivors.clear();
-            let mut best_value = usize::MAX;
-            for (p, prefix) in current.chunks_exact(n).enumerate() {
-                for (u_idx, &(orbit_point, _)) in level.transversal.iter().enumerate() {
-                    let value = params[prefix[orbit_point]];
+        let mut levels = self.chain.iter().peekable();
+        for j in 0..n {
+            if levels.peek().is_some_and(|level| level.base_point == j) {
+                let level = levels.next().expect("just peeked");
+
+                // Score every extension without building it. Extending on the
+                // right gives `(prefix ∘ u)(β_i) = prefix(u(β_i))`, and `u(β_i)`
+                // is exactly the orbit point the transversal entry is paired
+                // with, so the image entry `w[β_i] = params[(prefix ∘ u)(β_i)]`
+                // is one lookup away.
+                survivors.clear();
+                let mut best_value = usize::MAX;
+                for (p, prefix) in current.chunks_exact(n).enumerate() {
+                    for (u_idx, &(orbit_point, _)) in level.transversal.iter().enumerate() {
+                        let value = params[prefix[orbit_point]];
+
+                        if value < best_value {
+                            best_value = value;
+                            survivors.clear();
+                            survivors.push((p, u_idx));
+                        } else if value == best_value {
+                            survivors.push((p, u_idx));
+                        }
+                    }
+                }
+
+                // Only now compose, and only for the extensions that survived.
+                next.clear();
+                for &(p, u_idx) in survivors.iter() {
+                    let prefix = &current[p * n..(p + 1) * n];
+                    let u = &level.transversal[u_idx].1;
+                    next.extend(u.images.iter().map(|&x| prefix[x]));
+                }
+            } else {
+                // `j` isn't a base point: no transversal choice remains to make
+                // here, but surviving prefixes can still disagree on `params[prefix[j]]`,
+                // so prune on it directly rather than skipping straight to the
+                // next base point.
+                next.clear();
+                let mut best_value = usize::MAX;
+                for prefix in current.chunks_exact(n) {
+                    let value = params[prefix[j]];
 
                     if value < best_value {
                         best_value = value;
-                        survivors.clear();
-                        survivors.push((p, u_idx));
+                        next.clear();
+                        next.extend_from_slice(prefix);
                     } else if value == best_value {
-                        survivors.push((p, u_idx));
+                        next.extend_from_slice(prefix);
                     }
                 }
-            }
-
-            // Only now compose, and only for the extensions that survived.
-            next.clear();
-            for &(p, u_idx) in survivors.iter() {
-                let prefix = &current[p * n..(p + 1) * n];
-                let u = &level.transversal[u_idx].1;
-                next.extend(u.images.iter().map(|&x| prefix[x]));
             }
 
             std::mem::swap(current, next);
         }
 
-        // The surviving candidates agree on every base point but may still differ
-        // on positions the base does not cover, so compare the full images
-        // `w[i] = params[σ(i)]`, which `cmp` does without building them.
-        best.clear();
-        for sigma in current.chunks_exact(n) {
-            if best.is_empty() || sigma.iter().map(|&i| params[i]).cmp(best.iter().copied()).is_lt() {
-                best.clear();
-                best.extend(sigma.iter().map(|&i| params[i]));
-            }
-        }
-
+        // Every position has now been scored and pruned on in index order, so
+        // all surviving candidates already agree on the full image; any one of
+        // them is the lex-min representative.
         out.extend_from_slice(&state[..param_offset]);
-        out.extend_from_slice(if best.is_empty() { params } else { best });
+        out.extend(current[..n].iter().map(|&i| params[i]));
     }
 
     /// Flat list of all generators appearing across all levels.
@@ -819,6 +838,33 @@ mod tests {
                 assert_eq!(naive, pruned, "disagreement on {state:?} (n = {n})");
             }
         }
+    }
+
+    /// Regression test for a real disagreement `random_canonicalize_matches_naive`
+    /// found at `MERC_SEED=11966697021231288197`.
+    ///
+    /// The Schreier–Sims base for these generators is `[0, 2, 3]`, skipping index
+    /// `1` because it's fixed by the stabilizer of `0`. At base point `0`, three
+    /// cosets tie for the lex-min value (reaching `params` through orbit points
+    /// `2`, `4`, and `3`), but they disagree on the skipped index `1` (values
+    /// `1`, `0`, `0`). [`Bsgs::canonicalize`] used to only score base points, so
+    /// it let the `1`-valued candidate go on to win at base point `2` before
+    /// index `1` was ever compared, evicting the true minimizers. See
+    /// [`Bsgs::canonicalize`]'s doc comment for why every position — not just
+    /// the base — has to be pruned on.
+    #[test]
+    fn canonicalize_matches_naive_regression_ties_at_skipped_base_position() {
+        let n = 6;
+        let g1 = Permutation::from_cycle_notation("(3 4)").unwrap();
+        let g2 = Permutation::from_cycle_notation("(0 2 4)(1 5 3)").unwrap();
+        let bsgs = bsgs_schreier_sims(&[g1, g2], n).unwrap();
+
+        let state = vec![7usize, 2, 2, 0, 0, 0, 1];
+        let naive = bsgs.canonicalize_naive(&state, 1);
+        let pruned = bsgs.canonicalize(&state, 1);
+
+        assert_eq!(pruned, naive, "canonicalize and the BFS oracle disagree on {state:?}");
+        assert_eq!(pruned, vec![7, 0, 0, 2, 0, 1, 2]);
     }
 
     /// Canonicalization must be constant on orbits: every image of a state has to

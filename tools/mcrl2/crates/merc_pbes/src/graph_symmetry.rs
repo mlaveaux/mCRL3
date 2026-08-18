@@ -398,14 +398,23 @@ fn unified_parameters(equations: &mcrl2::PbesEquations) -> Result<Vec<DataVariab
 
 /// Builds the symmetry detection graph of `pbes`.
 ///
-/// Every equation must already share the same parameter vector; call
-/// [`graph_symmetries`] (which calls [`Pbes::unify_parameters`] first) when
-/// that precondition is not yet established.
+/// Preconditions, both checked and reported as an error rather than assumed:
+/// - Every equation must already share the same parameter vector; call
+///   [`graph_symmetries`] (which calls [`Pbes::unify_parameters`] first) when
+///   that precondition is not yet established.
+/// - No quantifier or data-level abstraction in any equation may bind a
+///   variable with the same name *and* sort as a parameter -- see
+///   [`SdgBuilder::push_scope`] for why such shadowing, though it parses and
+///   type-checks fine, cannot be tolerated here.
+///
+/// `where` clauses are also rejected (see [`SdgBuilder::colour_of`]); PBES
+/// standard form does not produce them, but a user-supplied PBES may still
+/// contain one.
 pub fn build_sdg(pbes: &Pbes) -> Result<Sdg, MercError> {
     let equations = pbes.equations();
     let parameters = unified_parameters(&equations)?;
 
-    let mut builder = SdgBuilder::new();
+    let mut builder = SdgBuilder::new(&parameters);
 
     // Allocate the parameter vertices first, so `NodeIndex(k) == parameter
     // k`. This is what makes "restrict an automorphism to the parameter
@@ -495,16 +504,21 @@ struct SdgBuilder {
     /// innermost last, used to tell a bound-variable occurrence apart from a
     /// PBES parameter of the same name (see [`VertexColour::BoundVariable`]).
     scope: Vec<DataVariable>,
+
+    /// The unified PBES parameters, checked against every binder in
+    /// [`Self::push_scope`] -- see there for why a collision cannot be tolerated.
+    parameters: HashSet<DataVariable>,
 }
 
 impl SdgBuilder {
-    fn new() -> Self {
+    fn new(parameters: &[DataVariable]) -> Self {
         SdgBuilder {
             graph: UnGraph::new_undirected(),
             colours: Vec::new(),
             equations: Vec::new(),
             term_map: HashMap::new(),
             scope: Vec::new(),
+            parameters: parameters.iter().cloned().collect(),
         }
     }
 
@@ -547,16 +561,40 @@ impl SdgBuilder {
 
     /// Pushes `variables` onto the bound-variable scope, returning how many
     /// were pushed (for [`Self::pop_scope`]).
-    fn push_scope<I>(&mut self, variables: I) -> usize
+    ///
+    /// Rejects a variable that collides (same name *and* sort) with a PBES
+    /// parameter. [`VertexColour::BoundVariable`] relies on distinguishing a
+    /// binder from a parameter by checking whether the *name* is in scope, but
+    /// [`Self::visit`] deduplicates vertices by ATerm identity, and mCRL2's
+    /// hash-consing makes a bound variable and a parameter of the same name
+    /// and sort the very same term. Such a collision would therefore merge the
+    /// parameter's vertex with the binder's, coloured whichever the traversal
+    /// happens to visit first -- silently corrupting the automorphism
+    /// computation rather than raising an error. This precondition is not
+    /// enforced by mCRL2's type checker (shadowing a parameter with an
+    /// identically-sorted bound variable parses and type-checks fine), so it
+    /// must be checked here.
+    fn push_scope<I>(&mut self, variables: I, equation: usize) -> Result<usize, MercError>
     where
         I: Iterator<Item = DataVariable>,
     {
         let mut count = 0;
         for variable in variables {
+            if self.parameters.contains(&variable) {
+                return Err(format!(
+                    "equation {equation}: quantifier-/abstraction-bound variable '{variable}' has \
+                     the same name and sort as a PBES parameter. Symmetry detection cannot tell such \
+                     a bound variable apart from the parameter it shadows (mCRL2's hash-consed terms \
+                     make them the same term), so it would corrupt the detected symmetries rather than \
+                     just shadowing it as expected. Rename the bound variable, or the parameter, so \
+                     that no binder in any equation collides with a parameter."
+                )
+                .into());
+            }
             self.scope.push(variable);
             count += 1;
         }
-        count
+        Ok(count)
     }
 
     fn pop_scope(&mut self, count: usize) {
@@ -719,12 +757,12 @@ impl SdgBuilder {
             self.visit_child(node, not.body(), EdgeColour::Uncoloured, equation)?;
         } else if is_pbes_forall(&r) {
             let forall = PbesForallRef::from(r);
-            let pushed = self.push_scope(forall.variables().iter());
+            let pushed = self.push_scope(forall.variables().iter(), equation)?;
             self.visit_child(node, forall.body(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_pbes_exists(&r) {
             let exists = PbesExistsRef::from(r);
-            let pushed = self.push_scope(exists.variables().iter());
+            let pushed = self.push_scope(exists.variables().iter(), equation)?;
             self.visit_child(node, exists.body(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_pbes_propositional_variable_instantiation(&r) {
@@ -774,7 +812,7 @@ impl SdgBuilder {
             }
         } else if is_abstraction(&r) {
             let abstraction = DataAbstractionRef::from(r);
-            let pushed = self.push_scope(abstraction.variables().iter());
+            let pushed = self.push_scope(abstraction.variables().iter(), equation)?;
             self.visit_child(node, abstraction.body().into(), EdgeColour::Uncoloured, equation)?;
             self.pop_scope(pushed);
         } else if is_where_clause(&r) {
@@ -1609,6 +1647,47 @@ mod tests {
 
         let result = build_sdg(&pbes);
         assert!(result.is_err(), "differing parameter vectors must be rejected");
+    }
+
+    /// A quantifier-bound variable that collides with a parameter (same name
+    /// *and* sort) must be rejected: mCRL2 type-checks the shadowing fine, but
+    /// hash-consing would make the two the same ATerm and silently merge their
+    /// SDG vertices (see [`super::SdgBuilder::push_scope`]).
+    #[test]
+    fn test_rejects_pbes_quantifier_shadowing_parameter() {
+        test_logger();
+        let pbes = Pbes::from_text("pbes mu X(n: Nat) = exists n: Nat . val(n > 0); init X(0);").unwrap();
+
+        let result = build_sdg(&pbes);
+        assert!(
+            result.is_err(),
+            "a bound variable colliding with a parameter must be rejected"
+        );
+    }
+
+    /// The same collision through a data-level binder (`lambda`/comprehension,
+    /// here `forall` written as a data expression) must also be rejected.
+    #[test]
+    fn test_rejects_data_level_binder_shadowing_parameter() {
+        test_logger();
+        let pbes = Pbes::from_text("pbes mu X(n: Nat) = val(forall n: Nat . n > 0); init X(0);").unwrap();
+
+        let result = build_sdg(&pbes);
+        assert!(
+            result.is_err(),
+            "a data-level binder shadowing a parameter must be rejected"
+        );
+    }
+
+    /// Reusing a parameter's *name* with a *different* sort is not a collision
+    /// (they are distinct ATerms), so it must still be accepted.
+    #[test]
+    fn test_accepts_bound_variable_reusing_name_with_different_sort() {
+        test_logger();
+        let pbes = Pbes::from_text("pbes mu X(n: Nat) = exists n: Bool . val(n); init X(0);").unwrap();
+
+        let sdg = build_sdg(&pbes).unwrap();
+        assert_eq!(sdg.num_parameters(), 1);
     }
 
     /// A bound (quantifier-scoped) variable must not be coloured the same
