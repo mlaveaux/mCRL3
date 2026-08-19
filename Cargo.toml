@@ -3,7 +3,7 @@ edition = "2024"
 homepage = "https://mercorg.github.io/merc-website/"
 repository = "https://github.com/MERCorg/merc.git"
 license = "BSL-1.0"
-rust-version = "1.91.0"
+rust-version = "1.93.1"
 version = "2.0.0"
 
 # Add debug information to the release binaries.
@@ -79,7 +79,7 @@ html-escape = "0.2"
 itertools = "0.15"
 log = { version = "0.4", features = ["kv"] }
 num = "0.4"
-oxidd = { version = "0.12", features = ["manager-pointer"] }
+oxidd = { version = "0.12", features = ["manager-pointer", "multi-threading"] }
 oxidd-dump = "0.7"
 oxidd-core = "0.12"
 oxidd-reorder = "0.7"
@@ -172,9 +172,9 @@ partial_ord_enum_variants_reordered = "allow"
 
 # Use a local checkout of the oxidd fork until the LDD branch is integrated.
 [patch.crates-io]
-oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
-oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
-oxidd-dump =  { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
-oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
-oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
-oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "b0e524d4ef974d715894abda5b4429b319ea7f62" }
+oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
+oxidd-core = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
+oxidd-dump =  { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
+oxidd-reorder = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
+oxidd-rules-bdd = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
+oxidd-rules-ldd = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
