@@ -12,6 +12,7 @@ use merc_collections::bytevec;
 
 use crate::ParityGame;
 use crate::Player;
+use crate::PlayerVec;
 use crate::Priority;
 use crate::VariabilityParityGame;
 use crate::VertexIndex;
@@ -106,7 +107,9 @@ const HASH_DEDUP_THRESHOLD: usize = 16;
 /// `Vec<(VertexIndex, VertexIndex)>`, for the same reason `merc_lts::LtsBuilderMem`
 /// does: it keeps memory usage down for large games. See
 /// [`ParityGameBuilder::remove_duplicates`] for how deduplication avoids ever
-/// sorting or permuting those columns.
+/// sorting or permuting those columns. The per-vertex owner and priority arrays
+/// are stored in the same compact form that [`ParityGame`] itself uses, so
+/// [`ParityGameBuilder::finish`] can hand them over without a conversion.
 pub struct ParityGameBuilder {
     /// The source vertex of every edge.
     edges_from: ByteCompressedVec<VertexIndex>,
@@ -115,10 +118,10 @@ pub struct ParityGameBuilder {
     edges_to: ByteCompressedVec<VertexIndex>,
 
     /// The owner of each vertex, indexed by vertex index.
-    owners: Vec<Player>,
+    owners: PlayerVec,
 
     /// The priority of each vertex, indexed by vertex index.
-    priorities: Vec<Priority>,
+    priorities: ByteCompressedVec<Priority>,
 
     /// The initial vertex of the game.
     initial_vertex: VertexIndex,
@@ -139,8 +142,8 @@ impl ParityGameBuilder {
         Self {
             edges_from: ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required()),
             edges_to: ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required()),
-            owners: vec![Player::Even; num_of_vertices],
-            priorities: vec![Priority::new(0); num_of_vertices],
+            owners: PlayerVec::from_elem(Player::Even, num_of_vertices),
+            priorities: ByteCompressedVec::from_elem(Priority::new(0), num_of_vertices),
             initial_vertex,
             num_of_vertices,
         }
@@ -150,8 +153,8 @@ impl ParityGameBuilder {
     pub fn add_vertex(&mut self, vertex: VertexIndex, owner: Player, priority: Priority) {
         let num_of_vertices = vertex.value() + 1;
         self.ensure_vertex_capacity(num_of_vertices);
-        self.owners[vertex.value()] = owner;
-        self.priorities[vertex.value()] = priority;
+        self.owners.set(vertex.value(), owner);
+        self.priorities.set(vertex.value(), priority);
         self.num_of_vertices = self.num_of_vertices.max(num_of_vertices);
     }
 
@@ -203,7 +206,7 @@ impl ParityGameBuilder {
             self.owners.resize(num_of_vertices, Player::Even);
         }
         if self.priorities.len() < num_of_vertices {
-            self.priorities.resize(num_of_vertices, Priority::new(0));
+            self.priorities.resize_with(num_of_vertices, || Priority::new(0));
         }
     }
 
@@ -323,10 +326,10 @@ pub struct VariabilityParityGameBuilder {
     edges_to: ByteCompressedVec<VertexIndex>,
 
     /// The owner of each vertex, indexed by vertex index.
-    owners: Vec<Player>,
+    owners: PlayerVec,
 
     /// The priority of each vertex, indexed by vertex index.
-    priorities: Vec<Priority>,
+    priorities: ByteCompressedVec<Priority>,
 
     /// The initial vertex of the game.
     initial_vertex: VertexIndex,
@@ -349,8 +352,8 @@ impl VariabilityParityGameBuilder {
             edges_from: ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required()),
             edges_configuration: Vec::with_capacity(num_of_edges),
             edges_to: ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required()),
-            owners: vec![Player::Even; num_of_vertices],
-            priorities: vec![Priority::new(0); num_of_vertices],
+            owners: PlayerVec::from_elem(Player::Even, num_of_vertices),
+            priorities: ByteCompressedVec::from_elem(Priority::new(0), num_of_vertices),
             initial_vertex,
             num_of_vertices,
         }
@@ -360,8 +363,8 @@ impl VariabilityParityGameBuilder {
     pub fn add_vertex(&mut self, vertex: VertexIndex, owner: Player, priority: Priority) {
         let num_of_vertices = vertex.value() + 1;
         self.ensure_vertex_capacity(num_of_vertices);
-        self.owners[vertex.value()] = owner;
-        self.priorities[vertex.value()] = priority;
+        self.owners.set(vertex.value(), owner);
+        self.priorities.set(vertex.value(), priority);
         self.num_of_vertices = self.num_of_vertices.max(num_of_vertices);
     }
 
@@ -434,7 +437,7 @@ impl VariabilityParityGameBuilder {
             self.owners.resize(num_of_vertices, Player::Even);
         }
         if self.priorities.len() < num_of_vertices {
-            self.priorities.resize(num_of_vertices, Priority::new(0));
+            self.priorities.resize_with(num_of_vertices, || Priority::new(0));
         }
     }
 

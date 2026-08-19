@@ -36,6 +36,7 @@ pub use parity_games::ParityGameBuilder;
 pub use parity_games::ParityGameFormat;
 pub use parity_games::PgDot;
 pub use parity_games::Player;
+pub use parity_games::PlayerVec;
 pub use parity_games::Priority;
 pub use parity_games::VertexIndex;
 pub use parity_games::VpgDot;

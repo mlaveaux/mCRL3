@@ -5,8 +5,12 @@ use std::collections::VecDeque;
 use bitvec::bitvec;
 use bitvec::order::Lsb0;
 
+use merc_collections::ByteCompressedVec;
+use merc_collections::CompressedEntry;
+
 use crate::PG;
 use crate::ParityGame;
+use crate::PlayerVec;
 use crate::VertexIndex;
 
 /// Computes the reachable portion of a parity game from the initial vertex.
@@ -20,9 +24,12 @@ pub fn compute_reachable<G: PG>(game: &G) -> (ParityGame, Vec<Option<usize>>) {
     let mut mapping = vec![None; num_vertices];
     let mut visited = bitvec![usize, Lsb0; 0; num_vertices];
 
-    // New game data structures
-    let mut new_owners = Vec::new();
-    let mut new_priorities = Vec::new();
+    // New game data structures. The reachable part is at most as large as the
+    // original game and its priorities are a subset of the original priorities,
+    // so sizing both up front means neither has to grow or widen its entries.
+    let mut new_owners = PlayerVec::with_capacity(num_vertices);
+    let mut new_priorities =
+        ByteCompressedVec::with_capacity(num_vertices, game.highest_priority().value().bytes_required());
     let mut new_vertices = vec![0]; // Start with offset 0
     let mut new_edges_to = Vec::new();
 

@@ -7,6 +7,7 @@ use log::debug;
 use log::info;
 
 use log::warn;
+use merc_collections::ByteCompressedVec;
 use merc_collections::IndexedSet;
 use merc_io::TimeProgress;
 use merc_lts::LTS;
@@ -70,7 +71,7 @@ pub fn translate(lts: &LabelledTransitionSystem<String>, formula: &StateFrm) -> 
     let result = ParityGame::from_edges(
         VertexIndex::new(0),
         vertices.iter().map(|(player, _)| *player).collect(),
-        vertices.iter().map(|(_, priority)| *priority).collect(),
+        ByteCompressedVec::with_iter(vertices.iter().map(|(_, priority)| *priority)),
         true,
         || algorithm.edges.iter().map(|(s, _, t)| (*s, *t)),
     );

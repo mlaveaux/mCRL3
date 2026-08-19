@@ -5,6 +5,7 @@ use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
+use merc_collections::ByteCompressedVec;
 use merc_lts::LTS;
 use merc_syntax::Action;
 use merc_syntax::MultiAction;
@@ -76,7 +77,7 @@ pub fn translate_vpg(
         manager_ref,
         VertexIndex::new(0),
         vertices.iter().map(|vertex| vertex.0).collect(),
-        vertices.iter().map(|vertex| vertex.1).collect(),
+        ByteCompressedVec::with_iter(vertices.iter().map(|vertex| vertex.1)),
         configuration,
         variables,
         || algorithm.edges().iter().cloned(),

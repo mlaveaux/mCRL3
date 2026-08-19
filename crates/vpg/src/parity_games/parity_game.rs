@@ -5,10 +5,13 @@ use std::fmt;
 
 use itertools::Itertools;
 
+use merc_collections::ByteCompressedVec;
+use merc_collections::CompressedEntry;
 use merc_collections::Graph;
 use merc_utilities::TagIndex;
 
 use crate::Player;
+use crate::PlayerVec;
 
 /// A strong type for the vertices.
 pub struct VertexTag;
@@ -22,18 +25,27 @@ pub type VertexIndex = TagIndex<usize, VertexTag>;
 /// The strong type for a priority.
 pub type Priority = TagIndex<usize, PriorityTag>;
 
-/// Represents an explicit max-priority parity game. This
-/// means that higher priority values are more significant.
+/// Represents an explicit max-priority parity game. This means that higher
+/// priority values are more significant.
+///
+/// # Details
+///
+/// The per-vertex and per-edge arrays are stored compactly, since a game (and
+/// any derived game, e.g. from [`crate::compute_reachable`]) is kept around for
+/// as long as it is being solved: owners as one bit per vertex (see
+/// [`PlayerVec`]), and priorities, offsets and edge targets byte compressed,
+/// which for the small priority and vertex-count ranges that games in practice
+/// have means far fewer than the eight bytes a `usize` normally costs.
 pub struct ParityGame {
     /// Stores the owner of every vertex.
-    owner: Vec<Player>,
+    owner: PlayerVec,
 
     /// Stores the priority of every vertex.
-    priority: Vec<Priority>,
+    priority: ByteCompressedVec<Priority>,
 
-    /// Offsets into the transition array for every vertex.
-    vertices: Vec<usize>,
-    edges_to: Vec<VertexIndex>,
+    /// Offsets into the transition array for every vertex, plus a sentinel.
+    vertices: ByteCompressedVec<usize>,
+    edges_to: ByteCompressedVec<VertexIndex>,
 
     initial_vertex: VertexIndex,
 }
@@ -46,8 +58,8 @@ impl ParityGame {
     /// self-loops are added on-the-fly to vertices with no outgoing edges.
     pub fn from_edges<F, I>(
         initial_vertex: VertexIndex,
-        owner: Vec<Player>,
-        mut priority: Vec<Priority>,
+        owner: PlayerVec,
+        mut priority: ByteCompressedVec<Priority>,
         make_total: bool,
         mut edges: F,
     ) -> Self
@@ -131,7 +143,10 @@ impl ParityGame {
                     vertices[vertex_idx] += 1; // Increment end offset
 
                     // Change the priority of the vertex such that the self-loop is winning for the opponent.
-                    priority[vertex_idx] = Priority::new(owner[vertex_idx].opponent().to_index());
+                    priority.set(
+                        vertex_idx,
+                        Priority::new(owner.index(vertex_idx).opponent().to_index()),
+                    );
                 }
             }
         }
@@ -148,18 +163,39 @@ impl ParityGame {
     }
 
     /// Constructs a parity game directly from the given arrays.
+    ///
+    /// `vertices` and `edges_to` are taken as plain vectors since every caller
+    /// builds them with a construction that repeatedly mutates offsets
+    /// in place.
     pub(crate) fn new(
         initial_vertex: VertexIndex,
-        owner: Vec<Player>,
-        priority: Vec<Priority>,
+        owner: PlayerVec,
+        priority: ByteCompressedVec<Priority>,
         vertices: Vec<usize>,
         edges_to: Vec<VertexIndex>,
     ) -> Self {
+        // The offsets are monotonically increasing up to the sentinel, and every
+        // edge target is a valid vertex index, so their maxima bound the number
+        // of bytes needed without having to scan for the actual maximum.
+        let num_of_edges = edges_to.len();
+        let num_of_vertices = owner.len();
+
+        let mut compressed_vertices = ByteCompressedVec::with_capacity(vertices.len(), num_of_edges.bytes_required());
+        for offset in vertices {
+            compressed_vertices.push(offset);
+        }
+
+        let mut compressed_edges_to =
+            ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required());
+        for to in edges_to {
+            compressed_edges_to.push(to);
+        }
+
         let result = Self {
             owner,
             priority,
-            vertices,
-            edges_to,
+            vertices: compressed_vertices,
+            edges_to: compressed_edges_to,
             initial_vertex,
         };
         result.assert_consistent();
@@ -167,22 +203,22 @@ impl ParityGame {
     }
 
     /// Returns the vertices array.
-    pub(crate) fn vertices(&self) -> &Vec<usize> {
+    pub(crate) fn vertices(&self) -> &ByteCompressedVec<usize> {
         &self.vertices
     }
 
     /// Returns the edges_to array.
-    pub(crate) fn edges_to(&self) -> &Vec<VertexIndex> {
+    pub(crate) fn edges_to(&self) -> &ByteCompressedVec<VertexIndex> {
         &self.edges_to
     }
 
     /// Returns the owners array.
-    pub(crate) fn owners(&self) -> &Vec<Player> {
+    pub(crate) fn owners(&self) -> &PlayerVec {
         &self.owner
     }
 
     /// Returns the priorities array.
-    pub(crate) fn priorities(&self) -> &Vec<Priority> {
+    pub(crate) fn priorities(&self) -> &ByteCompressedVec<Priority> {
         &self.priority
     }
 
@@ -237,22 +273,22 @@ impl PG for ParityGame {
     }
 
     fn outgoing_edges<'a>(&'a self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'a, ()>> + 'a {
-        let start = self.vertices[*state_index];
-        let end = self.vertices[*state_index + 1];
+        let start = self.vertices.index(*state_index);
+        let end = self.vertices.index(*state_index + 1);
 
-        (start..end).map(move |i| Edge::new(&(), self.edges_to[i]))
+        (start..end).map(move |i| Edge::new(&(), self.edges_to.index(i)))
     }
 
     fn owner(&self, vertex: VertexIndex) -> Player {
-        self.owner[*vertex]
+        self.owner.index(*vertex)
     }
 
     fn priority(&self, vertex: VertexIndex) -> Priority {
-        self.priority[*vertex]
+        self.priority.index(*vertex)
     }
 
     fn highest_priority(&self) -> Priority {
-        self.priority.iter().fold(Priority::new(0), |max, p| max.max(*p))
+        self.priority.iter().fold(Priority::new(0), |max, p| max.max(p))
     }
 
     fn is_total(&self) -> bool {

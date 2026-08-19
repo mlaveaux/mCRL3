@@ -8,6 +8,7 @@ use oxidd::ManagerRef;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
+use merc_collections::ByteCompressedVec;
 use merc_symbolic::FormatConfigSet;
 use merc_symbolic::minus;
 use merc_utilities::MercError;
@@ -16,6 +17,7 @@ use crate::Edge;
 use crate::PG;
 use crate::ParityGame;
 use crate::Player;
+use crate::PlayerVec;
 use crate::Priority;
 use crate::VertexIndex;
 
@@ -50,8 +52,8 @@ impl VariabilityParityGame {
     pub fn from_edges<F, I>(
         manager_ref: &BDDManagerRef,
         initial_vertex: VertexIndex,
-        owner: Vec<Player>,
-        priority: Vec<Priority>,
+        owner: PlayerVec,
+        priority: ByteCompressedVec<Priority>,
         configuration: BDDFunction,
         variables: Vec<BDDFunction>,
         mut edges: F,
@@ -185,12 +187,12 @@ impl VariabilityParityGame {
     }
 
     /// Returns the owners of the vertices in the variability parity game.
-    pub(crate) fn owners(&self) -> &Vec<Player> {
+    pub(crate) fn owners(&self) -> &PlayerVec {
         self.game.owners()
     }
 
     /// Returns the priorities of the vertices in the variability parity game.
-    pub(crate) fn priorities(&self) -> &Vec<Priority> {
+    pub(crate) fn priorities(&self) -> &ByteCompressedVec<Priority> {
         self.game.priorities()
     }
 
@@ -223,12 +225,12 @@ impl PG for VariabilityParityGame {
     type Label = BDDFunction;
 
     fn outgoing_edges<'a>(&'a self, state_index: VertexIndex) -> impl Iterator<Item = Edge<'a, Self::Label>> + 'a {
-        let start = self.game.vertices()[*state_index];
-        let end = self.game.vertices()[*state_index + 1];
+        let start = self.game.vertices().index(*state_index);
+        let end = self.game.vertices().index(*state_index + 1);
         self.edges_configuration[start..end]
             .iter()
-            .zip(self.game.edges_to()[start..end].iter())
-            .map(|(configuration, &to)| Edge::new(configuration, to))
+            .zip(self.game.edges_to().iter_range(start, end))
+            .map(|(configuration, to)| Edge::new(configuration, to))
     }
 
     delegate! {
