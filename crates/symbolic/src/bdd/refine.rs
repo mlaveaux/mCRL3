@@ -1,3 +1,10 @@
+use crate::CubeIterAll;
+use crate::SummandGroupBdd;
+use crate::SymbolicLtsBdd;
+use crate::bdd_from_cube;
+use crate::compute_vars_bdd;
+use crate::extend_relation;
+use crate::variable_rename;
 use log::info;
 use merc_io::TimeProgress;
 use merc_lts::TransitionLabel;
@@ -10,13 +17,6 @@ use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OutOfMemory;
-use crate::extend_relation;
-use crate::CubeIterAll;
-use crate::SummandGroupBdd;
-use crate::SymbolicLtsBdd;
-use crate::bdd_from_cube;
-use crate::compute_vars_bdd;
-use crate::variable_rename;
 
 /// Strong bisimulation refinement algorithms for symbolic LTSs.
 ///
@@ -47,11 +47,12 @@ pub fn refine_bisimulation<L: TransitionLabel>(
             .collect::<Result<Vec<_>, OutOfMemory>>()
     })?;
 
-    // Split the transition group to only have a single action label per group.
-    let mut split_groups = Vec::new();
+    // Extend every transition group's relation with x = x' for the state variables not
+    // written by that group, and collect the union of all action labels that occur
+    // anywhere so we can later split per action instead of per (group, action).
+    let mut extended_relations = Vec::new();
+    let mut all_actions_bdd = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
     for group in lts.transition_groups() {
-        // Extend the relation with x = x' for the state variables not written by this
-        // group.
         let relation = extend_relation(
             manager_ref,
             group.relation(),
@@ -60,19 +61,29 @@ pub fn refine_bisimulation<L: TransitionLabel>(
             group.write_variables(),
         )?;
 
-        let action_bdd = relation.exists(&state_vars)?;
+        all_actions_bdd = all_actions_bdd.or(&relation.exists(&state_vars)?)?;
+        extended_relations.push(relation);
+    }
 
-        for cube in CubeIterAll::with_variables(&action_bdd, lts.action_variables()) {
-            // Every cube is a single action.
-            let cube = cube?;
-            let label_bdd = bdd_from_cube(manager_ref, &action_vars, &cube)?;
+    // Split into one T_a per action label. A bisimulation may match one summand
+    // group's a-move against a different group's a-move, so T_a must be the union
+    // (OR) of every group's extended relation for that label, not split per group.
+    let mut split_groups = Vec::new();
+    for cube in CubeIterAll::with_variables(&all_actions_bdd, lts.action_variables()) {
+        // Every cube is a single action.
+        let cube = cube?;
+        let label_bdd = bdd_from_cube(manager_ref, &action_vars, &cube)?;
 
-            split_groups.push(SummandGroupBdd::new(
-                relation.clone().and(&label_bdd)?,
-                lts.state_variables().to_vec(),
-                lts.next_state_variables().to_vec(),
-            ));
+        let mut label_relation = manager_ref.with_manager_shared(|manager| BDDFunction::f(manager));
+        for relation in &extended_relations {
+            label_relation = label_relation.or(&relation.and(&label_bdd)?)?;
         }
+
+        split_groups.push(SummandGroupBdd::new(
+            label_relation,
+            lts.state_variables().to_vec(),
+            lts.next_state_variables().to_vec(),
+        ));
     }
 
     // Introduce variables for q, q' after the state and next state variables.
