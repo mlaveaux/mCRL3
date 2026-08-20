@@ -449,6 +449,16 @@ impl ExplicitLinearProcessSpecification {
         &self.lps
     }
 
+    /// Recovers the typed value interned at `index` in the shared value mapping,
+    /// e.g. one previously observed as a process parameter value during
+    /// exploration.
+    pub fn value(&self, index: usize) -> DataExpression {
+        self.value_mapping
+            .get_by_index(index)
+            .expect("interned value must be present in the value mapping")
+            .protect()
+    }
+
     /// Rewrites `value` to normal form under `context` and interns it into the
     /// shared value mapping, returning its dense index.
     ///

@@ -64,6 +64,30 @@ pub struct SymbolicContext<L: LPS> {
 
     /// Per state-vector position interning of `LPS` values into dense LDD values.
     columns: Vec<IndexedSet<L::Value>>,
+
+    /// Interning of the action labels observed during learning into dense LDD
+    /// values, shared by every group so a label's index means the same thing
+    /// everywhere. Positions correspond to the trailing "action" dimension each
+    /// [`SymbolicLpsGroup`] appends to its relation, see
+    /// [`TransitionGroup::action_label_index`].
+    labels: IndexedSet<L::Label>,
+}
+
+impl<L: LPS> SymbolicContext<L> {
+    /// Returns the per-position interning of `LPS` values into dense LDD values,
+    /// as populated by [`TransitionGroup::learn_successors`] calls made with
+    /// this context.
+    pub fn columns(&self) -> &[IndexedSet<L::Value>] {
+        &self.columns
+    }
+
+    /// Returns the interning of the action labels observed while learning with
+    /// this context; a label's dense index is its position in the "action"
+    /// dimension of every group's relation, see
+    /// [`TransitionGroup::action_label_index`].
+    pub fn labels(&self) -> &IndexedSet<L::Label> {
+        &self.labels
+    }
 }
 
 /// The choices that shape the symbolic encoding of an [`merc_explore::LPS`], mirroring the `--groups`
@@ -192,6 +216,11 @@ impl<L: LPS> SymbolicLps<PermutedLps<L>> {
 }
 
 impl<L: LPS> SymbolicLps<L> {
+    /// Returns the wrapped `LPS` definition.
+    pub fn lps(&self) -> &L {
+        &self.lps
+    }
+
     /// Builds the per-position interning seeded with the initial-state values.
     ///
     /// Re-inserting `initial_state()` into fresh per-column sets reproduces the
@@ -248,6 +277,7 @@ impl<L: LPS> SymbolicLPS for SymbolicLps<L> {
         SymbolicContext {
             enumerate: self.lps.create_context(),
             columns: self.initial_columns(),
+            labels: IndexedSet::new(),
         }
     }
 }
@@ -303,7 +333,7 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
     }
 
     fn action_label_index(&self) -> Option<usize> {
-        None
+        Some(self.read_indices.len() + self.write_indices.len())
     }
 
     fn meta(&self) -> &LDDFunction {
@@ -330,7 +360,7 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         // Borrow the backend and the interning as disjoint fields so the
         // enumeration callback can grow the interning while the backend call is
         // in progress.
-        let SymbolicContext { enumerate, columns } = context;
+        let SymbolicContext { enumerate, columns, labels } = context;
 
         // Reusable full-length state buffer. Non-read positions keep the initial
         // state's values: they are never read by this summand (guaranteed by the
@@ -338,8 +368,13 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         // are overlaid from each short state below.
         let mut full_state = self.lps.initial_state();
 
+        // The trailing dimension of `interleaved` carries the interned action
+        // label, one past the read/write positions — matching the convention
+        // [`crate::SummandGroup`] uses for relations read from a real `.sym` file.
+        let action_position = self.read_indices.len() + self.write_indices.len();
+
         // Reusable interleaved short vector for the relation singletons.
-        let mut interleaved: Vec<Value> = vec![0; self.read_indices.len() + self.write_indices.len()];
+        let mut interleaved: Vec<Value> = vec![0; action_position + 1];
 
         // Accumulate into a local relation so the enumeration callback does not
         // have to borrow `self`.
@@ -386,13 +421,17 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
                 let write_positions = &self.write_positions;
                 let interleaved = &mut interleaved;
                 let relation = &mut relation;
+                let labels = &mut *labels;
 
-                self.lps.summands()[index].enumerate(enumerate, &full_state, |_label, next_state| {
+                self.lps.summands()[index].enumerate(enumerate, &full_state, |label, next_state| {
                     for (m, &write_index) in write_indices.iter().enumerate() {
                         let position = write_index as usize;
                         let (value, _) = columns[position].insert(next_state[position]);
                         interleaved[write_positions[m]] = *value as Value;
                     }
+
+                    let (label_index, _) = labels.insert(label.clone());
+                    interleaved[action_position] = *label_index as Value;
 
                     let cube = storage.with_manager_shared(|m| LDDFunction::singleton(m, interleaved.as_slice()))?;
                     *relation = relation.union(&cube)?;
@@ -541,10 +580,17 @@ mod tests {
         let mut symbolic =
             SymbolicLps::with_options(&storage, GridLps::new(bounds), options).expect("the encoding is valid");
 
-        reachability_with_options(&storage, &mut symbolic, &ReachabilityOptions::default(), &Timing::new())
-            .expect("reachability succeeds")
-            .states
-            .len()
+        let mut context = symbolic.create_context();
+        reachability_with_options(
+            &storage,
+            &mut symbolic,
+            &mut context,
+            &ReachabilityOptions::default(),
+            &Timing::new(),
+        )
+        .expect("reachability succeeds")
+        .states
+        .len()
     }
 
     #[test]

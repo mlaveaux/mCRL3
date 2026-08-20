@@ -31,6 +31,7 @@ pub use atermpp::TermIterator;
 pub use atermpp::Todo;
 pub(crate) use atermpp::is_aterm_int;
 pub(crate) use atermpp::is_aterm_string;
+pub use atermpp::mcrl2_aterm_to_merc;
 pub use atermpp::merc_aterm_to_mcrl2;
 
 pub use mcrl2_sys::atermpp::ffi::_aterm;
@@ -65,6 +66,7 @@ pub use data_expression::is_machine_number;
 pub use data_expression::is_untyped_identifier;
 pub use data_expression::is_variable;
 pub use data_expression::is_where_clause;
+pub use data_expression::remove_index;
 pub use data_expression::substitute_variables;
 
 pub(crate) use global_lock::lock_global;

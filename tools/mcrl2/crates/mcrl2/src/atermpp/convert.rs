@@ -20,8 +20,6 @@ use super::THREAD_TERM_POOL as MCRL2_POOL;
 use crate::ATerm as Mcrl2ATerm;
 use crate::ATermRef as Mcrl2ATermRef;
 
-// ── merc_aterm → mcrl2::ATerm ───────────────────────────────────────────────
-
 /// Converts a pure-Rust [`merc_aterm::ATerm`] into a maximally-shared term in
 /// the mCRL2 C++ aterm pool.
 ///
@@ -84,14 +82,12 @@ pub fn merc_aterm_to_mcrl2(root: &merc_aterm::ATermRef<'_>) -> Mcrl2ATerm {
     result_stack.pop().unwrap()
 }
 
-// ── mcrl2::ATerm → merc_aterm::ATerm ────────────────────────────────────────
-
 /// Converts a mCRL2 C++ [`Mcrl2ATerm`] into a maximally-shared term in the
 /// pure-Rust `merc_aterm` pool.
 ///
 /// Integer terms are mapped to `merc_aterm::ATermInt`; all other terms are
 /// mapped structurally by (name, arity, arguments).
-pub(crate) fn mcrl2_aterm_to_merc(root: &Mcrl2ATermRef<'_>) -> merc_aterm::ATerm {
+pub fn mcrl2_aterm_to_merc(root: &Mcrl2ATermRef<'_>) -> merc_aterm::ATerm {
     use merc_aterm::Symbol as MercSymbol;
     use merc_aterm::storage::THREAD_TERM_POOL as MERC_POOL;
 

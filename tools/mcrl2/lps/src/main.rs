@@ -16,8 +16,10 @@ use merc_lts::MutexLtsBuilder;
 use merc_symbolic::ExplorationStrategy as SymbolicExplorationStrategy;
 use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SummandGrouping;
+use merc_symbolic::SymbolicLTS;
 use merc_symbolic::SymbolicLpsOptions;
 use merc_symbolic::VariableOrder;
+use merc_symbolic::write_symbolic_lts;
 use merc_tools::KaHyParArgs;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
@@ -39,6 +41,7 @@ use merc_lps::Mcrl2MultiActionLabel;
 use merc_lps::explore_lps_explicit;
 use merc_lps::explore_lps_explicit_parallel;
 use merc_lps::explore_lps_symbolic;
+use merc_lps::explore_lps_symbolic_to_sym;
 
 /// Default number of nodes for the Oxidd LDD manager.
 const DEFAULT_OXIDD_NODE_CAPACITY: usize = 1 << 24;
@@ -156,6 +159,11 @@ struct ExploreArgs {
     /// process parameter values that a group has not seen before.
     #[arg(long)]
     cached: bool,
+
+    /// Write the reachable symbolic LTS to this .sym file, including the data specification,
+    /// process parameters, parameter values and action labels. If not given, the LTS is not written.
+    #[arg(long, short('o'))]
+    output: Option<PathBuf>,
 }
 
 impl ExploreArgs {
@@ -269,10 +277,21 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing, preprocess_lps
         order: args.variable_order()?,
     };
 
-    let result = explore_lps_symbolic(&storage, lps, &encoding, &options, timing)?;
-    println!("Number of states: {}", result.states.len());
-    if let Some(deadlocks) = &result.deadlocks {
-        println!("Number of deadlocks: {}", deadlocks.len());
+    if let Some(output) = &args.output {
+        let (lts, deadlocks) = explore_lps_symbolic_to_sym(&storage, lps, &encoding, &options, timing)?;
+        println!("Number of states: {}", lts.states().len());
+        if let Some(deadlocks) = &deadlocks {
+            println!("Number of deadlocks: {}", deadlocks.len());
+        }
+
+        let mut file = BufWriter::new(File::create(output)?);
+        write_symbolic_lts(&storage, &mut file, &lts)?;
+    } else {
+        let result = explore_lps_symbolic(&storage, lps, &encoding, &options, timing)?;
+        println!("Number of states: {}", result.states.len());
+        if let Some(deadlocks) = &result.deadlocks {
+            println!("Number of deadlocks: {}", deadlocks.len());
+        }
     }
 
     Ok(())

@@ -62,7 +62,7 @@ which = "8.0"
 # The workspace libraries.
 mcrl2 = { path = "crates/mcrl2" }
 mcrl2-macros = { path = "crates/mcrl2-macros" }
-mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "6302f19246ba5ecfd16702226a1a70ed74022f58" }
+mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "7beea8071fdc87365aaf3289e86d8f3b913d7dbf" }
 merc_aterm = { path = "../../crates/aterm" }
 merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }
@@ -82,8 +82,8 @@ merc_vpg = { path = "../../crates/vpg" }
 
 oxidd = { version = "0.12", features = ["manager-pointer", "multi-threading"] }
 
-# [patch."https://github.com/MERCorg/mCRL2-sys"]
-# mcrl2-sys = { path = "crates/mCRL2-sys" }
+[patch."https://github.com/MERCorg/mCRL2-sys"]
+mcrl2-sys = { path = "crates/mCRL2-sys" }
 
 [patch.crates-io]
 oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }

@@ -4,6 +4,7 @@ use oxidd::ldd::LDDManagerRef;
 
 use mcrl2::Pbes;
 use merc_symbolic::ReachabilityOptions;
+use merc_symbolic::SymbolicLPS;
 use merc_symbolic::SymbolicLps;
 use merc_symbolic::SymbolicLpsOptions;
 use merc_symbolic::reachability_with_options;
@@ -41,5 +42,6 @@ pub fn explore_pbes_symbolic(
         cached,
         ..ReachabilityOptions::default()
     };
-    Ok(reachability_with_options(storage, &mut symbolic, &options, timing)?.states)
+    let mut context = symbolic.create_context();
+    Ok(reachability_with_options(storage, &mut symbolic, &mut context, &options, timing)?.states)
 }

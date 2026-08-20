@@ -31,4 +31,9 @@ pub use explore_explicit::Mcrl2MultiActionLabel;
 pub use explore_explicit::explore_lps_explicit;
 pub use explore_explicit::explore_lps_explicit_parallel;
 pub use explore_symbolic::explore_lps_symbolic;
+pub use explore_symbolic::explore_lps_symbolic_to_sym;
 pub use io::LpsFormat;
+
+/// A symbolic LTS with mCRL2 multi-action transition labels, as produced by
+/// [`explore_lps_symbolic_to_sym`] and consumed by [`merc_symbolic::write_symbolic_lts`].
+pub type Mcrl2SymbolicLts = merc_symbolic::SymbolicLts<merc_lts::LtsMultiAction<merc_lts::LtsAction>>;

@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use merc_utilities::MercError;
 
 use crate::Slot;
@@ -16,7 +18,10 @@ pub trait LPS {
     type Value: Slot;
 
     /// The label produced for each enumerated transition.
-    type Label: Clone;
+    ///
+    /// `Eq + Hash` lets symbolic exploration ([`crate`] consumers such as
+    /// `merc_symbolic`) intern the observed labels into a dense LDD dimension.
+    type Label: Clone + Eq + Hash;
 
     /// Metadata reported once per discovered state to the exploration caller.
     ///

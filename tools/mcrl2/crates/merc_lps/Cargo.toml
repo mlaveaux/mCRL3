@@ -18,6 +18,7 @@ workspace = true
 
 [dependencies]
 mcrl2.workspace = true
+merc_data.workspace = true
 merc_explore = { workspace = true, features = ["clap"] }
 merc_io.workspace = true
 merc_lts = { workspace = true, features = ["clap"] }

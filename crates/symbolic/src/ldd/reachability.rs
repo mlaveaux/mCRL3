@@ -82,19 +82,22 @@ pub fn reachability<L: SymbolicLPS>(
     lts: &mut L,
     timing: &Timing,
 ) -> Result<LDDFunction, MercError> {
-    Ok(reachability_with_options(storage, lts, &ReachabilityOptions::default(), timing)?.states)
+    let mut context = lts.create_context();
+    Ok(reachability_with_options(storage, lts, &mut context, &ReachabilityOptions::default(), timing)?.states)
 }
 
 /// Performs reachability analysis using the given initial state, transitions and [ReachabilityOptions].
+///
+/// `context` is created once by the caller (via [`SymbolicLPS::create_context`]) and threaded through
+/// every learning call, so that its interned state — e.g. the value/label interning some
+/// implementations use — is still available to the caller once reachability finishes.
 pub fn reachability_with_options<L: SymbolicLPS>(
     storage: &LDDManagerRef,
     lts: &mut L,
+    context: &mut <L::Group as TransitionGroup>::Context,
     options: &ReachabilityOptions,
     timing: &Timing,
 ) -> Result<ReachabilityResult, MercError> {
-    // Created once: the learning context (and any value interning it holds) must persist across
-    // iterations so successors learned in later iterations stay consistent with earlier ones.
-    let mut context = lts.create_context();
     let mut todo = lts.initial_state().clone();
     let mut states = lts.initial_state().clone();
     let mut deadlocks: Option<LDDFunction> = if options.detect_deadlocks {
@@ -125,7 +128,7 @@ pub fn reachability_with_options<L: SymbolicLPS>(
         while !todo.is_empty() {
             debug!("Iteration {}: todo size = {}", iteration, todo.len());
 
-            let (todo1, step_deadlocks) = step(storage, lts, &mut context, &todo, options, timing, &step_progress)?;
+            let (todo1, step_deadlocks) = step(storage, lts, context, &todo, options, timing, &step_progress)?;
 
             trace!("todo1 = {}", LddDisplay::new(&todo1));
 
@@ -306,7 +309,8 @@ mod test {
             // The groups of a Sylvan fixture are fully explored, so there is nothing to cache.
             cached: false,
         };
-        reachability_with_options(&ldd_manager, &mut lts, &options, &Timing::new())
+        let mut context = lts.create_context();
+        reachability_with_options(&ldd_manager, &mut lts, &mut context, &options, &Timing::new())
             .expect("Reachability should work correctly")
             .states
             .len()
@@ -390,7 +394,8 @@ mod test {
                 detect_deadlocks: true,
                 cached: false,
             };
-            let result = reachability_with_options(&manager, &mut lts, &options, &Timing::new())
+            let mut context = lts.create_context();
+            let result = reachability_with_options(&manager, &mut lts, &mut context, &options, &Timing::new())
                 .expect("Reachability should work correctly");
 
             // States 0, 1, 2 are reachable and only state 2 has no outgoing transition.

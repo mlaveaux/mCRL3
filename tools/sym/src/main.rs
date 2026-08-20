@@ -314,8 +314,9 @@ fn handle_reachability(cli: &Cli, args: &ReachabilityArgs, timing: &Timing) -> R
 
             let mut lts = timing.measure("read_symbolic_lts", || read_sylvan(&storage, &mut file))?;
 
+            let mut context = lts.create_context();
             let result = timing.measure("reachability", || {
-                reachability_with_options(&storage, &mut lts, &options, timing)
+                reachability_with_options(&storage, &mut lts, &mut context, &options, timing)
             })?;
 
             println!("LTS has {} states", result.states.len());
@@ -323,8 +324,9 @@ fn handle_reachability(cli: &Cli, args: &ReachabilityArgs, timing: &Timing) -> R
         SymFormat::Sym => {
             let mut lts = timing.measure("read_symbolic_lts", || read_symbolic_lts(&storage, &mut file))?;
 
+            let mut context = lts.create_context();
             let result = timing.measure("reachability", || {
-                reachability_with_options(&storage, &mut lts, &options, timing)
+                reachability_with_options(&storage, &mut lts, &mut context, &options, timing)
             })?;
 
             println!("LTS has {} states", result.states.len());

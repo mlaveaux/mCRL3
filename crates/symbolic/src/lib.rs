@@ -60,6 +60,7 @@ pub use summand_grouping::SummandGrouping;
 pub use summand_grouping::print_read_write_patterns;
 pub use summand_grouping::print_transition_groups;
 pub use summand_grouping::transition_group_pattern;
+pub use symbolic_lps::SummandGroup;
 pub use symbolic_lps::SymbolicLPS;
 pub use symbolic_lps::TransitionGroup;
 pub use symbolic_lps_explore::SymbolicLps;

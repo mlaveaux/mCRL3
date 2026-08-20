@@ -10,6 +10,7 @@ use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_multi_action;
 use mcrl2_sys::lps::ffi::mcrl2_lps_action_summand_summation_variables;
 use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context;
 use mcrl2_sys::lps::ffi::mcrl2_lps_create_learn_successors_context_from_data_spec;
+use mcrl2_sys::lps::ffi::mcrl2_lps_data_specification;
 use mcrl2_sys::lps::ffi::mcrl2_lps_enumerate;
 use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_lps_file;
 use mcrl2_sys::lps::ffi::mcrl2_lps_load_from_text_file;
@@ -74,6 +75,13 @@ impl LinearProcessSpecification {
                 self.lps.as_ref().expect("The lps is always defined"),
             ))
         })
+    }
+
+    /// Returns the data specification of the LPS.
+    pub fn data_specification(&self) -> DataSpecification {
+        DataSpecification::new(mcrl2_lps_data_specification(
+            self.lps.as_ref().expect("The lps is always defined"),
+        ))
     }
 
     /// Returns the number of summands in the LPS.

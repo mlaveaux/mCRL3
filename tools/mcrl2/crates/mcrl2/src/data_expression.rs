@@ -14,6 +14,7 @@ use mcrl2_sys::data::ffi::mcrl2_data_expression_is_machine_number;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_untyped_identifier;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_variable;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_is_where_clause;
+use mcrl2_sys::data::ffi::mcrl2_data_expression_remove_index;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_replace_variables;
 use mcrl2_sys::data::ffi::mcrl2_data_expression_to_string;
 use mcrl2_sys::data::ffi::mcrl2_is_data_sort_expression;
@@ -21,6 +22,12 @@ use mcrl2_sys::data::ffi::mcrl2_sort_expression_to_string;
 
 use crate::ATerm;
 use crate::ATermRef;
+
+/// Strips the internal rewriter-only `OpId(name, sort, index)` markers from `term`.
+pub fn remove_index(term: &ATermRef<'_>) -> ATerm {
+    term.require_valid();
+    ATerm::from_unique_ptr(mcrl2_data_expression_remove_index(term.get()))
+}
 
 /// Checks if this term is a data variable.
 pub fn is_variable(term: &ATermRef<'_>) -> bool {
