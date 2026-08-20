@@ -360,7 +360,11 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         // Borrow the backend and the interning as disjoint fields so the
         // enumeration callback can grow the interning while the backend call is
         // in progress.
-        let SymbolicContext { enumerate, columns, labels } = context;
+        let SymbolicContext {
+            enumerate,
+            columns,
+            labels,
+        } = context;
 
         // Reusable full-length state buffer. Non-read positions keep the initial
         // state's values: they are never read by this summand (guaranteed by the

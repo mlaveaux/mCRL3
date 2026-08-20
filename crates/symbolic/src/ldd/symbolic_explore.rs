@@ -111,7 +111,11 @@ pub fn reachability_with_options<L: SymbolicLPS>(
     trace!("states = {}", LddDisplay::new(&states));
     let progress = TimeProgress::new(
         |(iteration, num_of_states)| {
-            info!("explored {} state(s) after {} iteration(s)", LargeFormatter(num_of_states), iteration);
+            info!(
+                "explored {} state(s) after {} iteration(s)",
+                LargeFormatter(num_of_states),
+                iteration
+            );
         },
         1,
     );
@@ -120,7 +124,11 @@ pub fn reachability_with_options<L: SymbolicLPS>(
     // progress above can stay silent for a very long time. This one reports the frontier as it grows.
     let step_progress = TimeProgress::new(
         |(group, num_of_states)| {
-            info!("found {} todo state(s) up to transition group {}", LargeFormatter(num_of_states), group);
+            info!(
+                "found {} todo state(s) up to transition group {}",
+                LargeFormatter(num_of_states),
+                group
+            );
         },
         10,
     );

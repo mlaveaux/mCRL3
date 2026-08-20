@@ -143,10 +143,7 @@ impl ParityGame {
                     vertices[vertex_idx] += 1; // Increment end offset
 
                     // Change the priority of the vertex such that the self-loop is winning for the opponent.
-                    priority.set(
-                        vertex_idx,
-                        Priority::new(owner.index(vertex_idx).opponent().to_index()),
-                    );
+                    priority.set(vertex_idx, Priority::new(owner.index(vertex_idx).opponent().to_index()));
                 }
             }
         }
@@ -185,8 +182,7 @@ impl ParityGame {
             compressed_vertices.push(offset);
         }
 
-        let mut compressed_edges_to =
-            ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required());
+        let mut compressed_edges_to = ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required());
         for to in edges_to {
             compressed_edges_to.push(to);
         }

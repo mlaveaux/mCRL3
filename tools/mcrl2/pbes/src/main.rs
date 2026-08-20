@@ -594,7 +594,11 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preproce
 /// Handles the explore-explicit-srf command: explores a PBES in SRF form
 /// explicitly into a parity game, optionally pruning summands with a control
 /// flow graph analysis (see [`ExploreExplicitSrfArgs`]).
-fn handle_explore_explicit_srf(args: &ExploreExplicitSrfArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
+fn handle_explore_explicit_srf(
+    args: &ExploreExplicitSrfArgs,
+    timing: &Timing,
+    preprocess: bool,
+) -> Result<(), MercError> {
     let pbes = args.input.read(timing, preprocess)?;
 
     if args.output.is_some() {

@@ -147,7 +147,9 @@ pub fn explore_lps_symbolic_to_sym(
         let mut values = Vec::with_capacity(column.len());
         for i in 0..column.len() {
             let index = *column.get_by_index(i).expect("dense index must be present");
-            values.push(DataExpression::from(convert_learned(Mcrl2ATerm::from(inner.value(index)))));
+            values.push(DataExpression::from(convert_learned(Mcrl2ATerm::from(
+                inner.value(index),
+            ))));
         }
         parameter_values.push(values);
     }
@@ -472,9 +474,11 @@ mod tests {
             )
             .expect("Failed to write the assembled symbolic LTS");
 
-            let mut reread_lts =
-                read_symbolic_lts(&storage, File::open(&written_sym_path).expect("Failed to open written.sym"))
-                    .expect("Failed to read the written symbolic LTS back");
+            let mut reread_lts = read_symbolic_lts(
+                &storage,
+                File::open(&written_sym_path).expect("Failed to open written.sym"),
+            )
+            .expect("Failed to read the written symbolic LTS back");
             let mut reread_context = reread_lts.create_context();
             let written_sym_count = reachability_with_options(
                 &storage,

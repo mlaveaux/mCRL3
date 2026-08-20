@@ -82,7 +82,10 @@ impl ControlFlowAnalysis {
     ) -> Self {
         // Analyse every summand once: which parameters it constrains to a source
         // value and which parameters it changes (and whether to a constant).
-        let analyses: Vec<SummandAnalysis> = summands.iter().map(|summand| analyse_summand(summand, parameters, context)).collect();
+        let analyses: Vec<SummandAnalysis> = summands
+            .iter()
+            .map(|summand| analyse_summand(summand, parameters, context))
+            .collect();
         let liveness: Vec<bool> = summands.iter().map(&live).collect();
 
         // A parameter is a control flow parameter iff every live summand treats
@@ -172,7 +175,11 @@ struct SummandAnalysis {
 
 /// Analyses a single summand, extracting its source values and changed
 /// parameters with respect to `parameters`.
-fn analyse_summand<S: CfgSummand>(summand: &S, parameters: &[DataVariable], context: &LearnSuccessorsContext) -> SummandAnalysis {
+fn analyse_summand<S: CfgSummand>(
+    summand: &S,
+    parameters: &[DataVariable],
+    context: &LearnSuccessorsContext,
+) -> SummandAnalysis {
     // Collect the top-level conjuncts of the guard and look for `d == c`
     // constraints on the parameters.
     let mut conjuncts = Vec::new();

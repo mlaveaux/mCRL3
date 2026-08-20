@@ -77,9 +77,13 @@ impl CfgLinearProcessSpecification {
         // Every summand of an explicit LPS is a candidate from every state (see
         // `ExplicitLinearProcessSpecification::prepare`), so none of them is dead
         // code the analysis should discount.
-        let analysis = ControlFlowAnalysis::new(&parameters, inner.summands(), |_| true, &context, |value| {
-            inner.intern_normal_form(&context, value)
-        });
+        let analysis = ControlFlowAnalysis::new(
+            &parameters,
+            inner.summands(),
+            |_| true,
+            &context,
+            |value| inner.intern_normal_form(&context, value),
+        );
         let summand_metrics = (0..analysis.source_constraints.len())
             .map(|_| SummandCfgCounters::default())
             .collect();
