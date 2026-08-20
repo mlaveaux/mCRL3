@@ -3,12 +3,11 @@
 use oxidd::BooleanFunction;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
-use rustc_hash::FxHashMap;
-use rustc_hash::FxHashSet;
 
 use merc_collections::ByteCompressedVec;
 use merc_collections::CompressedEntry;
-use merc_collections::bytevec;
+use merc_collections::DedupOutcome;
+use merc_collections::dedup_by_bucket;
 
 use crate::ParityGame;
 use crate::Player;
@@ -92,13 +91,6 @@ impl PGBuilder for () {
 
     fn finish(self, _make_total: bool, _remove_duplicates: bool) -> Self::PG {}
 }
-
-/// Below this many edges in a single vertex's outgoing bucket, duplicates are
-/// detected with a linear scan (cheap, no allocation). Above it, a reused hash
-/// set scratch buffer is used instead, so a handful of very high out-degree
-/// vertices cannot make [`ParityGameBuilder::remove_duplicates`] quadratic in
-/// the bucket size. Mirrors `HASH_DEDUP_THRESHOLD` in `merc_lts::LtsBuilderMem`.
-const HASH_DEDUP_THRESHOLD: usize = 16;
 
 /// A builder for parity games that accepts edges one by one and can remove
 /// duplicates.
@@ -210,101 +202,37 @@ impl ParityGameBuilder {
         }
     }
 
-    /// Removes duplicate edges in place.
-    ///
-    /// # Details
-    ///
-    /// Mirrors `merc_lts::LtsBuilderMem::remove_duplicates`: two edges can only be
-    /// duplicates of each other if they share the same `from` vertex, so this never
-    /// needs a global sort. Instead it groups edges by `from` vertex with the same
-    /// counting-sort/bucket-fill idiom [`crate::ParityGame::from_edges`] itself uses,
-    /// then compacts each vertex's now-contiguous bucket in place (small buckets via
-    /// a linear scan, large ones via a reused hash set - see [`HASH_DEDUP_THRESHOLD`]),
-    /// rebuilding `edges_from` alongside it in the same pass. Every pass is a purely
-    /// sequential scan, so this never permutes or randomly indexes into the
-    /// byte-compressed columns.
+    /// Removes duplicate edges in place, deduplicating via
+    /// [`merc_collections::dedup_by_bucket`] (see its docs for the algorithm).
     fn remove_duplicates(&mut self) {
-        let num_states = self.num_of_vertices;
+        let num_vertices = self.num_of_vertices;
         let num_edges = self.edges_from.len();
 
         if num_edges == 0 {
             return;
         }
 
-        // Count outgoing edges per `from` vertex, then turn the counts into
-        // prefix-sum start offsets.
-        let mut offsets = vec![0usize; num_states];
-        for from in self.edges_from.iter() {
-            offsets[*from] += 1;
-        }
+        let mut new_edges_from = ByteCompressedVec::with_capacity(num_edges, num_vertices.bytes_required());
+        let mut new_edges_to = ByteCompressedVec::with_capacity(num_edges, num_vertices.bytes_required());
 
-        let mut running = 0usize;
-        for count in &mut offsets {
-            let bucket_len = *count;
-            *count = running;
-            running += bucket_len;
-        }
-
-        // Scatter `to` into per-`from` contiguous buckets, preserving insertion
-        // order. `offsets` doubles as the running cursor here, so afterwards
-        // `offsets[state]` holds the *end* of that vertex's bucket.
-        let mut grouped_to = bytevec![VertexIndex::new(0); num_edges];
-        for (from, to) in self.edges_from.iter().zip(self.edges_to.iter()) {
-            let pos = &mut offsets[*from];
-            grouped_to.set(*pos, to);
-            *pos += 1;
-        }
-
-        // Compact every bucket in place, keeping only the first occurrence of every
-        // `to`, and rebuild `edges_from` alongside it. The write cursor never
-        // exceeds the read cursor, so this is a forward-only compaction, not a
-        // permutation.
-        let mut new_edges_from = ByteCompressedVec::with_capacity(num_edges, num_states.bytes_required());
-        let mut scratch: FxHashSet<VertexIndex> = FxHashSet::default();
-        let mut write = 0usize;
-        let mut start = 0usize;
-
-        for (state, &end) in offsets.iter().enumerate() {
-            let bucket_start = write;
-
-            if end - start <= HASH_DEDUP_THRESHOLD {
-                for read in start..end {
-                    let to = grouped_to.index(read);
-                    let is_duplicate = (bucket_start..write).any(|seen| grouped_to.index(seen) == to);
-
-                    if !is_duplicate {
-                        if write != read {
-                            grouped_to.set(write, to);
-                        }
-                        new_edges_from.push(VertexIndex::new(state));
-                        write += 1;
-                    }
+        dedup_by_bucket(
+            num_vertices,
+            num_edges,
+            |i| self.edges_from.index(i).value(),
+            |i| self.edges_to.index(i),
+            |i, from, outcome| {
+                if let DedupOutcome::Keep { .. } = outcome {
+                    new_edges_from.push(VertexIndex::new(from));
+                    new_edges_to.push(self.edges_to.index(i));
                 }
-            } else {
-                scratch.clear();
-                for read in start..end {
-                    let to = grouped_to.index(read);
-
-                    if scratch.insert(to) {
-                        if write != read {
-                            grouped_to.set(write, to);
-                        }
-                        new_edges_from.push(VertexIndex::new(state));
-                        write += 1;
-                    }
-                }
-            }
-
-            start = end;
-        }
-
-        grouped_to.resize_with(write, || unreachable!("compaction never grows the vector"));
+            },
+        );
 
         new_edges_from.shrink_to_fit();
-        grouped_to.shrink_to_fit();
+        new_edges_to.shrink_to_fit();
 
         self.edges_from = new_edges_from;
-        self.edges_to = grouped_to;
+        self.edges_to = new_edges_to;
     }
 }
 
@@ -442,113 +370,51 @@ impl VariabilityParityGameBuilder {
     }
 
     /// Removes duplicate edges in place, merging the configurations of edges that
-    /// become duplicates (same `from`/`to`) via BDD `or`.
-    ///
-    /// # Details
-    ///
-    /// Structurally identical to [`ParityGameBuilder::remove_duplicates`] (see its
-    /// docs for why grouping by `from` vertex never needs a global sort), except
-    /// that a bucket's repeated `to` values are *merged* rather than dropped: small
-    /// buckets use a linear scan to find the already-written entry to merge into,
-    /// large ones a reused `to -> write position` hash map (see
-    /// [`HASH_DEDUP_THRESHOLD`]).
+    /// become duplicates (same `from`/`to`) via BDD `or`, via
+    /// [`merc_collections::dedup_by_bucket`]'s merge mode (see its docs).
     fn remove_duplicates(&mut self) {
-        let num_states = self.num_of_vertices;
+        let num_vertices = self.num_of_vertices;
         let num_edges = self.edges_from.len();
 
         if num_edges == 0 {
             return;
         }
 
-        // Count outgoing edges per `from` vertex, then turn the counts into
-        // prefix-sum start offsets.
-        let mut offsets = vec![0usize; num_states];
-        for from in self.edges_from.iter() {
-            offsets[*from] += 1;
-        }
+        // `on_entry` gets the edge's original index, so its configuration can be
+        // taken straight out of this by index.
+        let mut configurations: Vec<Option<BDDFunction>> = std::mem::take(&mut self.edges_configuration)
+            .into_iter()
+            .map(Some)
+            .collect();
 
-        let mut running = 0usize;
-        for count in &mut offsets {
-            let bucket_len = *count;
-            *count = running;
-            running += bucket_len;
-        }
-
-        // Scatter (to, configuration) into per-`from` contiguous buckets,
-        // preserving insertion order.
-        let mut grouped_to = bytevec![VertexIndex::new(0); num_edges];
-        let mut grouped_configuration: Vec<Option<BDDFunction>> = (0..num_edges).map(|_| None).collect();
-        for ((from, configuration), to) in self
-            .edges_from
-            .iter()
-            .zip(self.edges_configuration.drain(..))
-            .zip(self.edges_to.iter())
-        {
-            let pos = offsets[*from];
-            offsets[*from] += 1;
-            grouped_to.set(pos, to);
-            grouped_configuration[pos] = Some(configuration);
-        }
-
-        // Compact every bucket in place, merging every repeated `to` into the
-        // first occurrence's configuration instead of dropping it, and rebuild
-        // `edges_from`/`edges_to` alongside it.
-        let mut new_edges_from = ByteCompressedVec::with_capacity(num_edges, num_states.bytes_required());
-        let mut new_edges_to = ByteCompressedVec::with_capacity(num_edges, num_states.bytes_required());
+        let mut new_edges_from = ByteCompressedVec::with_capacity(num_edges, num_vertices.bytes_required());
+        let mut new_edges_to = ByteCompressedVec::with_capacity(num_edges, num_vertices.bytes_required());
         let mut new_configuration: Vec<BDDFunction> = Vec::with_capacity(num_edges);
-        let mut scratch: FxHashMap<VertexIndex, usize> = FxHashMap::default();
-        let mut write = 0usize;
-        let mut start = 0usize;
 
-        for (state, &end) in offsets.iter().enumerate() {
-            let bucket_start = write;
+        dedup_by_bucket(
+            num_vertices,
+            num_edges,
+            |i| self.edges_from.index(i).value(),
+            |i| self.edges_to.index(i),
+            |i, from, outcome| {
+                let configuration = configurations[i]
+                    .take()
+                    .expect("every edge's configuration is taken exactly once");
 
-            if end - start <= HASH_DEDUP_THRESHOLD {
-                for read in start..end {
-                    let to = grouped_to.index(read);
-                    let configuration = grouped_configuration
-                        .get_mut(read)
-                        .expect("read is within the scattered range")
-                        .take()
-                        .expect("every scattered position is written exactly once");
-
-                    if let Some(seen) = (bucket_start..write).find(|&seen| new_edges_to.index(seen) == to) {
-                        new_configuration[seen] = new_configuration[seen]
+                match outcome {
+                    DedupOutcome::Keep { .. } => {
+                        new_edges_from.push(VertexIndex::new(from));
+                        new_edges_to.push(self.edges_to.index(i));
+                        new_configuration.push(configuration);
+                    }
+                    DedupOutcome::Duplicate { position } => {
+                        new_configuration[position] = new_configuration[position]
                             .or(&configuration)
                             .expect("Duplicate edges should have compatible BDD managers");
-                    } else {
-                        new_edges_from.push(VertexIndex::new(state));
-                        new_edges_to.push(to);
-                        new_configuration.push(configuration);
-                        write += 1;
                     }
                 }
-            } else {
-                scratch.clear();
-                for read in start..end {
-                    let to = grouped_to.index(read);
-                    let configuration = grouped_configuration
-                        .get_mut(read)
-                        .expect("read is within the scattered range")
-                        .take()
-                        .expect("every scattered position is written exactly once");
-
-                    if let Some(&seen) = scratch.get(&to) {
-                        new_configuration[seen] = new_configuration[seen]
-                            .or(&configuration)
-                            .expect("Duplicate edges should have compatible BDD managers");
-                    } else {
-                        scratch.insert(to, write);
-                        new_edges_from.push(VertexIndex::new(state));
-                        new_edges_to.push(to);
-                        new_configuration.push(configuration);
-                        write += 1;
-                    }
-                }
-            }
-
-            start = end;
-        }
+            },
+        );
 
         new_edges_from.shrink_to_fit();
         new_edges_to.shrink_to_fit();
@@ -562,8 +428,6 @@ impl VariabilityParityGameBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use itertools::Itertools;
     use oxidd::BooleanFunction;
     use oxidd::Manager;
@@ -580,6 +444,14 @@ mod tests {
     use crate::Priority;
     use crate::VariabilityParityGameBuilder;
     use crate::VertexIndex;
+
+    // The underlying dedup algorithm (matching a naive `HashSet`-based reference,
+    // and its high-out-degree "hub" hash-map path) is covered once, generically,
+    // by `merc_collections::remove_duplicates`'s own tests. The tests below only
+    // check that `ParityGameBuilder`/`VariabilityParityGameBuilder` wire their own
+    // columns into it correctly - plus, for the variability builder, that
+    // duplicate configurations are actually merged with BDD `or`, which the
+    // generic tests (keyed on plain integers) can't exercise.
 
     #[test]
     fn test_random_remove_duplicates() {
@@ -605,67 +477,6 @@ mod tests {
                 );
             }
         });
-    }
-
-    /// Checks the dedup against a trivial, independently implemented reference
-    /// (deduplicating the raw edges with a `HashSet`), so the bucket-local
-    /// approach is not silently missing cases a naive approach would catch.
-    #[test]
-    fn test_random_remove_duplicates_matches_naive_reference() {
-        random_test(100, |rng| {
-            let num_of_vertices = rng.random_range(1..20);
-            let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
-            for v in 0..num_of_vertices {
-                builder.add_vertex(VertexIndex::new(v), Player::Even, Priority::new(0));
-            }
-
-            let mut expected: HashSet<(VertexIndex, VertexIndex)> = HashSet::new();
-            for v in 0..num_of_vertices {
-                for _ in 0..rng.random_range(0..10) {
-                    let from = VertexIndex::new(v);
-                    let to = VertexIndex::new(rng.random_range(0..num_of_vertices));
-                    builder.add_edge(from, to);
-                    expected.insert((from, to));
-                }
-            }
-
-            let game = builder.finish(false, true);
-            let mut actual: HashSet<(VertexIndex, VertexIndex)> = HashSet::new();
-            for vertex in game.iter_vertices() {
-                for edge in game.outgoing_edges(vertex) {
-                    actual.insert((vertex, edge.to()));
-                }
-            }
-
-            assert_eq!(
-                actual, expected,
-                "Deduplicated edges should match a naive HashSet-based reference"
-            );
-        });
-    }
-
-    /// A single high-out-degree "hub" vertex exercises the hash-set dedup path.
-    #[test]
-    fn test_remove_duplicates_hub_vertex() {
-        let num_of_vertices = 6;
-        let mut builder = ParityGameBuilder::new(VertexIndex::new(0));
-        for v in 0..num_of_vertices {
-            builder.add_vertex(VertexIndex::new(v), Player::Even, Priority::new(0));
-        }
-
-        let hub = VertexIndex::new(0);
-        // Every target twice, so almost every edge is a duplicate of one already
-        // placed in this bucket.
-        for _ in 0..2 {
-            for target in 0..num_of_vertices {
-                builder.add_edge(hub, VertexIndex::new(target));
-            }
-        }
-
-        let game = builder.finish(false, true);
-        let targets: Vec<_> = game.outgoing_edges(hub).map(|e| e.to()).collect();
-        assert_eq!(targets.len(), num_of_vertices);
-        assert!(targets.iter().all_unique(), "Hub vertex edges should be unique");
     }
 
     #[test]
