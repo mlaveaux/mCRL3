@@ -1,6 +1,7 @@
 use log::debug;
 use log::info;
 use log::trace;
+use merc_io::LargeFormatter;
 use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
@@ -110,7 +111,7 @@ pub fn reachability_with_options<L: SymbolicLPS>(
     trace!("states = {}", LddDisplay::new(&states));
     let progress = TimeProgress::new(
         |(iteration, num_of_states)| {
-            info!("explored {} state(s) after {} iteration(s)", num_of_states, iteration);
+            info!("explored {} state(s) after {} iteration(s)", LargeFormatter(num_of_states), iteration);
         },
         1,
     );
@@ -119,9 +120,9 @@ pub fn reachability_with_options<L: SymbolicLPS>(
     // progress above can stay silent for a very long time. This one reports the frontier as it grows.
     let step_progress = TimeProgress::new(
         |(group, num_of_states)| {
-            info!("found {} todo state(s) up to transition group {}", num_of_states, group);
+            info!("found {} todo state(s) up to transition group {}", LargeFormatter(num_of_states), group);
         },
-        1,
+        10,
     );
 
     timing.measure("reachability", || {
@@ -167,6 +168,9 @@ fn step<L: SymbolicLPS>(
     timing: &Timing,
     progress: &TimeProgress<(usize, usize)>,
 ) -> Result<(LDDFunction, LDDFunction), MercError> {
+    // We only print a message when this step takes a significant amount of time.
+    progress.reset();
+
     let chaining = matches!(
         options.strategy,
         ExplorationStrategy::Chaining | ExplorationStrategy::SaturationChaining
