@@ -55,6 +55,11 @@ impl<T> TimeProgress<T> {
             >= self.interval_nanos()
     }
 
+    /// Resets the progress timer
+    pub fn reset(&self) {
+        self.last_update.store(self.elapsed_nanos(), Ordering::Relaxed);
+    }
+
     /// Nanoseconds elapsed since `start`, saturating at `u64::MAX` (~584 years).
     fn elapsed_nanos(&self) -> u64 {
         self.start.elapsed().as_nanos().min(u64::MAX as u128) as u64
