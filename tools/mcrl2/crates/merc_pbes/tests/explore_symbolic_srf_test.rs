@@ -31,6 +31,7 @@ fn assert_symbolic_matches_explicit(text_pbes_relative_path: &str) {
         &pbes,
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
+        false,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )

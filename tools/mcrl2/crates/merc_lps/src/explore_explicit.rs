@@ -56,12 +56,10 @@ pub fn lps_progress() -> TimeProgress<(usize, usize)> {
 ///
 /// The LPS is explored as given, any preprocessing must be applied beforehand.
 ///
-/// When `control_flow` is set, a [`ControlFlowAnalysis`] is layered on top of
-/// the explicit LPS to prune summands whose control flow guard cannot hold in
-/// the current state (see [`CfgLinearProcessSpecification`]). The pruning never
-/// changes the explored transition system.
-///
-/// [`ControlFlowAnalysis`]: crate::control_flow::ControlFlowAnalysis
+/// When `control_flow` is set, a [`ControlFlowAnalysis`](mcrl2::ControlFlowAnalysis)
+/// is layered on top of the explicit LPS to prune summands whose control flow
+/// guard cannot hold in the current state (see [`CfgLinearProcessSpecification`]).
+/// The pruning never changes the explored transition system.
 pub fn explore_lps_explicit<B>(
     builder: &mut B,
     lps: LinearProcessSpecification,

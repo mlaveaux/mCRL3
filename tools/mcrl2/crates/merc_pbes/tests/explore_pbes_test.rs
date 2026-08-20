@@ -27,6 +27,7 @@ fn assert_general_matches_srf(pbes: &Pbes) {
         &normalised,
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
+        false,
         &Timing::new(),
         ParityGameBuilder::new(VertexIndex::new(0)),
     )

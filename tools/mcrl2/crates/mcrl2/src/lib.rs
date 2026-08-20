@@ -1,6 +1,7 @@
 //! These are Rust wrappers around the mCRL2 classes
 
 mod atermpp;
+mod control_flow;
 mod data;
 mod data_expression;
 mod global_lock;
@@ -35,6 +36,9 @@ pub use atermpp::mcrl2_aterm_to_merc;
 pub use atermpp::merc_aterm_to_mcrl2;
 
 pub use mcrl2_sys::atermpp::ffi::_aterm;
+
+pub use control_flow::CfgSummand;
+pub use control_flow::ControlFlowAnalysis;
 
 pub use data::DataSpecification;
 

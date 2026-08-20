@@ -129,6 +129,9 @@ enum Commands {
     GraphSymmetry(GraphSymmetryArgs),
     /// Explore a PBES explicitly into a parity game.
     ExploreExplicit(ExploreExplicitArgs),
+    /// Explore a PBES in standard recursive form (SRF) explicitly into a parity
+    /// game, optionally pruning summands with a control flow graph analysis.
+    ExploreExplicitSrf(ExploreExplicitSrfArgs),
     /// Explore a PBES symbolically using LDD-based reachability.
     ExploreSymbolic(ExploreSymbolicArgs),
     /// Solve a PBES by exploring it into a parity game and solving the game.
@@ -274,6 +277,78 @@ struct ExploreExplicitArgs {
     explore: ExploreArgs,
 }
 
+/// How to explore a PBES in SRF form explicitly into a parity game, with
+/// optional control flow graph pruning. Kept separate from [`ExploreArgs`],
+/// which also covers the direct structure-graph algorithm and symmetry
+/// reduction: `--control-flow` only makes sense for the SRF exploration, whose
+/// summands have the positional structure ([`merc_pbes::PbesSrfLps`]) the
+/// analysis relies on.
+#[derive(clap::Args, Debug)]
+struct ExploreExplicitSrfArgs {
+    #[command(flatten)]
+    input: InputArgs,
+
+    /// Strategy to explore the state space of the PBES. Only used for sequential
+    /// exploration; ignored when `--threads > 1` (the parallel explorer always
+    /// uses a level-synchronised BFS).
+    #[arg(long, value_enum, default_value_t = ExplorationStrategy::Bfs)]
+    strategy: ExplorationStrategy,
+
+    /// Caching strategy to use during exploration. Its keys are the positional
+    /// state effect of each SRF summand (see [`merc_pbes::PbesSrfLps`]).
+    #[arg(long, value_enum, default_value_t = CachingStrategy::None)]
+    caching: CachingStrategy,
+
+    /// Number of worker threads used for exploration.
+    #[arg(long, default_value_t = 1)]
+    threads: usize,
+
+    /// Pin each worker thread round-robin to the available CPU cores.
+    #[arg(long, default_value_t = false)]
+    pinned: bool,
+
+    /// Use a control flow graph analysis to prune summands whose source-value
+    /// condition cannot hold in the current state, on top of the pruning by
+    /// equation index that SRF exploration always applies. The explored parity
+    /// game is unchanged.
+    #[arg(long)]
+    control_flow: bool,
+
+    /// Write the resulting parity game to this file in the PGSolver `.pg` format.
+    #[arg(long, short('o'), value_name = "FILE")]
+    output: Option<PathBuf>,
+}
+
+impl ExploreExplicitSrfArgs {
+    /// Explores `pbes` in SRF form into a parity game using `builder`.
+    fn explore<B: PGBuilder>(&self, pbes: Pbes, timing: &Timing, builder: B) -> Result<B::PG, MercError> {
+        if self.threads > 1 {
+            explore_srf_pbes_parallel(
+                &pbes,
+                self.threads,
+                self.caching,
+                self.control_flow,
+                self.pinned,
+                timing,
+                builder,
+            )
+        } else {
+            explore_srf_pbes(&pbes, self.strategy, self.caching, self.control_flow, timing, builder)
+        }
+    }
+
+    /// Writes `game` to `--output` in PGSolver format, if requested. A no-op
+    /// when `--output` was not given.
+    fn write_output(&self, game: &ParityGame) -> Result<(), MercError> {
+        if let Some(output) = &self.output {
+            let mut output_file = File::create(output)?;
+            write_pg(&mut output_file, game)?;
+            info!("Parity game written to '{}'", output.display());
+        }
+        Ok(())
+    }
+}
+
 /// The PBES to explore symbolically, and how its equations are grouped and ordered.
 #[derive(clap::Args, Debug)]
 struct ExploreSymbolicArgs {
@@ -374,6 +449,7 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
             Commands::Symmetry(args) => handle_symmetry(args, timing, preprocess)?,
             Commands::GraphSymmetry(args) => handle_graph_symmetry(args, timing, preprocess)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing, preprocess)?,
+            Commands::ExploreExplicitSrf(args) => handle_explore_explicit_srf(args, timing, preprocess)?,
             Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing, preprocess)?,
             Commands::Solve(args) => handle_solve(args, timing, preprocess)?,
         }
@@ -465,11 +541,11 @@ impl ExploreArgs {
         if let Some(bsgs) = bsgs {
             explore_with_symmetry(&pbes, self, bsgs, timing, builder)
         } else if self.threads > 1 && self.srf {
-            explore_srf_pbes_parallel(&pbes, self.threads, self.caching, self.pinned, timing, builder)
+            explore_srf_pbes_parallel(&pbes, self.threads, self.caching, false, self.pinned, timing, builder)
         } else if self.threads > 1 {
             explore_pbes_parallel(pbes, self.threads, self.pinned, timing, builder)
         } else if self.srf {
-            explore_srf_pbes(&pbes, self.strategy, self.caching, timing, builder)
+            explore_srf_pbes(&pbes, self.strategy, self.caching, false, timing, builder)
         } else {
             explore_pbes(pbes, self.strategy, timing, builder)
         }
@@ -510,6 +586,32 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preproce
         // No output requested, discard the explored game - the exploration loop
         // itself already logs the vertex/edge counts as it goes.
         args.explore.explore(pbes, timing, ())?;
+    }
+
+    Ok(())
+}
+
+/// Handles the explore-explicit-srf command: explores a PBES in SRF form
+/// explicitly into a parity game, optionally pruning summands with a control
+/// flow graph analysis (see [`ExploreExplicitSrfArgs`]).
+fn handle_explore_explicit_srf(args: &ExploreExplicitSrfArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
+    let pbes = args.input.read(timing, preprocess)?;
+
+    if args.output.is_some() {
+        let game = args.explore(pbes, timing, ParityGameBuilder::new(VertexIndex::new(0)))?;
+        args.write_output(&game)?;
+
+        info!(
+            vertices = game.num_of_vertices(),
+            edges = game.num_of_edges();
+            "Parity game: {} vertices, {} edges",
+            game.num_of_vertices(),
+            game.num_of_edges()
+        );
+    } else {
+        // No output requested, discard the explored game - the exploration loop
+        // itself already logs the vertex/edge counts as it goes.
+        args.explore(pbes, timing, ())?;
     }
 
     Ok(())

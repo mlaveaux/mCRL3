@@ -5,43 +5,47 @@ use mcrl2::ATermList;
 use mcrl2::CfgSummand;
 use mcrl2::ControlFlowAnalysis;
 use mcrl2::DataExpression;
-use mcrl2::LearnSuccessorsContext;
-use mcrl2::LinearProcessSpecification;
+use mcrl2::Pbes;
 use merc_explore::LPS;
-use merc_explore::Summand;
 use merc_utilities::MercError;
 use merc_utilities::ShardedCounter;
 
-use crate::explore_explicit::ExplicitContext;
-use crate::explore_explicit::ExplicitLinearProcessSpecification;
-use crate::explore_explicit::ExplicitSummand;
-use crate::explore_explicit::Mcrl2MultiActionLabel;
+use crate::explore_common::PbesVertex;
+use crate::explore_srf::PbesSrfContext;
+use crate::explore_srf::PbesSrfLps;
+use crate::explore_srf::PbesSrfSummand;
 
-/// Lets [`ControlFlowAnalysis`] read an LPS summand's guard and (non-identity)
-/// write assignments without depending on `merc_lps` directly.
-impl CfgSummand for ExplicitSummand {
+/// Lets [`ControlFlowAnalysis`] read an SRF summand's condition and (non-identity)
+/// write assignments without depending on `merc_pbes` directly.
+///
+/// This is the same analysis `merc_lps` layers over LPS summands: an SRF
+/// summand assigns the unified parameter vector of its target equation, which
+/// has the same positional shape as an LPS summand assigning process
+/// parameters directly.
+impl CfgSummand for PbesSrfSummand {
     fn condition(&self) -> &DataExpression {
-        ExplicitSummand::condition(self)
+        PbesSrfSummand::condition(self)
     }
 
     fn write_assignments(&self) -> &ATermList<ATerm> {
-        ExplicitSummand::write_assignments(self)
+        PbesSrfSummand::write_assignments(self)
     }
 }
 
-/// An explicit-state LPS view that selectively enables summands based on a
-/// [`ControlFlowAnalysis`].
+/// A PBES-in-SRF view that selectively enables summands based on a
+/// [`ControlFlowAnalysis`], on top of the equation-index pruning that
+/// [`PbesSrfLps::prepare`] always applies.
 ///
-/// The [`LPS::prepare`] implementation drops summands whose control flow guard
-/// cannot hold in the current state, mirroring how a PBES in SRF form only
-/// explores the summands belonging to its current equation.
+/// The [`LPS::prepare`] implementation drops summands whose source-value
+/// condition cannot hold in the current state, mirroring how
+/// `merc_lps::CfgLinearProcessSpecification` prunes an LPS's summands.
 ///
-/// Pruning never changes the explored transition system: a dropped summand has a
-/// guard that is false in the current state and would have produced no
-/// transitions anyway.
-pub struct CfgLinearProcessSpecification {
-    /// The underlying explicit LPS that performs the actual enumeration.
-    inner: ExplicitLinearProcessSpecification,
+/// Pruning never changes the explored parity game: a dropped summand has a
+/// condition that is false in the current state and would have produced no
+/// successor equations anyway.
+pub struct CfgPbesSrfLps {
+    /// The underlying SRF view that performs the actual enumeration.
+    inner: PbesSrfLps,
 
     /// The control flow graph analysis driving the summand selection.
     analysis: ControlFlowAnalysis,
@@ -53,7 +57,7 @@ pub struct CfgLinearProcessSpecification {
     summand_metrics: Vec<SummandCfgCounters>,
 }
 
-/// Per-summand selection counters for a [`CfgLinearProcessSpecification`].
+/// Per-summand selection counters for a [`CfgPbesSrfLps`].
 #[derive(Default)]
 struct SummandCfgCounters {
     /// Number of states in which this summand passed the control flow guard and
@@ -64,22 +68,25 @@ struct SummandCfgCounters {
     pruned: ShardedCounter,
 }
 
-impl CfgLinearProcessSpecification {
-    /// Builds the explicit LPS and runs the control flow graph analysis on top.
-    pub fn new(lps: LinearProcessSpecification) -> Result<Self, MercError> {
-        let inner = ExplicitLinearProcessSpecification::new(lps)?;
+impl CfgPbesSrfLps {
+    /// Builds the SRF view and runs the control flow graph analysis on top.
+    pub fn new(pbes: &Pbes) -> Result<Self, MercError> {
+        let inner = PbesSrfLps::new(pbes)?;
 
-        // Certain preprocessing steps (notably `replace_constants_by_variables`)
-        // introduce expressions that must be rewritten; `LearnSuccessorsContext`
-        // seeds that substitution from `inner.lps()` itself.
-        let context = LearnSuccessorsContext::new(inner.lps());
+        let context = inner.analysis_context();
         let parameters = inner.parameters();
-        // Every summand of an explicit LPS is a candidate from every state (see
-        // `ExplicitLinearProcessSpecification::prepare`), so none of them is dead
-        // code the analysis should discount.
-        let analysis = ControlFlowAnalysis::new(&parameters, inner.summands(), |_| true, &context, |value| {
-            inner.intern_normal_form(&context, value)
-        });
+        // A summand belonging to an equation unreachable from the initial
+        // equation (notably mCRL2's boilerplate `true`/`false` SRF sinks, which
+        // reset every unified parameter unconditionally) must not be allowed to
+        // disqualify a genuine control flow parameter merely by existing.
+        let analysis = ControlFlowAnalysis::new(
+            &parameters,
+            inner.summands(),
+            |summand| inner.is_equation_reachable(summand.equation_index()),
+            &context,
+            |value| inner.intern_normal_form(&context, value),
+        );
+
         let summand_metrics = (0..analysis.source_constraints.len())
             .map(|_| SummandCfgCounters::default())
             .collect();
@@ -90,8 +97,8 @@ impl CfgLinearProcessSpecification {
         })
     }
 
-    /// Returns the process parameter indices identified as control flow
-    /// parameters.
+    /// Returns the data parameter indices identified as control flow
+    /// parameters (see [`ControlFlowAnalysis`]).
     pub fn control_flow_parameters(&self) -> &[usize] {
         &self.analysis.control_flow_parameters
     }
@@ -120,7 +127,7 @@ impl CfgLinearProcessSpecification {
 /// Control flow pruning metrics for a single summand.
 #[derive(Clone, Copy, Debug)]
 pub struct SummandCfgMetrics {
-    /// Index of the summand in the LPS.
+    /// Index of the summand in the SRF view's flat summand list.
     pub index: usize,
     /// Number of states in which this summand was selected (explored).
     pub selected: u64,
@@ -148,7 +155,7 @@ impl SummandCfgMetrics {
 }
 
 /// Aggregated control flow pruning metrics for every summand of a
-/// [`CfgLinearProcessSpecification`].
+/// [`CfgPbesSrfLps`].
 #[derive(Clone, Debug)]
 pub struct CfgMetrics {
     /// Per-summand metrics, ordered by summand index.
@@ -210,11 +217,11 @@ impl fmt::Display for CfgMetrics {
     }
 }
 
-impl LPS for CfgLinearProcessSpecification {
+impl LPS for CfgPbesSrfLps {
     type Value = usize;
-    type Label = Mcrl2MultiActionLabel;
-    type StateInfo = ();
-    type Summand = ExplicitSummand;
+    type Label = ();
+    type StateInfo = PbesVertex;
+    type Summand = PbesSrfSummand;
 
     fn initial_state(&self) -> Vec<usize> {
         self.inner.initial_state()
@@ -224,31 +231,29 @@ impl LPS for CfgLinearProcessSpecification {
         self.inner.summands()
     }
 
-    fn create_context(&self) -> ExplicitContext {
+    fn create_context(&self) -> PbesSrfContext {
         self.inner.create_context()
     }
 
     fn prepare<'a>(
         &'a self,
-        context: &mut ExplicitContext,
+        context: &mut PbesSrfContext,
         state: &'a [Self::Value],
     ) -> impl Iterator<Item = usize> + 'a {
-        // Stage the per-state substitution in the enumeration backend; the
-        // unfiltered summand list returned by the explicit LPS is discarded in
-        // favour of the control-flow-filtered one below.
-        let _staged = self.inner.prepare(context, state);
+        // The inner SRF view already restricts candidates to the current
+        // equation's summands (state[0]); further filter those by the
+        // source-value constraints on the control flow parameters.
+        let candidates = self.inner.prepare(context, state);
 
-        // The returned iterator borrows `state` directly and reads the control
-        // flow values on demand, avoiding a per-state allocation.
         let control_flow_parameters = &self.analysis.control_flow_parameters;
         let source_constraints = &self.analysis.source_constraints;
         #[cfg(feature = "metrics")]
         let summand_metrics = &self.summand_metrics;
 
-        (0..source_constraints.len()).filter(move |&index| {
+        candidates.filter(move |&index| {
             let selected = source_constraints[index]
                 .iter()
-                .all(|&(position, value)| state[control_flow_parameters[position]] == value);
+                .all(|&(position, value)| state[1 + control_flow_parameters[position]] == value);
 
             #[cfg(feature = "metrics")]
             {
@@ -264,5 +269,7 @@ impl LPS for CfgLinearProcessSpecification {
         })
     }
 
-    fn state_info(&self, _state: &[Self::Value], _context: &<Self::Summand as Summand>::Context) -> Self::StateInfo {}
+    fn state_info(&self, state: &[Self::Value], context: &PbesSrfContext) -> Self::StateInfo {
+        self.inner.state_info(state, context)
+    }
 }

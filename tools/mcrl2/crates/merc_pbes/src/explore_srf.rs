@@ -3,6 +3,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use log::debug;
+use log::info;
 
 use mcrl2::_aterm;
 use mcrl2::ATerm;
@@ -32,6 +33,7 @@ use merc_vpg::PGBuilder;
 use merc_vpg::Player;
 use merc_vpg::Priority;
 
+use crate::cfg_srf::CfgPbesSrfLps;
 use crate::explore_common::ParameterLayoutLPS;
 use crate::explore_common::PbesVertex;
 use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
@@ -42,19 +44,80 @@ use crate::explore_common::explore_pbes_parallel_impl;
 
 /// Builds a parity game by exploring the given PBES in SRF format, using
 /// `builder` to accumulate the result - see [`PGBuilder`].
+///
+/// When `control_flow` is set, a [`ControlFlowAnalysis`](mcrl2::ControlFlowAnalysis)
+/// is layered on top of the SRF view to prune summands whose source-value guard
+/// cannot hold in the current state (see [`CfgPbesSrfLps`]), in addition to the
+/// pruning by equation index ([`PbesSrfLps::prepare`]) that always applies. The
+/// pruning never changes the resulting parity game.
 pub fn explore_srf_pbes<B: PGBuilder>(
     pbes: &Pbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
+    control_flow: bool,
     timing: &Timing,
     builder: B,
 ) -> Result<B::PG, MercError> {
-    let lps = PbesSrfLps::new(pbes)?;
+    if control_flow {
+        let lps = CfgPbesSrfLps::new(pbes)?;
+        info!(
+            "Control flow analysis identified {} control flow parameter(s)",
+            lps.control_flow_parameters().len()
+        );
+        let result = explore_srf_lps(&lps, strategy, caching, timing, builder);
+        debug!("{}", lps.metrics());
+        result
+    } else {
+        let lps = PbesSrfLps::new(pbes)?;
+        explore_srf_lps(&lps, strategy, caching, timing, builder)
+    }
+}
 
+/// Builds a parity game by exploring the given PBES in SRF format in
+/// parallel, using `builder` to accumulate the result - see [`PGBuilder`].
+///
+/// As for [`explore_srf_pbes`], `control_flow` layers a [`CfgPbesSrfLps`] on top
+/// of the plain SRF view.
+pub fn explore_srf_pbes_parallel<B: PGBuilder>(
+    pbes: &Pbes,
+    threads: usize,
+    caching: CachingStrategy,
+    control_flow: bool,
+    pinned: bool,
+    timing: &Timing,
+    builder: B,
+) -> Result<B::PG, MercError> {
+    if control_flow {
+        let lps = CfgPbesSrfLps::new(pbes)?;
+        info!(
+            "Control flow analysis identified {} control flow parameter(s)",
+            lps.control_flow_parameters().len()
+        );
+        let result = explore_srf_lps_parallel(&lps, threads, caching, pinned, timing, builder);
+        debug!("{}", lps.metrics());
+        result
+    } else {
+        let lps = PbesSrfLps::new(pbes)?;
+        explore_srf_lps_parallel(&lps, threads, caching, pinned, timing, builder)
+    }
+}
+
+/// Shared caching driver for [`explore_srf_pbes`], used for both the plain SRF
+/// view and the control-flow-pruning variant.
+fn explore_srf_lps<L, B: PGBuilder>(
+    lps: &L,
+    strategy: ExplorationStrategy,
+    caching: CachingStrategy,
+    timing: &Timing,
+    builder: B,
+) -> Result<B::PG, MercError>
+where
+    L: LPS<Value = usize, Label = (), StateInfo = PbesVertex, Summand = PbesSrfSummand>,
+{
     match caching {
-        CachingStrategy::None => explore_pbes_impl(&lps, strategy, timing, builder),
+        CachingStrategy::None => explore_pbes_impl(lps, strategy, timing, builder),
         _ => {
-            let cached = CacheLPS::new(&lps, caching);
+            let cached = CacheLPS::new(lps, caching);
             let game = explore_pbes_impl(&cached, strategy, timing, builder)?;
             debug!("{}", cached.metrics());
             Ok(game)
@@ -62,22 +125,23 @@ pub fn explore_srf_pbes<B: PGBuilder>(
     }
 }
 
-/// Builds a parity game by exploring the given PBES in SRF format in
-/// parallel, using `builder` to accumulate the result - see [`PGBuilder`].
-pub fn explore_srf_pbes_parallel<B: PGBuilder>(
-    pbes: &Pbes,
+/// Shared caching driver for [`explore_srf_pbes_parallel`], used for both the
+/// plain SRF view and the control-flow-pruning variant.
+fn explore_srf_lps_parallel<L, B: PGBuilder>(
+    lps: &L,
     threads: usize,
     caching: CachingStrategy,
     pinned: bool,
     timing: &Timing,
     builder: B,
-) -> Result<B::PG, MercError> {
-    let lps = PbesSrfLps::new(pbes)?;
-
+) -> Result<B::PG, MercError>
+where
+    L: LPS<Value = usize, Label = (), StateInfo = PbesVertex, Summand = PbesSrfSummand> + Sync,
+{
     match caching {
-        CachingStrategy::None => explore_pbes_parallel_impl(&lps, threads, pinned, timing, builder),
+        CachingStrategy::None => explore_pbes_parallel_impl(lps, threads, pinned, timing, builder),
         _ => {
-            let cached = CacheLPS::new(&lps, caching);
+            let cached = CacheLPS::new(lps, caching);
             let game = explore_pbes_parallel_impl(&cached, threads, pinned, timing, builder)?;
             debug!("{}", cached.metrics());
             Ok(game)
@@ -133,6 +197,11 @@ pub struct PbesSrfLps {
     /// summands belonging to that equation. A source state only explores the
     /// summands of its current equation (`state[0]`).
     equation_summands: Vec<Vec<usize>>,
+
+    /// For each equation index, whether it is reachable from the initial
+    /// equation via the summands' equation-index graph (ignoring data guards).
+    /// See [`PbesSrfLps::is_equation_reachable`].
+    equation_reachable: Vec<bool>,
 
     /// The initial state vector.
     initial_state: Vec<usize>,
@@ -353,11 +422,34 @@ impl PbesSrfLps {
             }
         }
 
+        // Equation-level reachability from the initial equation, ignoring data
+        // guards: a coarse, conservative over-approximation of actual state
+        // reachability, used by `mcrl2::ControlFlowAnalysis` (see
+        // `is_equation_reachable`) so an equation that is not actually part of the
+        // reachable automaton cannot spuriously disqualify a genuine control flow
+        // parameter merely by existing in the unified PBES. mCRL2's SRF conversion
+        // always emits boilerplate sink equations for the `true`/`false` PVIs that
+        // reset every parameter unconditionally, which would otherwise defeat the
+        // analysis even when those sinks are never actually entered.
+        let mut equation_reachable = vec![false; srf.equations().len()];
+        let mut stack = vec![initial_eq_idx];
+        equation_reachable[initial_eq_idx] = true;
+        while let Some(eq_idx) = stack.pop() {
+            for &summand_idx in &equation_summands[eq_idx] {
+                let target = summands[summand_idx].target_equation_index;
+                if !equation_reachable[target] {
+                    equation_reachable[target] = true;
+                    stack.push(target);
+                }
+            }
+        }
+
         Ok(Self {
             srf,
             data_spec,
             summands,
             equation_summands,
+            equation_reachable,
             initial_state,
             state_info,
             process_parameters,
@@ -374,6 +466,44 @@ impl PbesSrfLps {
     /// state position `1 + i`.
     pub fn parameters(&self) -> Vec<DataVariable> {
         self.srf.equations()[0].variable().parameters().iter().collect()
+    }
+
+    /// Creates a fresh [`LearnSuccessorsContext`] for rewriting closed terms to
+    /// normal form, independent of the per-thread enumeration contexts created by
+    /// [`LPS::create_context`]. Used by [`mcrl2::ControlFlowAnalysis`].
+    pub fn analysis_context(&self) -> LearnSuccessorsContext {
+        LearnSuccessorsContext::from_data_spec(&self.data_spec)
+    }
+
+    /// Whether `equation_index` is reachable from the initial equation via the
+    /// summands' equation-index graph (ignoring data guards — a coarse,
+    /// conservative over-approximation of actual state reachability).
+    ///
+    /// [`mcrl2::ControlFlowAnalysis`] uses this to keep an unreachable equation
+    /// from spuriously disqualifying a genuine control flow parameter: mCRL2's
+    /// SRF conversion always emits boilerplate sink equations for the
+    /// `true`/`false` PVIs that reset every (unified) parameter unconditionally,
+    /// which would otherwise defeat the analysis even when those sinks are never
+    /// actually entered.
+    pub fn is_equation_reachable(&self, equation_index: usize) -> bool {
+        self.equation_reachable[equation_index]
+    }
+
+    /// Rewrites `value` to normal form under `context` and interns it into the
+    /// shared value mapping, returning its dense index.
+    ///
+    /// The rewriting and interning mirror the enumeration performed during
+    /// exploration, so the returned index can be compared directly against the
+    /// entries of explored state vectors.
+    pub fn intern_normal_form(&self, context: &LearnSuccessorsContext, value: &DataExpressionRef) -> usize {
+        let rewritten = context.rewrite_under_sigma(value);
+
+        // SAFETY: the rewritten term is interned into `self.value_mapping`, a
+        // `Protected` container that keeps every interned term live through GC
+        // marking for as long as the mapping exists.
+        self.value_mapping
+            .insert(unsafe { DataExpressionRef::from_address(rewritten.address()) })
+            .0
     }
 }
 
@@ -439,6 +569,27 @@ impl ParameterLayoutLPS for PbesSrfLps {
         // Every SRF state is `[equation_index, params...]`.
         debug_assert_eq!(state.len(), 1 + self.num_params());
         Some(1..1 + self.num_params())
+    }
+}
+
+impl PbesSrfSummand {
+    /// The equation this summand belongs to; it only ever fires from a state
+    /// whose equation-index position (state position 0) equals this.
+    pub fn equation_index(&self) -> usize {
+        self.equation_index
+    }
+
+    /// The summand's data condition (after SRF conversion).
+    pub fn condition(&self) -> &DataExpression {
+        &self.condition
+    }
+
+    /// The assignment list `params := target_args`, containing only the
+    /// parameters this summand actually changes: `make_data_assignment_list`
+    /// filters out identity assignments, so a parameter absent here is passed
+    /// through unchanged.
+    pub fn write_assignments(&self) -> &ATermList<ATerm> {
+        &self.write_assignments
     }
 }
 

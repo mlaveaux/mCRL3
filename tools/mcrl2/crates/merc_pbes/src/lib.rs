@@ -10,6 +10,11 @@
 //!   parity game directly via its structure graph, while [`explore_srf_pbes`]
 //!   and [`explore_srf_pbes_parallel`] first convert it to standard recursive
 //!   form. [`explore_pbes_symbolic`] performs LDD-based symbolic reachability.
+//! - [`CfgPbesSrfLps`] wraps a PBES in SRF form with a control flow analysis
+//!   ([`mcrl2::ControlFlowAnalysis`], shared with `merc_lps`'s explicit explorer)
+//!   that prunes summands whose source-value condition cannot hold in the
+//!   current state, on top of the equation-index pruning [`PbesSrfLps`] always
+//!   applies.
 //! - [`graph_symmetries`] detects symmetries by building the symmetry detection
 //!   graph and handing it to GAP, while [`SymmetryAlgorithm`] checks candidate
 //!   parameter permutations directly on the equations.
@@ -20,6 +25,7 @@
 //! [`merc-pbes`]: https://mercorg.github.io/merc-website/
 
 pub mod bsgs;
+pub mod cfg_srf;
 pub mod clone_iterator;
 pub mod explore_common;
 pub mod explore_pbes;
@@ -31,6 +37,9 @@ pub mod quotient_lps;
 pub mod symmetry;
 
 pub use bsgs::Bsgs;
+pub use cfg_srf::CfgMetrics;
+pub use cfg_srf::CfgPbesSrfLps;
+pub use cfg_srf::SummandCfgMetrics;
 pub use clone_iterator::CloneIterator;
 pub use explore_common::ParameterLayoutLPS;
 pub use explore_common::PbesVertex;
