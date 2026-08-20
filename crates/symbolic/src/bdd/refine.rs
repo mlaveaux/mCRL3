@@ -10,7 +10,7 @@ use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 use oxidd::util::OutOfMemory;
-
+use crate::extend_relation;
 use crate::CubeIterAll;
 use crate::SummandGroupBdd;
 use crate::SymbolicLtsBdd;
@@ -50,7 +50,17 @@ pub fn refine_bisimulation<L: TransitionLabel>(
     // Split the transition group to only have a single action label per group.
     let mut split_groups = Vec::new();
     for group in lts.transition_groups() {
-        let action_bdd = group.relation().exists(&state_vars)?;
+        // Extend the relation with x = x' for the state variables not written by this
+        // group.
+        let relation = extend_relation(
+            manager_ref,
+            group.relation(),
+            lts.state_variables(),
+            lts.next_state_variables(),
+            group.write_variables(),
+        )?;
+
+        let action_bdd = relation.exists(&state_vars)?;
 
         for cube in CubeIterAll::with_variables(&action_bdd, lts.action_variables()) {
             // Every cube is a single action.
@@ -58,9 +68,9 @@ pub fn refine_bisimulation<L: TransitionLabel>(
             let label_bdd = bdd_from_cube(manager_ref, &action_vars, &cube)?;
 
             split_groups.push(SummandGroupBdd::new(
-                group.relation().clone().and(&label_bdd)?,
-                group.read_variables().to_vec(),
-                group.write_variables().to_vec(),
+                relation.clone().and(&label_bdd)?,
+                lts.state_variables().to_vec(),
+                lts.next_state_variables().to_vec(),
             ));
         }
     }
