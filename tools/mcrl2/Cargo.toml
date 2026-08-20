@@ -27,10 +27,7 @@ exclude = [
 
 [workspace.lints.rustdoc]
 # Several public functions/types intentionally link to crate-internal items
-# from their doc comments (e.g. to explain an implementation detail without
-# exposing it). Keep the links themselves (so a rename still trips the
-# separate, still-denied `broken_intra_doc_links` lint) but don't fail the
-# build just because the linked item isn't publicly reachable.
+# from their doc comments.
 private_intra_doc_links = "allow"
 
 [workspace.dependencies]
@@ -82,8 +79,8 @@ merc_vpg = { path = "../../crates/vpg" }
 
 oxidd = { version = "0.12", features = ["manager-pointer", "multi-threading"] }
 
-[patch."https://github.com/MERCorg/mCRL2-sys"]
-mcrl2-sys = { path = "crates/mCRL2-sys" }
+# [patch."https://github.com/MERCorg/mCRL2-sys"]
+# mcrl2-sys = { path = "crates/mCRL2-sys" }
 
 [patch.crates-io]
 oxidd = { git = "https://github.com/mlaveaux/oxidd", rev = "71e4b3b1aae5eac4fb67ab8e12f4eeac0d55c8b4" }
