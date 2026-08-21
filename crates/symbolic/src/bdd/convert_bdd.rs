@@ -238,7 +238,7 @@ pub fn convert_symbolic_lts_bdd<B: LtsBuilder<String>, L: TransitionLabel>(
 }
 
 /// Builds a BDD restriction cube fixing every read variable to its concrete value
-/// in the given state, suitable for use with [`BooleanFunctionQuant::restrict`].
+/// in the given state, suitable for use with [`BooleanFunction::restrict`].
 fn build_state_restriction(
     manager_ref: &BDDManagerRef,
     read_positions: &[(VarNo, usize)],
