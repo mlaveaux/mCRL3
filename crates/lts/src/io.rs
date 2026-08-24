@@ -109,7 +109,11 @@ pub fn guess_lts_format_from_extension(path: &Path, format: Option<LtsFormat>) -
 /// stdout): the explicitly given `output_format` when set (matching
 /// [`guess_lts_format_from_extension`]'s own precedence), otherwise guessed from `output`'s
 /// extension, otherwise `default`.
-pub fn guess_lts_output_format(output: Option<&Path>, output_format: Option<LtsFormat>, default: LtsFormat) -> LtsFormat {
+pub fn guess_lts_output_format(
+    output: Option<&Path>,
+    output_format: Option<LtsFormat>,
+    default: LtsFormat,
+) -> LtsFormat {
     match output {
         Some(output) => guess_lts_format_from_extension(output, output_format),
         None => output_format,

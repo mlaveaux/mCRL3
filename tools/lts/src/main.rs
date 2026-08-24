@@ -23,10 +23,10 @@ use merc_lts::StateIndex;
 use merc_lts::apply_lts;
 use merc_lts::apply_lts_pair;
 use merc_lts::guess_lts_format_from_extension;
+use merc_lts::guess_lts_output_format;
 use merc_lts::read_explicit_lts;
 use merc_lts::read_lts;
 use merc_lts::read_mcrl2_aut;
-use merc_lts::guess_lts_output_format;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
 use merc_lts::write_lts;
@@ -681,7 +681,7 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
             if output_format == LtsFormat::Lts {
                 return Err(NO_DATA_SPEC_FOR_LTS.into());
             }
-            
+
             let lts_list = args
                 .lts
                 .iter()
@@ -694,7 +694,6 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
             let mut builder = LtsBuilderMem::new(Vec::new(), Vec::new());
             combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
             let result = builder.finish(StateIndex::new(0), false);
-
 
             let result = result.relabel(|label| Ok(label.to_string()))?;
             write_untyped_lts(&result, output_format, args.output.as_deref())?;
