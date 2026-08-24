@@ -5,7 +5,7 @@
 /// A number is a power of two when exactly a single bit is one.
 pub fn is_power_of_two<T>(value: T) -> bool
 where
-    T: num::PrimInt,
+    T: num::PrimInt + num::Unsigned,
 {
     !value.is_zero() && (value & (value - T::one())).is_zero()
 }
@@ -28,7 +28,7 @@ where
 /// ```
 pub fn round_up_to_power_of_two<T>(value: T) -> T
 where
-    T: num::PrimInt,
+    T: num::PrimInt + num::Unsigned,
 {
     if value.is_zero() {
         return T::one();
