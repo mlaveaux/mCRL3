@@ -12,7 +12,10 @@ use merc_explore::ExplorationStrategy;
 use merc_lps::LpsFormat;
 use merc_lts::AutFormat;
 use merc_lts::AutStream;
+use merc_lts::LtsFormat;
+use merc_lts::LtsStream;
 use merc_lts::MutexLtsBuilder;
+use merc_lts::guess_lts_output_format;
 use merc_symbolic::ExplorationStrategy as SymbolicExplorationStrategy;
 use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SummandGrouping;
@@ -37,7 +40,9 @@ use mcrl2::read_lps_text;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 
+use merc_lps::LtsMultiActionAdapter;
 use merc_lps::Mcrl2MultiActionLabel;
+use merc_lps::convert_data_specification;
 use merc_lps::explore_lps_explicit;
 use merc_lps::explore_lps_explicit_parallel;
 use merc_lps::explore_lps_symbolic;
@@ -191,10 +196,11 @@ struct ExploreExplicitArgs {
     #[command(flatten)]
     input: InputArgs,
 
-    #[arg(long, short('o'), value_enum, default_value_t = AutFormat::Aut)]
-    out_format: AutFormat,
+    /// Explicitly specify the output LTS file format.
+    #[arg(long, short('o'), value_enum)]
+    out_format: Option<LtsFormat>,
 
-    /// Specify the output LTS in AUT format. If not given, the LTS is not written.
+    /// Specify the output LTS. If not given, the LTS is not written.
     #[arg(long)]
     output: Option<PathBuf>,
 
@@ -301,13 +307,32 @@ fn handle_explore(cli: &Cli, args: &ExploreArgs, timing: &Timing, preprocess_lps
 fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preprocess_lps: bool) -> Result<(), MercError> {
     let lps = args.input.read(timing, preprocess_lps)?;
 
+    let output_format = guess_lts_output_format(args.output.as_deref(), args.out_format, LtsFormat::Aut);
+
+    // The binary `.lts` format additionally carries a data specification, so it's handled
+    // separately (see `handle_explore_explicit_lts`).
+    if output_format == LtsFormat::Lts {
+        return handle_explore_explicit_lts(args, lps, timing);
+    }
+
+    let aut_format = match output_format {
+        LtsFormat::Aut => AutFormat::Aut,
+        LtsFormat::AutMcrl2 => AutFormat::AutMcrl2,
+        LtsFormat::Bcg => {
+            return Err(
+                "BCG output is not supported by explore-explicit; write AUT or .lts and convert with merc-lts.".into(),
+            );
+        }
+        LtsFormat::Lts => unreachable!("handled above"),
+    };
+
     if args.threads > 1 {
         // Parallel exploration adds transitions concurrently, so the AUT writer
         // is wrapped in a `MutexLtsBuilder` that serialises the writes; the
         // expensive enumeration still happens outside the lock.
         if let Some(output) = &args.output {
             let mut file = BufWriter::new(File::create(output)?);
-            let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, args.out_format)?);
+            let mut builder = MutexLtsBuilder::new(AutStream::with_format(&mut file, aut_format)?);
             explore_lps_explicit_parallel(
                 &mut builder,
                 lps,
@@ -331,7 +356,7 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preproce
         }
     } else if let Some(output) = &args.output {
         let mut file = BufWriter::new(File::create(output)?);
-        let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, args.out_format)?;
+        let mut builder: AutStream<_, Mcrl2MultiActionLabel> = AutStream::with_format(&mut file, aut_format)?;
         explore_lps_explicit(
             &mut builder,
             lps,
@@ -343,6 +368,64 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preproce
     } else {
         // No output requested, discard the explored transitions.
         let mut builder: () = ();
+        explore_lps_explicit(
+            &mut builder,
+            lps,
+            args.caching,
+            args.strategy,
+            args.control_flow,
+            timing,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Explores `lps` explicitly and streams the result straight to disk in the binary mCRL2 `.lts`
+/// format via [`LtsStream`].
+fn handle_explore_explicit_lts(
+    args: &ExploreExplicitArgs,
+    lps: LinearProcessSpecification,
+    timing: &Timing,
+) -> Result<(), MercError> {
+    let Some(output) = &args.output else {
+        // No output requested: still explore (for the stats and timing), but discard the
+        // transitions rather than converting and writing them for nothing.
+        if args.threads > 1 {
+            explore_lps_explicit_parallel(
+                &mut (),
+                lps,
+                args.caching,
+                args.threads,
+                args.control_flow,
+                args.pinned,
+                timing,
+            )?;
+        } else {
+            explore_lps_explicit(&mut (), lps, args.caching, args.strategy, args.control_flow, timing)?;
+        }
+        return Ok(());
+    };
+
+    // The data specification never changes during exploration, so convert it once up front,
+    // before `lps` is consumed by the explorer below. `LtsStream::new` writes it immediately, as
+    // the format's header.
+    let data_spec = convert_data_specification(&lps);
+    let stream = LtsStream::new(File::create(output)?, &data_spec)?;
+
+    if args.threads > 1 {
+        let mut builder = MutexLtsBuilder::new(LtsMultiActionAdapter::new(stream));
+        explore_lps_explicit_parallel(
+            &mut builder,
+            lps,
+            args.caching,
+            args.threads,
+            args.control_flow,
+            args.pinned,
+            timing,
+        )?;
+    } else {
+        let mut builder = LtsMultiActionAdapter::new(stream);
         explore_lps_explicit(
             &mut builder,
             lps,

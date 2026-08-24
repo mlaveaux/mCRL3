@@ -1,5 +1,7 @@
+use std::borrow::Borrow;
 use std::cell::Cell;
 use std::fmt;
+use std::hash::Hash;
 use std::sync::Arc;
 
 use log::debug;
@@ -18,7 +20,9 @@ use mcrl2::LinearSummand;
 use mcrl2::Protected;
 use mcrl2::free_variables_data_expression;
 use mcrl2::is_variable;
+use mcrl2::mcrl2_aterm_to_merc;
 use mcrl2::pretty_print_multi_action;
+use mcrl2::remove_index;
 use mcrl2::tau_multi_action;
 use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
@@ -31,7 +35,11 @@ use merc_explore::explore;
 use merc_explore::explore_parallel;
 use merc_io::TimeProgress;
 use merc_lts::ConcurrentLtsBuilder;
+use merc_lts::LtsAction;
 use merc_lts::LtsBuilder;
+use merc_lts::LtsMultiAction;
+use merc_lts::PerStateDedup;
+use merc_lts::StateIndex;
 use merc_lts::TransitionLabel;
 use merc_unsafety::ConcurrentIndexedSet;
 use merc_utilities::MercError;
@@ -127,11 +135,14 @@ where
     B: LtsBuilder<Mcrl2MultiActionLabel>,
     M: LPS<Value = usize, Label = Mcrl2MultiActionLabel, StateInfo = ()>,
 {
-    // Count states and transitions in the exploration closures, driving the
-    // periodic progress reporter from `on_transition`.
+    // Count states in the exploration closures, driving the periodic progress reporter from
+    // `on_transition`.
     let progress = lps_progress();
     let states = Cell::new(0usize);
-    let transitions = Cell::new(0usize);
+
+    // Different summands can instantiate to the same (label, successor) pair
+    // for a given state, so deduplicate them.
+    let mut dedup = PerStateDedup::new();
 
     let initial = explore(
         lps,
@@ -143,15 +154,18 @@ where
             Ok(())
         },
         |b: &mut B, from, label: &Mcrl2MultiActionLabel, to| {
-            transitions.set(transitions.get() + 1);
-            progress.print((states.get(), transitions.get()));
-            b.add_transition(from, label, to)
+            dedup.add(from, label, to, |from, label, to| b.add_transition(from, label, to))?;
+            progress.print((states.get(), b.num_of_transitions() + dedup.len()));
+            Ok(())
         },
     )?;
+
+    dedup.flush(|from, label, to| builder.add_transition(from, label, to))?;
+
     info!(
         "Exploration complete: {} states, {} transitions",
         states.get(),
-        transitions.get(),
+        builder.num_of_transitions(),
     );
     builder.require_num_of_states(states.get());
 
@@ -246,23 +260,42 @@ where
     let transitions = ShardedCounter::new();
     let progress = lps_progress();
 
+    // Forwards a deduplicated transition into the shared builder, counting it only once it is
+    // actually written (see the `Local` doc below).
+    let flush_one = |from, label: &Mcrl2MultiActionLabel, to| {
+        transitions.increment();
+        builder_ref.add_transition_shared(from, label, to)
+    };
+
     let initial = timing.measure("explore", || -> Result<_, MercError> {
         pool.install(|| {
-            let (initial, _locals) = explore_parallel(
+            // Each worker gets its own `PerStateDedup`: work is distributed per *state* (see
+            // `explore_parallel`'s work-stealing deques), so one worker's outgoing transitions
+            // for a given state are never interleaved with another's, and a single buffer per
+            // worker is enough to catch the duplicates two different summands can instantiate to
+            // (see `explore_lps_explicit`). A single buffer shared across workers would not work:
+            // different workers process unrelated states concurrently.
+            let (initial, mut locals) = explore_parallel(
                 lps,
-                || (),
-                |_local: &mut (), _state, _info: &()| {
+                PerStateDedup::<Mcrl2MultiActionLabel>::new,
+                |_local: &mut PerStateDedup<Mcrl2MultiActionLabel>, _state, _info: &()| {
                     states.increment();
                     Ok(())
                 },
-                |_local: &mut (), from, label: &Mcrl2MultiActionLabel, to| {
-                    transitions.increment();
+                |local: &mut PerStateDedup<Mcrl2MultiActionLabel>, from, label: &Mcrl2MultiActionLabel, to| {
                     if progress.is_due() {
                         progress.print((states.get() as usize, transitions.get() as usize));
                     }
-                    builder_ref.add_transition_shared(from, label, to)
+                    local.add(from, label, to, flush_one)
                 },
             )?;
+
+            // Each worker's last state is still sitting in its buffer; flush them all now that
+            // exploration is complete.
+            for local in &mut locals {
+                local.flush(flush_one)?;
+            }
+
             Ok(initial)
         })
     })?;
@@ -306,6 +339,75 @@ impl Mcrl2MultiActionLabel {
     /// flattens into a single pretty-printed string.
     pub fn as_aterm(&self) -> ATerm {
         self.term.protect_local()
+    }
+
+    /// Converts this label into the typed multi-action representation used by
+    /// [`merc_lts`]'s binary `.lts` format, translating the underlying term into the
+    /// `merc_aterm` term pool via [`mcrl2::mcrl2_aterm_to_merc`].
+    pub fn to_lts_multi_action(&self) -> Result<LtsMultiAction<LtsAction>, MercError> {
+        let term = remove_index(&self.as_aterm().copy());
+        LtsMultiAction::from_mcrl2_aterm(mcrl2_aterm_to_merc(&term.copy()))
+    }
+}
+
+/// Adapts an [`LtsBuilder<LtsMultiAction<LtsAction>>`] into one that accepts
+/// [`Mcrl2MultiActionLabel`]s, converting each one via
+/// [`Mcrl2MultiActionLabel::to_lts_multi_action`] as it is added.
+///
+/// This lets a typed builder such as [`merc_lts::LtsStream`] — which only understands the
+/// binary `.lts` format's typed multi-actions — receive the untyped mCRL2 multi-actions the
+/// explorer produces directly, streaming the conversion transition by transition instead of
+/// converting the whole LTS after materialising it in memory.
+pub struct LtsMultiActionAdapter<B> {
+    inner: B,
+}
+
+impl<B> LtsMultiActionAdapter<B> {
+    /// Wraps `inner`, a builder over the typed `.lts` multi-action representation.
+    pub fn new(inner: B) -> Self {
+        Self { inner }
+    }
+}
+
+impl<B: LtsBuilder<LtsMultiAction<LtsAction>>> LtsBuilder<Mcrl2MultiActionLabel> for LtsMultiActionAdapter<B> {
+    type LTS = B::LTS;
+
+    fn add_transition<Q>(&mut self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        Mcrl2MultiActionLabel: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = Mcrl2MultiActionLabel> + Eq + Hash,
+    {
+        let converted = label.to_owned().to_lts_multi_action()?;
+        self.inner.add_transition(from, &converted, to)
+    }
+
+    fn finish(&mut self, initial_state: StateIndex) -> Result<Self::LTS, MercError> {
+        self.inner.finish(initial_state)
+    }
+
+    fn num_of_transitions(&self) -> usize {
+        self.inner.num_of_transitions()
+    }
+
+    fn num_of_states(&self) -> usize {
+        self.inner.num_of_states()
+    }
+
+    fn require_num_of_states(&mut self, num_states: usize) {
+        self.inner.require_num_of_states(num_states)
+    }
+}
+
+impl<B: ConcurrentLtsBuilder<LtsMultiAction<LtsAction>>> ConcurrentLtsBuilder<Mcrl2MultiActionLabel>
+    for LtsMultiActionAdapter<B>
+{
+    fn add_transition_shared<Q>(&self, from: StateIndex, label: &Q, to: StateIndex) -> Result<(), MercError>
+    where
+        Mcrl2MultiActionLabel: Borrow<Q>,
+        Q: ?Sized + ToOwned<Owned = Mcrl2MultiActionLabel> + Eq + Hash,
+    {
+        let converted = label.to_owned().to_lts_multi_action()?;
+        self.inner.add_transition_shared(from, &converted, to)
     }
 }
 

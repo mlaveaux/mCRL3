@@ -18,6 +18,7 @@
 //! [`merc-lps`]: https://mercorg.github.io/merc-website/
 
 pub mod cfg_lps;
+pub mod convert_data_specification;
 pub mod explore_explicit;
 pub mod explore_symbolic;
 pub mod io;
@@ -25,7 +26,9 @@ pub mod io;
 pub use cfg_lps::CfgLinearProcessSpecification;
 pub use cfg_lps::CfgMetrics;
 pub use cfg_lps::SummandCfgMetrics;
+pub use convert_data_specification::convert_data_specification;
 pub use explore_explicit::ExplicitLinearProcessSpecification;
+pub use explore_explicit::LtsMultiActionAdapter;
 pub use explore_explicit::Mcrl2MultiActionLabel;
 pub use explore_explicit::explore_lps_explicit;
 pub use explore_explicit::explore_lps_explicit_parallel;

@@ -9,6 +9,7 @@ use merc_lts::LabelIndex;
 use merc_lts::LtsAction;
 use merc_lts::LtsBuilder;
 use merc_lts::LtsMultiAction;
+use merc_lts::PerStateDedup;
 use merc_lts::SimpleAction;
 use merc_lts::StateIndex;
 use merc_lts::Transition;
@@ -67,6 +68,11 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     comm: &[CommExpr],
     timing: &Timing,
 ) -> Result<(), MercError> {
+    // Two different combinations of underlying transitions (e.g. from different LTSs in the
+    // composition) can reduce to the same (label, successor) pair for a given state once hiding,
+    // allow, and communication are applied. So deduplicate then,
+    let mut dedup = PerStateDedup::new();
+
     if parallel_composition.is_empty() {
         return Err("At least one LTS is required for composition.".into());
     }
@@ -187,18 +193,25 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
 
                 let (target_ref, is_new) = discovered.insert_with(&target_raw, &mut forest_context);
                 let to = StateIndex::new(target_ref.index());
-                builder.add_transition(StateIndex::new(current.index()), &multi_action, to)?;
+                dedup.add(
+                    StateIndex::new(current.index()),
+                    &multi_action,
+                    to,
+                    |from, label, to| builder.add_transition(from, label, to),
+                )?;
 
                 if is_new {
                     working.push(target_ref);
                 }
             }
 
-            progress.print((discovered.len(), builder.num_of_transitions()));
+            progress.print((discovered.len(), builder.num_of_transitions() + dedup.len()));
         }
 
         Ok(())
     })?;
+
+    dedup.flush(|from, label, to| builder.add_transition(from, label, to))?;
 
     info!(
         "Composition complete: {} states, {} transitions",

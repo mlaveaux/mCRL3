@@ -13,6 +13,7 @@ doc = false
 
 [dependencies]
 merc_collections.workspace = true
+merc_data.workspace = true
 merc_explore.workspace = true
 merc_io.workspace = true
 merc_lts = { workspace = true, features = ["clap"] }

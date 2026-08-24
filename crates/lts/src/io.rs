@@ -105,6 +105,18 @@ pub fn guess_lts_format_from_extension(path: &Path, format: Option<LtsFormat>) -
     }
 }
 
+/// Resolves the output LTS file format for a command that writes a single output file (or
+/// stdout): the explicitly given `output_format` when set (matching
+/// [`guess_lts_format_from_extension`]'s own precedence), otherwise guessed from `output`'s
+/// extension, otherwise `default`.
+pub fn guess_lts_output_format(output: Option<&Path>, output_format: Option<LtsFormat>, default: LtsFormat) -> LtsFormat {
+    match output {
+        Some(output) => guess_lts_format_from_extension(output, output_format),
+        None => output_format,
+    }
+    .unwrap_or(default)
+}
+
 /// A general struct to deal with the polymorphic LTS types. The `apply_lts`
 /// macro can be then used to conveniently apply functions which are generic on
 /// the LTS trait to all variants.
