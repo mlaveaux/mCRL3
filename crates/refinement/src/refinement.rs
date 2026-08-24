@@ -9,7 +9,7 @@ use merc_reduction::branching_bisim_sigref;
 use merc_reduction::quotient_lts_block;
 use merc_reduction::quotient_lts_naive;
 use merc_reduction::strong_bisim_sigref;
-use merc_reduction::tau_scc_decomposition;
+use merc_reduction::tau_scc_decomposition_iterative;
 use merc_utilities::Timing;
 
 use crate::CounterExample;
@@ -137,7 +137,7 @@ pub fn refines<L: LTS>(
         }
     } else if refinement == RefinementType::ImpossibleFutures {
         // For impossible futures we need to remove tau loops from the implementation.
-        let scc_partition = tau_scc_decomposition(&impl_lts);
+        let scc_partition = tau_scc_decomposition_iterative(&impl_lts);
         let tau_loop_free_lts = quotient_lts_naive(&impl_lts, &scc_partition, true, true);
 
         tau_loop_free_lts.merge_disjoint(&spec_lts)
