@@ -16,7 +16,11 @@ pub fn tau_scc_decomposition<L: LTS>(lts: &L) -> IndexedPartition {
 }
 
 /// Computes the strongly connected tau component partitioning of the given LTS using the iterative algorithm.
-pub(crate) fn tau_scc_decomposition_iterative<L: LTS>(lts: &L) -> IndexedPartition {
+///
+/// Prefer this over [`tau_scc_decomposition`] on LTSs whose size is not bounded ahead of time:
+/// the recursive algorithm's stack depth grows with the longest tau-path, which can overflow the
+/// native stack on large inputs.
+pub fn tau_scc_decomposition_iterative<L: LTS>(lts: &L) -> IndexedPartition {
     scc_decomposition_iterative(&AsGraph(lts), |_, label_index, _| lts.is_hidden_label(label_index))
 }
 
