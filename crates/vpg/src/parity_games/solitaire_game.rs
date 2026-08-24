@@ -9,7 +9,7 @@ use log::trace;
 
 use merc_collections::BlockIndex;
 use merc_collections::BlockPartition;
-use merc_collections::scc_decomposition;
+use merc_collections::scc_decomposition_iterative;
 use merc_utilities::MercIndex;
 
 use crate::AsGraph;
@@ -80,7 +80,7 @@ pub fn solve_solitaire_game<G: PG>(pg: &G) -> BitVec {
 fn solve_solitaire_simple<G: PG + Pred>(pg: &G, player: Player) -> BitVec {
     trace!("Subgame {{ {:?} }}, player {}", pg.iter_vertices().format(", "), player);
 
-    let scc_partition = scc_decomposition(&AsGraph(pg), |_, _, _| true);
+    let scc_partition = scc_decomposition_iterative(&AsGraph(pg), |_, _, _| true);
 
     // Determine vertices that are winning for the player in the restricted game, which are those that can reach a vertex with the current priority.
     let mut winning_vertices = bitvec![usize, Lsb0; 0; pg.num_of_vertices()];
