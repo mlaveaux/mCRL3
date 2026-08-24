@@ -19,6 +19,7 @@ use crate::aterm::ATermRef;
 use crate::storage::GcMutex;
 use crate::storage::GcMutexGuard;
 use crate::storage::GcMutexReadGuard;
+use crate::storage::SendContainerProtectionSet;
 use crate::storage::THREAD_TERM_POOL;
 
 /// A container of objects, typically either terms or objects containing terms,
@@ -115,6 +116,78 @@ impl<C> Drop for Protected<C> {
         THREAD_TERM_POOL.with(|tp| {
             tp.drop_container(self.root);
         });
+    }
+}
+
+/// A [`Protected`]-like container that can be sent to, and used from, a
+/// different thread than the one that created it.
+///
+/// # Details
+///
+/// [`Protected`] registers its container in the *calling* thread's own
+/// protection set and later unregisters it through that same thread-local
+/// lookup, so it can only ever be dropped on the thread that created it.
+/// Instead, this type registers its container in a *globally-scanned*
+/// protection set, so it can implement `Send`.
+pub struct ProtectedSend<C> {
+    container: Arc<GcMutex<C>>,
+    root: ProtectionIndex,
+
+    /// A shared handle to the protection set this container was registered in,
+    /// kept.
+    protection_set: SendContainerProtectionSet,
+}
+
+impl<C: Markable + Send + Sync + Transmutable + 'static> ProtectedSend<C> {
+    /// Creates a new protected container from a given container.
+    pub fn new(container: C) -> ProtectedSend<C> {
+        let shared = Arc::new(GcMutex::new(container));
+
+        let protection_set = THREAD_TERM_POOL.with(|tp| tp.send_container_protection_set().clone());
+        // Inserting the clone into the (globally-scanned) send-container protection set makes it
+        // a GC root until this `GlobalProtected` is dropped.
+        let root = protection_set.lock().expect("Lock poisoned!").protect(shared.clone());
+
+        ProtectedSend {
+            container: shared,
+            root,
+            protection_set,
+        }
+    }
+
+    /// Provides mutable access to the underlying container, returning a [ProtectedWriteGuard].
+    pub fn write(&mut self) -> ProtectedWriteGuard<'_, C> {
+        // SAFETY: `write` takes `&mut self`, so no other guard from this handle overlaps, and
+        // ownership (hence any access) is confined to a single thread at a time. The only other
+        // access is the global garbage collector, which -- as for `Protected` -- only reaches
+        // the container's contents through `GcMutex::lock`, so it cannot overlap either.
+        let mutex = unsafe { &mut *(Arc::as_ptr(&self.container) as *mut GcMutex<C>) };
+        ProtectedWriteGuard::new(mutex.lock_mut())
+    }
+
+    /// Provides immutable access to the underlying container, returning a [ProtectedReadGuard].
+    pub fn read(&self) -> ProtectedReadGuard<'_, C> {
+        ProtectedReadGuard::new(self.container.lock())
+    }
+}
+
+impl<C: Default + Markable + Send + Sync + Transmutable + 'static> Default for ProtectedSend<C> {
+    fn default() -> Self {
+        ProtectedSend::new(Default::default())
+    }
+}
+
+impl<C> Drop for ProtectedSend<C> {
+    fn drop(&mut self) {
+        let mut guard = match self.protection_set.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        // SAFETY: `self.root` was protected when this instance was created and
+        // `Drop` runs exactly once, so the root is unprotected exactly once.
+        unsafe {
+            guard.unprotect(self.root);
+        }
     }
 }
 

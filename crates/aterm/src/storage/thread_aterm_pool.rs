@@ -33,6 +33,7 @@ use crate::aterm::ATermRef;
 use crate::storage::GlobalTermPool;
 use crate::storage::GlobalTermPoolGuard;
 use crate::storage::MAX_FIXED_ARITY;
+use crate::storage::SendContainerProtectionSet;
 use crate::storage::SharedTerm;
 use crate::storage::SharedTermProtection;
 use crate::storage::global_aterm_pool::GC_BUDGET_CHUNK;
@@ -55,6 +56,9 @@ pub struct ThreadTermPool {
 
     /// A separate protection set for sendable terms, see [crate::ATermSend].
     send_term_protection_set: Arc<Mutex<ProtectionSet<ATermIndex>>>,
+
+    /// A separate protection set for sendable containers, see [crate::GlobalProtected].
+    send_container_protection_set: SendContainerProtectionSet,
 
     /// Counts down the number of terms this thread may still create before it must consume the
     /// next [GC_BUDGET_CHUNK] from the global budget (see [GlobalTermPool::reset_gc_budget]).
@@ -82,7 +86,8 @@ impl ThreadTermPool {
 
         let mut pool = term_pool.write().expect("Lock poisoned!");
 
-        let (protection_sets, send_term_protection_set) = pool.register_thread_term_pool();
+        let (protection_sets, send_term_protection_set, send_container_protection_set) =
+            pool.register_thread_term_pool();
         let int_symbol = pool.get_int_symbol().copy();
         let empty_list_symbol = pool.get_empty_list_symbol().copy();
         let list_symbol = pool.get_list_symbol().copy();
@@ -92,6 +97,7 @@ impl ThreadTermPool {
         Self {
             protection_sets,
             send_term_protection_set,
+            send_container_protection_set,
             // Start without a reservation so the first created term claims (and charges) one.
             garbage_collection_counter: Cell::new(0),
             tmp_arguments: RefCell::new(Vec::new()),
@@ -536,6 +542,11 @@ impl ThreadTermPool {
     /// Returns a reference to the send term protection set.
     pub fn send_term_protection_set(&self) -> &Arc<Mutex<ProtectionSet<ATermIndex>>> {
         &self.send_term_protection_set
+    }
+
+    /// Returns a reference to the send container protection set, see [crate::GlobalProtected].
+    pub fn send_container_protection_set(&self) -> &SendContainerProtectionSet {
+        &self.send_container_protection_set
     }
 
     /// Returns a reference to the global term pool.
