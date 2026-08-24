@@ -63,7 +63,7 @@ impl ControlFlowAnalysis {
     /// `live` marks which summands actually participate in the reachable
     /// automaton: only a live summand's write behaviour can disqualify a
     /// parameter from being a control flow parameter (see
-    /// [`is_control_flow_parameter`]), so that a summand belonging to dead code
+    /// `is_control_flow_parameter`), so that a summand belonging to dead code
     /// cannot spuriously defeat the analysis merely by existing. A caller with no
     /// such notion (every summand is live) can pass `|_| true`.
     ///

@@ -18,7 +18,9 @@ use merc_lts::LtsMultiAction;
 use merc_lts::MutexLtsBuilder;
 use merc_lts::SimpleAction;
 use merc_lts::StateIndex;
+use merc_lts::read_lts;
 use merc_lts::read_mcrl2_aut;
+use merc_lts::write_lts;
 use merc_lts::write_mcrl2_aut;
 use merc_reduction::Equivalence;
 use merc_reduction::compare_lts;
@@ -27,6 +29,7 @@ use merc_utilities::Timing;
 use merc_utilities::random_test;
 
 use merc_lps::Mcrl2MultiActionLabel;
+use merc_lps::convert_data_specification;
 use merc_lps::explore_lps_explicit;
 use merc_lps::explore_lps_explicit_parallel;
 
@@ -130,6 +133,86 @@ fn compare_with_lps2lts_caching(spec_relative_path: &str, strategy: CachingStrat
 #[cfg_attr(miri, ignore)]
 fn test_mcrl2_explore_abp() {
     compare_with_lps2lts("../../../../examples/mCRL2/academic/abp/abp.mcrl2");
+}
+
+/// Explores ABP explicitly, writes the result through the typed
+/// `to_lts_multi_action`/[`convert_data_specification`] path into the binary mCRL2 `.lts`
+/// format, reads it back, and checks it is strongly bisimilar to the `lps2lts` reference —
+/// exercising the same round trip `merc-lps explore-explicit --out-format lts` performs.
+#[test]
+#[cfg_attr(miri, ignore)]
+fn test_mcrl2_explore_abp_lts_format() {
+    let Ok(mcrl2_path) = std::env::var("MCRL2_PATH") else {
+        println!("Skipping test: MCRL2_PATH not set");
+        return;
+    };
+
+    let mcrl22lps = Path::new(&mcrl2_path).join("mcrl22lps");
+    let lps2lts = Path::new(&mcrl2_path).join("lps2lts");
+
+    let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../examples/mCRL2/academic/abp/abp.mcrl2");
+    let temp_dir = temp_dir("test_explore_lps_lts_format").unwrap();
+    let lps_path = temp_dir.path().join("spec.lps");
+    let aut_path = temp_dir.path().join("reference.aut");
+
+    let status =
+        traced_command(Command::new(&mcrl22lps).arg(&spec_path).arg(&lps_path)).expect("Failed to execute mcrl22lps");
+    assert!(status.success(), "mcrl22lps failed with status: {status}");
+
+    let status =
+        traced_command(Command::new(&lps2lts).arg(&lps_path).arg(&aut_path)).expect("Failed to execute lps2lts");
+    assert!(status.success(), "lps2lts failed with status: {status}");
+
+    let reference_lts = read_mcrl2_aut(File::open(&aut_path).unwrap())
+        .expect("Failed to read reference .aut")
+        .relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label))
+        .unwrap();
+
+    // The data specification never changes during exploration, so convert it from a
+    // separate read of the LPS, before the other read is consumed by the explorer.
+    let data_spec = convert_data_specification(&read_preprocessed_lps(&lps_path));
+
+    let mut builder: LtsBuilderMem<Mcrl2MultiActionLabel> = LtsBuilderMem::new(Vec::new(), Vec::new());
+    let explored_lts = explore_lps_explicit(
+        &mut builder,
+        read_preprocessed_lps(&lps_path),
+        CachingStrategy::None,
+        ExplorationStrategy::Dfs,
+        false,
+        &Timing::new(),
+    )
+    .expect("Failed to explore LPS")
+    .relabel(|label| label.to_lts_multi_action())
+    .expect("Failed to convert mCRL2 multi-action labels to typed LTS multi-actions");
+
+    let mut buffer: Vec<u8> = Vec::new();
+    write_lts(&mut buffer, &explored_lts, &data_spec).expect("Failed to write .lts");
+    let (result_lts, _data_spec) = read_lts(&buffer[..], false).expect("Failed to read back .lts");
+
+    assert_eq!(
+        reference_lts.num_of_states(),
+        result_lts.num_of_states(),
+        "State count mismatch after .lts round trip"
+    );
+    assert_eq!(
+        reference_lts.num_of_transitions(),
+        result_lts.num_of_transitions(),
+        "Transition count mismatch after .lts round trip"
+    );
+    assert!(
+        compare_lts(
+            Equivalence::StrongBisim,
+            reference_lts,
+            result_lts
+                .relabel(|label| LtsMultiAction::<SimpleAction>::from_string(&label.to_string()))
+                .unwrap(),
+            false,
+            false,
+            &Timing::new(),
+        )
+        .0,
+        "LTSs are not strongly bisimilar after .lts round trip"
+    );
 }
 
 #[test]

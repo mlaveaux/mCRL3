@@ -5,13 +5,8 @@ use oxidd::ldd::LDDManagerRef;
 use mcrl2::ATerm as Mcrl2ATerm;
 use mcrl2::LinearProcessSpecification;
 use mcrl2::mcrl2_aterm_to_merc;
-use merc_data::BasicSort;
-use merc_data::DataEquation;
 use merc_data::DataExpression;
-use merc_data::DataFunctionSymbol;
 use merc_data::DataVariable;
-use merc_data::Mcrl2DataSpecification;
-use merc_data::SortAlias;
 use merc_lts::LtsAction;
 use merc_lts::LtsMultiAction;
 use merc_symbolic::ReachabilityOptions;
@@ -97,39 +92,7 @@ pub fn explore_lps_symbolic_to_sym(
 
     // The data specification never changes during exploration, so it is only
     // converted once here rather than tracked incrementally.
-    let ffi_data_spec = inner.lps().data_specification();
-    let data_specification = Mcrl2DataSpecification::new(
-        ffi_data_spec
-            .user_defined_sorts()
-            .to_vec()
-            .into_iter()
-            .map(|t| BasicSort::from(convert(t)))
-            .collect(),
-        ffi_data_spec
-            .user_defined_aliases()
-            .to_vec()
-            .into_iter()
-            .map(|t| SortAlias::from(convert(t)))
-            .collect(),
-        ffi_data_spec
-            .user_defined_constructors()
-            .to_vec()
-            .into_iter()
-            .map(|t| DataFunctionSymbol::from(convert(t)))
-            .collect(),
-        ffi_data_spec
-            .user_defined_mappings()
-            .to_vec()
-            .into_iter()
-            .map(|t| DataFunctionSymbol::from(convert(t)))
-            .collect(),
-        ffi_data_spec
-            .user_defined_equations()
-            .to_vec()
-            .into_iter()
-            .map(|t| DataEquation::from(convert(t)))
-            .collect(),
-    );
+    let data_specification = crate::convert_data_specification(inner.lps());
 
     // `order[i]` is the position of `inner`'s (unpermuted) state vector stored
     // at position `i` of the diagrams `symbolic` builds, so the process
