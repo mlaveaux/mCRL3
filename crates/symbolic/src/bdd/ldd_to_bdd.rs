@@ -1,5 +1,4 @@
 use oxidd::BooleanFunction;
-use oxidd::BooleanFunctionQuant;
 use oxidd::Edge;
 use oxidd::Function;
 use oxidd::Manager;

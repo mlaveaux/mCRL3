@@ -1,7 +1,6 @@
 use log::info;
 use log::trace;
 use oxidd::BooleanFunction;
-use oxidd::BooleanFunctionQuant;
 use oxidd::ManagerRef;
 use oxidd::VarNo;
 use oxidd::bdd::BDDFunction;
