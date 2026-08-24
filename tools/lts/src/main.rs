@@ -8,7 +8,9 @@ use std::process::ExitCode;
 use clap::Parser;
 use clap::Subcommand;
 use log::info;
+use log::warn;
 
+use merc_data::Mcrl2DataSpecification;
 use merc_explore::combine_lts;
 use merc_io::LargeFormatter;
 use merc_lts::GenericLts;
@@ -24,6 +26,7 @@ use merc_lts::guess_lts_format_from_extension;
 use merc_lts::read_explicit_lts;
 use merc_lts::read_lts;
 use merc_lts::read_mcrl2_aut;
+use merc_lts::guess_lts_output_format;
 use merc_lts::write_aut;
 use merc_lts::write_bcg;
 use merc_lts::write_lts;
@@ -46,6 +49,12 @@ use merc_tools::report_error;
 use merc_unsafety::print_allocator_metrics;
 use merc_utilities::MercError;
 use merc_utilities::Timing;
+
+/// Only the mCRL2 binary .lts format carries a real data specification (read from the file
+/// itself). The other formats have no notion of one, so a plain default specification would
+/// not actually describe the action arguments; reject conversion to LTS format from those
+/// until we can construct a proper data specification for them.
+const NO_DATA_SPEC_FOR_LTS: &str = "Conversion to LTS format requires a data specification, which is not available when reading this format. This is not yet supported.";
 
 /// A command line tool for labelled transition systems.
 #[derive(clap::Parser, Debug)]
@@ -106,6 +115,11 @@ struct ReduceArgs {
     /// Specify the output LTS, if not given, output to stdout.
     #[arg(long)]
     output: Option<PathBuf>,
+
+    /// Explicitly specify the output LTS file format; guessed from `--output`'s extension
+    /// when not given, defaulting to the AUT format.
+    #[arg(long)]
+    output_format: Option<LtsFormat>,
 
     /// Disables preprocessing of the LTS before reducing.
     #[arg(long)]
@@ -220,9 +234,44 @@ struct CombineArgs {
     #[arg(long)]
     format: Option<LtsFormat>,
 
-    /// Explicitly specify the output LTS file format.
+    /// Explicitly specify the output LTS file format; guessed from `--output`'s extension
+    /// when not given, defaulting to the mCRL2 AUT dialect.
     #[arg(long)]
     output_format: Option<LtsFormat>,
+}
+
+/// Logs the state/transition counts of a reduction result.
+fn log_reduced_stats<L: LTS>(lts: &L) {
+    info!(
+        "Reduced LTS has {} states and {} transitions.",
+        LargeFormatter(lts.num_of_states()),
+        LargeFormatter(lts.num_of_transitions())
+    );
+}
+
+/// Writes an untyped (string-labelled) LTS to `output` (or stdout) in `format`. Used for
+/// results that have no [`Mcrl2DataSpecification`] to describe their action arguments, so
+/// [`LtsFormat::Lts`] is rejected.
+fn write_untyped_lts(
+    lts: &merc_lts::LabelledTransitionSystem<String>,
+    format: LtsFormat,
+    output: Option<&Path>,
+) -> Result<(), MercError> {
+    match format {
+        LtsFormat::Aut => match output {
+            Some(path) => write_aut(&mut File::create(path)?, lts),
+            None => write_aut(&mut stdout(), lts),
+        },
+        LtsFormat::AutMcrl2 => match output {
+            Some(path) => write_mcrl2_aut(&mut File::create(path)?, lts),
+            None => write_mcrl2_aut(&mut stdout(), lts),
+        },
+        LtsFormat::Bcg => {
+            let path = output.ok_or("Output path must be specified when writing BCG files.")?;
+            write_bcg(lts, path)
+        }
+        LtsFormat::Lts => Err(NO_DATA_SPEC_FOR_LTS.into()),
+    }
 }
 
 fn main() -> ExitCode {
@@ -324,24 +373,37 @@ fn handle_reduce(args: &ReduceArgs, timing: &mut Timing) -> Result<(), MercError
         LargeFormatter(lts.num_of_transitions())
     );
 
-    apply_lts!(lts, timing, |lts, _data_spec, timing| -> Result<(), MercError> {
-        let reduced_lts = reduce_lts(lts, args.equivalence, !args.no_preprocess, timing);
+    let output_format = guess_lts_output_format(args.output.as_deref(), args.output_format, LtsFormat::Aut);
 
-        info!(
-            "Reduced LTS has {} states and {} transitions.",
-            LargeFormatter(reduced_lts.num_of_states()),
-            LargeFormatter(reduced_lts.num_of_transitions())
-        );
-
-        if let Some(file) = &args.output {
-            let mut writer = File::create(file)?;
-            write_aut(&mut writer, &reduced_lts)?;
-        } else {
-            write_aut(&mut stdout(), &reduced_lts)?;
+    // Only the `Lts` variant carries a data specification, so only it can be written back out
+    // in the binary LTS output format; the other variants are relabelled to plain strings.
+    match lts {
+        GenericLts::Aut(lts) | GenericLts::Bcg(lts) => {
+            let reduced_lts = reduce_lts(lts, args.equivalence, !args.no_preprocess, timing);
+            log_reduced_stats(&reduced_lts);
+            write_untyped_lts(&reduced_lts, output_format, args.output.as_deref())?;
         }
+        GenericLts::AutMcrl2(lts) => {
+            let reduced_lts = reduce_lts(lts, args.equivalence, !args.no_preprocess, timing);
+            log_reduced_stats(&reduced_lts);
+            let reduced_lts = reduced_lts.relabel(|label| Ok(label.to_string()))?;
+            write_untyped_lts(&reduced_lts, output_format, args.output.as_deref())?;
+        }
+        GenericLts::Lts(lts, data_spec) => {
+            let reduced_lts = reduce_lts(lts, args.equivalence, !args.no_preprocess, timing);
+            log_reduced_stats(&reduced_lts);
 
-        Ok(())
-    })?;
+            if output_format == LtsFormat::Lts {
+                match &args.output {
+                    Some(path) => write_lts(&mut File::create(path)?, &reduced_lts, &data_spec)?,
+                    None => write_lts(&mut stdout(), &reduced_lts, &data_spec)?,
+                }
+            } else {
+                let reduced_lts = reduced_lts.relabel(|label| Ok(label.to_string()))?;
+                write_untyped_lts(&reduced_lts, output_format, args.output.as_deref())?;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -474,12 +536,6 @@ fn handle_convert(args: &ConvertArgs, timing: &mut Timing) -> Result<(), MercErr
     } else {
         return Err("Either output path or output file format must be specified.".into());
     };
-
-    // Only the mCRL2 binary .lts format carries a real data specification (read from the file
-    // itself). The other formats have no notion of one, so a plain default specification would
-    // not actually describe the action arguments; reject conversion to LTS format from those
-    // until we can construct a proper data specification for them.
-    const NO_DATA_SPEC_FOR_LTS: &str = "Conversion to LTS format requires a data specification, which is not available when reading this format. This is not yet supported.";
 
     match input_lts {
         GenericLts::Aut(lts) => match output_format {
@@ -616,8 +672,16 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
         comm.extend(parse_comm_expr_set(&contents).map_err(|e| format!("Failed to parse --comm-file argument:\n{e}"))?);
     }
 
+    let output_format = guess_lts_output_format(args.output.as_deref(), args.output_format, LtsFormat::AutMcrl2);
+
     match format {
         LtsFormat::AutMcrl2 => {
+            // The result has no data specification (AutMcrl2 labels are untyped strings), so
+            // it cannot be written back out in the binary LTS format.
+            if output_format == LtsFormat::Lts {
+                return Err(NO_DATA_SPEC_FOR_LTS.into());
+            }
+            
             let lts_list = args
                 .lts
                 .iter()
@@ -631,24 +695,27 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
             combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
             let result = builder.finish(StateIndex::new(0), false);
 
-            if let Some(output) = &args.output {
-                write_mcrl2_aut(&mut File::create(output)?, &result)?;
-            } else {
-                write_mcrl2_aut(&mut stdout(), &result)?;
-            }
+
+            let result = result.relabel(|label| Ok(label.to_string()))?;
+            write_untyped_lts(&result, output_format, args.output.as_deref())?;
         }
         LtsFormat::Aut | LtsFormat::Bcg => {
             return Err(format!("Combining LTSs in {format:?} format is not yet implemented, please convert the LTSs to AutMcrl2 format first.").into());
         }
         LtsFormat::Lts => {
+            // Combining itself only needs the LTSs and does not use the data specifications.
+            // They are only read here to write the result back out in the binary LTS format
+            // below, which requires exactly one; if the inputs' specifications actually differ
+            // (distinct sorts/constructors, not just distinct action names), only the first
+            // input's is used, so actions originating from the others may come out mistyped.
+            let mut data_specs = Vec::with_capacity(args.lts.len());
             let lts_list = args
                 .lts
                 .iter()
                 .map(|path| -> Result<_, MercError> {
                     let file = File::open(path)?;
-                    // The data specification is not needed here since the result is always
-                    // written in the AutMcrl2 format.
-                    let (lts, _data_spec) = read_lts(&file, false)?;
+                    let (lts, spec) = read_lts(&file, false)?;
+                    data_specs.push(spec);
                     Ok(lts)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -657,10 +724,24 @@ fn handle_combine(args: &CombineArgs, timing: &mut Timing) -> Result<(), MercErr
             combine_lts(&mut builder, lts_list, &hide, &allow, &comm, timing)?;
             let result = builder.finish(StateIndex::new(0), false);
 
-            if let Some(output) = &args.output {
-                write_mcrl2_aut(&mut File::create(output)?, &result)?;
+            if output_format == LtsFormat::Lts {
+                if data_specs.len() > 1 {
+                    warn!(
+                        "Combining {} LTSs into .lts output: only the first input's data specification is kept, so actions from the others may come out mistyped if the specifications differ.",
+                        data_specs.len()
+                    );
+                }
+                let data_spec: Mcrl2DataSpecification = data_specs
+                    .into_iter()
+                    .next()
+                    .expect("combine_lts rejects an empty input list");
+                match &args.output {
+                    Some(output) => write_lts(&mut File::create(output)?, &result, &data_spec)?,
+                    None => write_lts(&mut stdout(), &result, &data_spec)?,
+                }
             } else {
-                write_mcrl2_aut(&mut stdout(), &result)?;
+                let result = result.relabel(|label| Ok(label.to_string()))?;
+                write_untyped_lts(&result, output_format, args.output.as_deref())?;
             }
         }
     }

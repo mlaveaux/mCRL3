@@ -1030,6 +1030,7 @@ dependencies = [
  "env_logger",
  "log",
  "merc_collections",
+ "merc_data",
  "merc_explore",
  "merc_io",
  "merc_lts",
