@@ -249,6 +249,8 @@ fn handle_command(commands: Option<Commands>, timing: &Timing) -> Result<(), Mer
 
                     let mut output = File::create(args.output)?;
                     write!(output, "{}", TrsFormatter::new(&spec))?;
+                } else {
+                    return Err("Unsupported file extension for conversion, expected .rec".into());
                 }
             }
             Commands::Check(args) => {

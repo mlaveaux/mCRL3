@@ -276,7 +276,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
     let path = Path::new(&args.filename);
     let mut file = File::open(path)?;
     let format = guess_format_from_extension(path, args.format)
-        .ok_or_else(|| format!("Unknown parity game file format for '{}", path.display()))?;
+        .ok_or_else(|| format!("Unknown parity game file format for '{}'.", path.display()))?;
 
     if format == ParityGameFormat::PG {
         // Read and solve a standard parity game.
@@ -341,7 +341,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
                             FormatConfig(cube),
                             vertices
                                 .iter_ones()
-                                .filter(|v| if args.full_solution { true } else { *v == 0 })
+                                .filter(|v| args.full_solution || *v == 0)
                                 .format(", ")
                         );
                     }
@@ -353,14 +353,22 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
                         let config = entry?;
                         let config_function = bits_to_bdd(&manager_ref, game.variables(), &config)?;
 
+                        // `and` can fail to allocate, so compute the filtered vertices up front
+                        // (propagating the error with `?`) rather than inside the `.filter`
+                        // closure, which cannot return a `Result`.
+                        let vertices = w
+                            .iter() // Do not use iter_vertices because the first one is the initial vertex only
+                            .take(if args.full_solution { usize::MAX } else { 1 }) // Take only first if we don't want full solution
+                            .filter_map(|(v, config)| match config.and(&config_function) {
+                                Ok(intersection) => intersection.satisfiable().then_some(Ok(v)),
+                                Err(err) => Some(Err(err)),
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+
                         println!(
                             "W{index}: For product {} the following vertices are in: {}",
                             FormatConfig(&config),
-                            w.iter() // Do not use iter_vertices because the first one is the initial vertex only
-                                .take(if args.full_solution { usize::MAX } else { 1 }) // Take only first if we don't want full solution
-                                .filter(|(_v, config)| { config.and(&config_function).unwrap().satisfiable() })
-                                .map(|(v, _)| v)
-                                .format(", ")
+                            vertices.iter().format(", ")
                         );
                     }
                 }
@@ -384,7 +392,7 @@ fn handle_solve(cli: &Cli, args: &SolveArgs, timing: &mut Timing) -> Result<(), 
 fn handle_reachable(cli: &Cli, args: &ReachableArgs, timing: &mut Timing) -> Result<(), MercError> {
     let path = Path::new(&args.filename);
     let format = guess_format_from_extension(path, args.format)
-        .ok_or_else(|| format!("Unknown parity game file format for '{}", path.display()))?;
+        .ok_or_else(|| format!("Unknown parity game file format for '{}'.", path.display()))?;
 
     let mut file = File::open(path)?;
     match format {
