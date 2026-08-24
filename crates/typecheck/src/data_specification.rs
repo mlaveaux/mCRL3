@@ -792,6 +792,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_multiple_element_sorts_of_the_same_container_do_not_collide() {
         // `Bag(Nat)` and `Bag(D)` each carry their own copy of `bag.mcrl2`'s
         // `@zero_ == @one_ = false;`, which pins down no instantiation and would

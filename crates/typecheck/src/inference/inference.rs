@@ -1714,6 +1714,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_infers_basic_equation() {
         let spec = typed("map f: Nat -> Bool; var n: Nat; eqn f(n) = true;");
 
@@ -1728,6 +1729,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lambda_over_anonymous_struct_is_inferred() {
         // An anonymous binder struct is hoisted, so a construct binding one is
         // typed like any other equation. (There is no longer a "skipped"
@@ -1737,6 +1739,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_numeric_literals_stay_positive() {
         let spec = typed("map p: Pos; eqn p = 1 + 2;");
 
@@ -1749,6 +1752,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_literal_argument_keeps_minimal_sort_under_upcast() {
         let spec = typed("map f: Int -> Bool; b: Bool; eqn b = f(1);");
 
@@ -1830,6 +1834,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_non_boolean_condition() {
         let text = "map f: Nat -> Bool; var n: Nat; eqn n -> f(n) = true;";
         let error = inference_error(text);
@@ -1858,6 +1863,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lambda_infers_function_sort() {
         let spec = typed("map f: Nat -> Bool; eqn f = lambda n: Nat. true;");
 
@@ -2117,6 +2123,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_product_binder_sort_is_rejected() {
         // A bare product is not a valid variable sort; a binder over one is
         // now rejected rather than left untyped (which previously let an
@@ -2137,6 +2144,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_polymorphic_membership_over_undeclared_container_sort() {
         // No container sort occurs in any declaration, so `in` exists only
         // through the polymorphic template signature (the mCRL2 corpus uses
@@ -2156,6 +2164,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_polymorphic_list_operations() {
         // `head` and `|>` come from the list template; no `List` sort is
         // declared anywhere.

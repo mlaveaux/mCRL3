@@ -75,6 +75,7 @@ fn assert_holds_under(expr: &str, encoding: NumberEncoding) {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_arithmetic_agrees_across_encodings() {
     assert_holds("1 + 1 == 2");
     assert_holds("2 * 3 == 6");
@@ -88,6 +89,7 @@ fn test_arithmetic_agrees_across_encodings() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_comparisons_agree_across_encodings() {
     assert_holds("3 < 5");
     assert_holds("!(5 < 3)");
@@ -100,6 +102,7 @@ fn test_comparisons_agree_across_encodings() {
 
 /// `(x+y)*(x-y) == x*x - y*y`, mirroring mCRL2's `multiplication_and_addition_test`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_multiplication_and_addition() {
     for (x, y) in [(107u64, 10u64), (500, 37)] {
         assert_holds(&format!("({x} + {y}) * ({x} - {y}) == {x} * {x} - {y} * {y}"));
@@ -109,6 +112,7 @@ fn test_multiplication_and_addition() {
 /// The same identity on numbers too large for the binary encoding to evaluate
 /// in reasonable time.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_multiplication_and_addition_large() {
     for (x, y) in [(99999u64, 12345u64), (123456789, 987654)] {
         assert_holds_under(
@@ -120,6 +124,7 @@ fn test_multiplication_and_addition_large() {
 
 /// `x == (x div y)*y + x mod y`, mirroring mCRL2's `mod_and_div_test`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_div_mod() {
     for (x, y) in [(235u64, 78u64), (1000, 7)] {
         assert_holds(&format!("{x} == ({x} div {y}) * {y} + {x} mod {y}"));
@@ -128,6 +133,7 @@ fn test_div_mod() {
 
 /// The div/mod identity on larger numbers, machine-word only.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_div_mod_large() {
     for (x, y) in [(123456789u64, 1000u64), (98765432109876, 12345)] {
         assert_holds_under(
@@ -140,6 +146,7 @@ fn test_div_mod_large() {
 /// `r*r <= x` and `x < (r+1)*(r+1)` for `r = sqrt(x)`, mirroring mCRL2's
 /// `square_root_test`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_square_root() {
     for x in [0u64, 1, 17, 831] {
         assert_holds(&format!("sqrt({x}) * sqrt({x}) <= {x}"));
@@ -149,6 +156,7 @@ fn test_square_root() {
 
 /// The square-root bounds on larger numbers, machine-word only.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_square_root_large() {
     for x in [65535u64, 1000000, 4294967295] {
         assert_holds_under(&format!("sqrt({x}) * sqrt({x}) <= {x}"), NumberEncoding::MachineWord);
@@ -163,6 +171,7 @@ fn test_square_root_large() {
 /// and the native carry/borrow word operations. These are far past what the
 /// binary encoding can evaluate in reasonable time.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_numbers_spanning_multiple_machine_words() {
     let machine_word = NumberEncoding::MachineWord;
 
@@ -182,6 +191,7 @@ fn test_numbers_spanning_multiple_machine_words() {
 /// The normal form itself differs: the same value is a bit chain in one encoding
 /// and a machine-word digit chain in the other.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_normal_forms_use_the_selected_representation() {
     // 4 == 0b100.
     assert_eq!(
@@ -207,6 +217,7 @@ fn test_normal_forms_use_the_selected_representation() {
 /// A value larger than one machine word is a two-digit chain whose digits are
 /// the base-2^64 decomposition.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_multi_digit_normal_form() {
     // 2^64 + 5 == 1 * 2^64 + 5. The literal lowers through `Pos2Nat`, which the
     // `nat64.mcrl2` equations push into the chain, leaving a pure `Nat` chain.

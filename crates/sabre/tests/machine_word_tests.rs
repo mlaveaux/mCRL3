@@ -59,6 +59,7 @@ fn apply(rules: &RewriteSpecification, op: MachineWordOp, args: &[DataExpression
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_word_valued_operations() {
     let rules = rules();
     let mut rewriter = InnermostRewriter::new(&rules);
@@ -111,6 +112,7 @@ fn test_nested_operations_reduce_innermost_first() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_shift_right_with_bool_argument() {
     let rules = rules();
     let mut rewriter = InnermostRewriter::new(&rules);
