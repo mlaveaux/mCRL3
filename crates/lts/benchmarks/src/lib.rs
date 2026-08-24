@@ -140,6 +140,7 @@ mod tests {
     ///
     /// Run with `cargo test -p benchmarks_lts -- --nocapture memory_comparison`.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn memory_comparison() {
         let mut rng = StdRng::seed_from_u64(0x6c74735f6d656d63);
 

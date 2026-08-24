@@ -3,6 +3,7 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
+use std::mem::transmute;
 
 use log::error;
 
@@ -19,6 +20,7 @@ use crate::ATerm;
 use crate::ATermInt;
 use crate::ATermIntRef;
 use crate::ATermRef;
+use crate::ProtectedSend;
 use crate::Protected;
 use crate::Symb;
 use crate::Symbol;
@@ -147,18 +149,18 @@ pub struct BinaryATermWriter<W: Write> {
     stream: BitStreamWriter<W>,
 
     /// Stores the function symbols and the number of bits needed to encode their indices.
-    function_symbols: Protected<IndexedSet<SymbolRef<'static>>>,
+    function_symbols: ProtectedSend<IndexedSet<SymbolRef<'static>>>,
     function_symbol_index_width: u8,
 
     /// Stores the terms and the number of bits needed to encode their indices.
-    terms: Protected<IndexedSet<ATermRef<'static>>>,
+    terms: ProtectedSend<IndexedSet<ATermRef<'static>>>,
     term_index_width: u8,
 
     /// Indicates whether the stream has been flushed.
     flushed: bool,
 
     /// Local stack to avoid recursive function calls when writing terms.
-    stack: VecDeque<(ATerm, bool)>,
+    stack: ProtectedSend<VecDeque<(ATermRef<'static>, bool)>>,
 }
 
 impl<W: Write> BinaryATermWriter<W> {
@@ -171,7 +173,7 @@ impl<W: Write> BinaryATermWriter<W> {
         stream.write_bits(BAF_MAGIC as u64, 16)?;
         stream.write_bits(BAF_VERSION as u64, 16)?;
 
-        let mut function_symbols = Protected::new(IndexedSet::new());
+        let mut function_symbols = ProtectedSend::new(IndexedSet::new());
         // The term with function symbol index 0 indicates the end of the stream
         let end_of_stream_symbol = Symbol::new("end_of_stream".to_string(), 0);
         function_symbols.write().insert(end_of_stream_symbol.copy());
@@ -180,11 +182,29 @@ impl<W: Write> BinaryATermWriter<W> {
             stream,
             function_symbols,
             function_symbol_index_width: 1,
-            terms: Protected::new(IndexedSet::new()),
+            terms: ProtectedSend::new(IndexedSet::new()),
             term_index_width: 1,
-            stack: VecDeque::new(),
+            stack: ProtectedSend::new(VecDeque::new()),
             flushed: false,
         })
+    }
+
+    /// Peeks the entry at the back of `stack` without removing it, so it stays
+    /// inside the (`GlobalProtected`, hence GC-rooted) container for as long as
+    /// the caller keeps using it.
+    ///
+    /// # Note
+    ///
+    /// The returned `ATermRef<'static>`'s lifetime is only actually backed by
+    /// `stack` still containing this entry:.
+    fn peek_stack(&self) -> Option<(ATermRef<'static>, bool)> {
+        let guard = self.stack.read();
+        let (term, ready) = guard.back()?;
+        // SAFETY: `term` is still located inside `stack`.
+        Some((
+            unsafe { transmute::<ATermRef<'_>, ATermRef<'static>>(term.copy()) },
+            *ready,
+        ))
     }
 
     /// \brief Write a function symbol to the output stream.
@@ -229,15 +249,19 @@ impl<W: Write> BinaryATermWriter<W> {
     }
 }
 
-impl<W: Write> ATermWrite for BinaryATermWriter<W> {
-    fn write_aterm(&mut self, term: &ATerm) -> Result<(), MercError> {
-        self.stack.push_back((term.clone(), false));
+impl<W: Write> BinaryATermWriter<W> {
+    /// The actual `write_aterm` loop, factored out so [`ATermWrite::write_aterm`] can clear
+    /// `stack` on an error path.
+    fn write_aterm_impl(&mut self, term: &ATerm) -> Result<(), MercError> {
+        self.stack.write().push_back((term.copy(), false));
 
-        while let Some((current_term, write_ready)) = self.stack.pop_back() {
+        // Peek rather than pop: an entry must stay localted inside `stack` to
+        // be protected.
+        while let Some((current_term, write_ready)) = self.peek_stack() {
             // Indicates that this term is output and not a subterm, these should always be written.
-            let is_output = self.stack.is_empty();
+            let is_output = self.stack.read().len() == 1;
 
-            if !self.terms.read().contains(&current_term.copy()) || is_output {
+            if !self.terms.read().contains(&current_term) || is_output {
                 if write_ready {
                     if is_int_term(&current_term) {
                         let int_term = ATermIntRef::from(current_term.copy());
@@ -276,26 +300,44 @@ impl<W: Write> ATermWrite for BinaryATermWriter<W> {
                         assert!(inserted, "This term should have a new index assigned.");
                         self.term_index_width = bits_for_value(self.terms.read().len());
                     }
+
+                    // Done with this entry now that it has been written (and, if not the
+                    // top-level output term, protected independently by `terms` above).
+                    self.stack.write().pop_back();
                 } else {
-                    // Add current term back to stack for writing after processing arguments
-                    self.stack.push_back((current_term.clone(), true));
+                    // Mark ready for its next visit, once its (not yet written) arguments below
+                    // it on the stack are done -- so leave it in place rather than popping it.
+                    if let Some(back) = self.stack.write().back_mut() {
+                        back.1 = true;
+                    }
 
                     // Add arguments to stack for processing first. Two equal
                     // arguments are both pushed here, but that does not write
                     // the term twice.
                     for arg in current_term.arguments() {
                         if !self.terms.read().contains(&arg) {
-                            self.stack.push_back((arg.protect(), false));
+                            self.stack.write().push_back((arg.copy(), false));
                         }
                     }
                 }
+            } else {
+                // This term was already written and as such should be skipped. This can happen
+                // if one term has two equal subterms.
+                self.stack.write().pop_back();
             }
-
-            // This term was already written and as such should be skipped. This can happen if
-            // one term has two equal subterms.
         }
 
         Ok(())
+    }
+}
+
+impl<W: Write> ATermWrite for BinaryATermWriter<W> {
+    fn write_aterm(&mut self, term: &ATerm) -> Result<(), MercError> {
+        let result = self.write_aterm_impl(term);
+        if result.is_err() {
+            self.stack.write().clear();
+        }
+        result
     }
 
     fn write_aterm_iter<I>(&mut self, iter: I) -> Result<(), MercError>

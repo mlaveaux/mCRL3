@@ -48,6 +48,7 @@ pub use aterm_list::is_list_term;
 pub use aterm_string::ATermString;
 pub use aterm_string::ATermStringRef;
 pub use markable::Markable;
+pub use protected::ProtectedSend;
 pub use protected::Protected;
 pub use protected::ProtectedReadGuard;
 pub use protected::ProtectedWriteGuard;

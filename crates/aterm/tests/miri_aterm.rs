@@ -6,9 +6,15 @@
 //! protection-set code with Stacked/Tree Borrows checking.
 
 use merc_aterm::ATerm;
+use merc_aterm::ATermRead;
 use merc_aterm::ATermSend;
+use merc_aterm::ATermWrite;
+use merc_aterm::BinaryATermReader;
+use merc_aterm::BinaryATermWriter;
+use merc_aterm::ProtectedSend;
 use merc_aterm::Symb;
 use merc_aterm::Symbol;
+use merc_aterm::SymbolRef;
 use merc_aterm::Term;
 use merc_aterm::storage::THREAD_TERM_POOL;
 
@@ -98,6 +104,53 @@ fn test_miri_term_iterator() {
     // visits f, a, g(a) and the shared `a` again: four nodes in total.
     let term = build_sample();
     assert_eq!(term.iter().count(), 4);
+}
+
+#[test]
+fn test_miri_binary_writer_survives_gc() {
+    // `BinaryATermWriter`'s internal state (`function_symbols`/`terms`/`stack`) is
+    // `GlobalProtected`, so it must survive garbage collection just as a plain `Protected`
+    // container did before it.
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut writer = BinaryATermWriter::new(&mut buffer).unwrap();
+    writer.write_aterm(&build_sample()).unwrap();
+
+    THREAD_TERM_POOL.with(|tp| tp.force_collect_garbage());
+
+    writer.write_aterm(&build_sample()).unwrap();
+    ATermWrite::flush(&mut writer).unwrap();
+    drop(writer);
+
+    let mut reader = BinaryATermReader::new(&buffer[..]).unwrap();
+    let first = reader.read_aterm().unwrap().expect("first term must be present");
+    let second = reader.read_aterm().unwrap().expect("second term must be present");
+    assert_eq!(first, build_sample());
+    assert_eq!(second, build_sample());
+}
+
+#[test]
+fn test_miri_global_protected_send_across_threads() {
+    // A `GlobalProtected` created on one thread must be usable -- read, written, and dropped --
+    // from a different thread, unlike a plain `Protected` container.
+    let mut protected = ProtectedSend::<Vec<SymbolRef<'static>>>::new(Vec::new());
+    let symbol = Symbol::new("global_protected_send", 0);
+    protected.write().push(symbol.copy());
+
+    let protected = std::thread::spawn(move || {
+        THREAD_TERM_POOL.with(|tp| tp.force_collect_garbage());
+        assert_eq!(
+            protected.read().len(),
+            1,
+            "the pushed symbol must survive the move and a GC"
+        );
+        protected
+    })
+    .join()
+    .unwrap();
+
+    assert_eq!(protected.read()[0].name(), "global_protected_send");
+    // Dropped here, on yet another "thread" (still the joining one) than the one it was created
+    // on -- exercising `GlobalProtected::drop` without a `THREAD_TERM_POOL` lookup.
 }
 
 /// `ATermArgs` previously did not override `size_hint`, so its lower bound was 0

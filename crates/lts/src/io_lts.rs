@@ -223,17 +223,17 @@ where
 }
 
 /// Returns the ATerm marker for a labelled transition system.
-fn lts_marker() -> ATerm {
+pub(crate) fn lts_marker() -> ATerm {
     ATerm::constant(&Symbol::new("labelled_transition_system", 0))
 }
 
 /// Returns the ATerm marker for a transition.
-fn transition_marker() -> ATerm {
+pub(crate) fn transition_marker() -> ATerm {
     ATerm::constant(&Symbol::new("transition", 0))
 }
 
 /// Returns the ATerm marker for the initial state.
-fn initial_state_marker() -> ATerm {
+pub(crate) fn initial_state_marker() -> ATerm {
     ATerm::constant(&Symbol::new("initial_state", 0))
 }
 
