@@ -154,15 +154,7 @@ impl MatchGoal {
     fn common_prefix_length(pos1: &[usize], pos2: &[usize]) -> usize {
         debug_assert_eq!(pos1.len(), pos2.len(), "Given arrays should be of the same length.");
 
-        let mut common_length = 0;
-        for i in 0..pos1.len() {
-            if pos1.get(i).unwrap() == pos2.get(i).unwrap() {
-                common_length += 1;
-            } else {
-                break;
-            }
-        }
-        common_length
+        pos1.iter().zip(pos2).take_while(|(a, b)| a == b).count()
     }
 
     /// Checks for two positions whether one is a subposition of the other.
