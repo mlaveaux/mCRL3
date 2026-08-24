@@ -39,6 +39,7 @@ use mcrl2_sys::pbes::ffi::mcrl2_pbes_unify_parameters;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_conjunctive;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equation_is_mu;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_equations_summands;
+use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_data_specification;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equation_variable;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_equations;
 use mcrl2_sys::pbes::ffi::mcrl2_srf_pbes_to_pbes;
@@ -687,9 +688,38 @@ impl SrfPbes {
         Ok(())
     }
 
+    /// Returns the data specification of the SRF PBES.
+    pub fn data_specification(&self) -> DataSpecification {
+        DataSpecification::new(mcrl2_srf_pbes_data_specification(
+            self.srf_pbes.as_ref().expect("srf_pbes UniquePtr should not be null"),
+        ))
+    }
+
     /// Returns the srf equations of the SRF pbes.
     pub fn equations(&self) -> &[SrfEquation] {
         &self.equations
+    }
+
+    /// Returns whether every equation declares the same parameter list (same
+    /// variables, same order) — i.e. whether this PBES has already been
+    /// through [`SrfPbes::unify_parameters`]. An SRF PBES with no equations is
+    /// vacuously unified.
+    ///
+    /// Consumers that lay out state vectors by "the" parameter vector (there
+    /// being only one to speak of requires this) should assert it rather than
+    /// silently reading equation 0's list: unification is easy to forget to
+    /// call, and the mismatch otherwise only surfaces much later, as a C++
+    /// assertion deep inside the enumerator.
+    pub fn is_unified(&self) -> bool {
+        let mut equations = self.equations.iter();
+        let Some(first) = equations.next() else {
+            return true;
+        };
+        let parameters: Vec<DataVariable> = first.variable().parameters().iter().collect();
+        equations.all(|eq| {
+            let other: Vec<DataVariable> = eq.variable().parameters().iter().collect();
+            other == parameters
+        })
     }
 }
 

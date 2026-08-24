@@ -12,6 +12,7 @@ use log::info;
 use log::warn;
 
 use mcrl2::Pbes;
+use mcrl2::SrfPbes;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
 use merc_symbolic::SummandGrouping;
@@ -29,6 +30,8 @@ use merc_utilities::Timing;
 
 use merc_pbes::Bsgs;
 use merc_pbes::GapConfig;
+use merc_pbes::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
+use merc_pbes::explore_common::UNIFY_RESET_PARAMETERS;
 use merc_pbes::ParameterLayoutLPS;
 use merc_pbes::PbesLps;
 use merc_pbes::PbesSrfLps;
@@ -46,7 +49,6 @@ use merc_pbes::explore_srf_pbes;
 use merc_pbes::explore_srf_pbes_parallel;
 use merc_pbes::graph_symmetries;
 use merc_pbes::symmetry_parameter_basis;
-use merc_pbes::symmetry_unified_pbes;
 use merc_pbes::write_dot;
 
 use merc_explore::CacheLPS;
@@ -147,11 +149,6 @@ struct InputArgs {
     /// Explicitly choose the format of the input PBES file.
     #[arg(long, short('i'), value_enum)]
     format: Option<PbesFormat>,
-
-    /// Write the PBES that the symmetry generators are numbered against, after
-    /// preprocessing and unification.
-    #[arg(long, value_name = "FILE")]
-    dump_unified_pbes: Option<PathBuf>,
 }
 
 /// How to turn a PBES into a parity game, shared by every subcommand that
@@ -314,17 +311,42 @@ struct ExploreExplicitSrfArgs {
     #[arg(long)]
     control_flow: bool,
 
+    /// Copy each equation's undeclared parameters through unchanged instead of
+    /// resetting them to their sort's default value when unifying parameter
+    /// lists.
+    #[arg(long, default_value_t = false)]
+    no_reset: bool,
+
+    /// Write the unified SRF PBES actually explored to this file.
+    #[arg(long, value_name = "FILE")]
+    dump_srf: Option<PathBuf>,
+
     /// Write the resulting parity game to this file in the PGSolver `.pg` format.
     #[arg(long, short('o'), value_name = "FILE")]
     output: Option<PathBuf>,
 }
 
 impl ExploreExplicitSrfArgs {
+    /// Converts `pbes` to SRF form and unifies its parameter lists according to
+    /// `--no-reset`, writing the result to `--dump-srf` if requested. This is
+    /// the exact PBES every other option on this subcommand then explores,
+    /// unlike a dump produced by a separate, local unification.
+    fn build_srf(&self, pbes: &Pbes) -> Result<SrfPbes, MercError> {
+        let mut srf = SrfPbes::from(pbes)?;
+        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, !self.no_reset)?;
+        if let Some(path) = &self.dump_srf {
+            write!(File::create(path)?, "{}", srf.to_pbes())?;
+            info!("Unified SRF PBES written to '{}'", path.display());
+        }
+        Ok(srf)
+    }
+
     /// Explores `pbes` in SRF form into a parity game using `builder`.
     fn explore<B: PGBuilder>(&self, pbes: Pbes, timing: &Timing, builder: B) -> Result<B::PG, MercError> {
+        let srf = self.build_srf(&pbes)?;
         if self.threads > 1 {
             explore_srf_pbes_parallel(
-                &pbes,
+                srf,
                 self.threads,
                 self.caching,
                 self.control_flow,
@@ -333,7 +355,7 @@ impl ExploreExplicitSrfArgs {
                 builder,
             )
         } else {
-            explore_srf_pbes(&pbes, self.strategy, self.caching, self.control_flow, timing, builder)
+            explore_srf_pbes(srf, self.strategy, self.caching, self.control_flow, timing, builder)
         }
     }
 
@@ -373,6 +395,18 @@ struct ExploreSymbolicArgs {
     /// parameter values that a group has not seen before.
     #[arg(long)]
     cached: bool,
+
+    /// Reset each equation's undeclared parameters to their sort's default
+    /// value instead of copying them through unchanged when unifying
+    /// parameter lists.
+    #[arg(long, default_value_t = false)]
+    reset: bool,
+
+    /// Write the unified SRF PBES actually explored to this file, after
+    /// preprocessing, SRF conversion and parameter unification (i.e. exactly
+    /// what every other option here sees).
+    #[arg(long, value_name = "FILE")]
+    dump_srf: Option<PathBuf>,
 }
 
 impl ExploreSymbolicArgs {
@@ -387,6 +421,24 @@ impl ExploreSymbolicArgs {
             kahypar_path,
             kahypar_ini_path,
         })
+    }
+
+    /// Converts `pbes` to SRF form and unifies its parameter lists according to
+    /// `--reset`, writing the result to `--dump-srf` if requested. This is the
+    /// exact PBES symbolic exploration then sees, unlike a dump produced by a
+    /// separate, local unification.
+    fn build_srf(&self, pbes: &Pbes) -> Result<SrfPbes, MercError> {
+        let mut srf = SrfPbes::from(pbes)?;
+        // `ignore_ce_equations = true`, unlike the explicit explorer: symbolic
+        // exploration has no counter-example feature to keep consistent with,
+        // so the counter-example equations are dropped from the parameter
+        // vector entirely rather than padding it with unused positions.
+        srf.unify_parameters(true, self.reset)?;
+        if let Some(path) = &self.dump_srf {
+            write!(File::create(path)?, "{}", srf.to_pbes())?;
+            info!("Unified SRF PBES written to '{}'", path.display());
+        }
+        Ok(srf)
     }
 }
 
@@ -479,37 +531,7 @@ impl InputArgs {
             info!("Skipping PBES preprocessing (--no-preprocess)");
         }
 
-        if let Some(path) = &self.dump_unified_pbes {
-            self.dump_unified(&pbes, path)?;
-        }
-
         Ok(pbes)
-    }
-
-    /// Writes the unified PBES the symmetry generators index into, and logs its
-    /// parameter vector with the positions a `--quotient` permutation uses.
-    ///
-    /// Unification is redone here rather than reusing the explorer's, since only
-    /// the symmetry path unifies at all and the dump has to be available to every
-    /// subcommand.
-    fn dump_unified(&self, pbes: &Pbes, path: &Path) -> Result<(), MercError> {
-        let unified = symmetry_unified_pbes(pbes)?;
-        write!(File::create(path)?, "{}", unified)?;
-
-        let basis = symmetry_parameter_basis(pbes)?;
-        info!(
-            "Unified PBES written to '{}', {} parameter(s): {}",
-            path.display(),
-            basis.len(),
-            basis
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| format!("{index}: {parameter}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-
-        Ok(())
     }
 }
 
@@ -541,11 +563,15 @@ impl ExploreArgs {
         if let Some(bsgs) = bsgs {
             explore_with_symmetry(&pbes, self, bsgs, timing, builder)
         } else if self.threads > 1 && self.srf {
-            explore_srf_pbes_parallel(&pbes, self.threads, self.caching, false, self.pinned, timing, builder)
+            let mut srf = SrfPbes::from(&pbes)?;
+            srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
+            explore_srf_pbes_parallel(srf, self.threads, self.caching, false, self.pinned, timing, builder)
         } else if self.threads > 1 {
             explore_pbes_parallel(pbes, self.threads, self.pinned, timing, builder)
         } else if self.srf {
-            explore_srf_pbes(&pbes, self.strategy, self.caching, false, timing, builder)
+            let mut srf = SrfPbes::from(&pbes)?;
+            srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
+            explore_srf_pbes(srf, self.strategy, self.caching, false, timing, builder)
         } else {
             explore_pbes(pbes, self.strategy, timing, builder)
         }
@@ -655,7 +681,8 @@ fn handle_explore_symbolic(
         order: args.variable_order()?,
     };
 
-    let states = explore_pbes_symbolic(&storage, &pbes, &encoding, args.cached, timing)?;
+    let srf_pbes = args.build_srf(&pbes)?;
+    let states = explore_pbes_symbolic(&storage, srf_pbes, &encoding, args.cached, timing)?;
     println!("Number of states: {}", states.len());
     Ok(())
 }
@@ -759,7 +786,12 @@ fn explore_with_symmetry<B: PGBuilder>(
     let basis = symmetry_parameter_basis(pbes)?;
 
     if args.srf {
-        let lps = PbesSrfLps::new(pbes)?;
+        let mut srf = SrfPbes::from(pbes)?;
+        // Must unify with exactly the flags `symmetry_parameter_basis` used above,
+        // or the generators would index into a different vector than this SRF view
+        // lays its state out by (see the module-level comment on this function).
+        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
+        let lps = PbesSrfLps::new(srf)?;
         check_parameter_basis(&basis, &lps.parameters(), "SRF")?;
         quotient_explore(&lps, args, args.caching, bsgs, timing, builder)
     } else {

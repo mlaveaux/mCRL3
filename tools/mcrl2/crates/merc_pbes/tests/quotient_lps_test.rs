@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use mcrl2::Pbes;
+use mcrl2::SrfPbes;
 use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
@@ -30,6 +31,15 @@ fn gap_config() -> GapConfig {
     }
 }
 
+/// Converts `pbes` to SRF form and unifies its parameter lists (with the same
+/// flags `symmetry_parameter_basis` uses), as every SRF-based explorer
+/// requires (see `PbesSrfLps::new`).
+fn unified_srf(pbes: &Pbes) -> SrfPbes {
+    let mut srf = SrfPbes::from(pbes).expect("Failed to convert to SRF");
+    srf.unify_parameters(false, true).expect("Failed to unify parameters");
+    srf
+}
+
 /// Verifies that wrapping `PbesSrfLps` in `QuotientLps` (with trivial group)
 /// produces the same parity game size as the unwrapped LPS.
 #[test]
@@ -40,7 +50,7 @@ nu X(b: Bool) = X(true);
 init X(true);"#;
     let pbes = Pbes::from_text(pbes_text)?;
 
-    let lps = PbesSrfLps::new(&pbes)?;
+    let lps = PbesSrfLps::new(unified_srf(&pbes))?;
     let n = lps.num_params();
     let bsgs = Arc::new(Bsgs::from_generators(&[], n, &gap_config())?);
 
@@ -52,7 +62,7 @@ init X(true);"#;
         ParityGameBuilder::new(VertexIndex::new(0)),
     )?;
 
-    let lps2 = PbesSrfLps::new(&pbes)?;
+    let lps2 = PbesSrfLps::new(unified_srf(&pbes))?;
     let qlps = QuotientLps::new(lps2, bsgs, 1);
     let quot_game = explore_pbes_impl(
         &qlps,
@@ -75,7 +85,7 @@ fn quotient_with_cache_compiles() -> Result<(), MercError> {
 nu X(b: Bool) = X(true);
 init X(true);"#;
     let pbes = Pbes::from_text(pbes_text)?;
-    let lps = PbesSrfLps::new(&pbes)?;
+    let lps = PbesSrfLps::new(unified_srf(&pbes))?;
     let n = lps.num_params();
     let bsgs = Arc::new(Bsgs::from_generators(&[], n, &gap_config())?);
 
@@ -161,13 +171,13 @@ fn quotient_over_srf_preserves_winner_and_reduces_the_game() -> Result<(), MercE
     let timing = Timing::new();
 
     let plain = explore_pbes_impl(
-        &PbesSrfLps::new(&pbes)?,
+        &PbesSrfLps::new(unified_srf(&pbes))?,
         ExplorationStrategy::Bfs,
         &timing,
         ParityGameBuilder::new(VertexIndex::new(0)),
     )?;
 
-    let lps = PbesSrfLps::new(&pbes)?;
+    let lps = PbesSrfLps::new(unified_srf(&pbes))?;
     assert_eq!(
         lps.num_params(),
         2,

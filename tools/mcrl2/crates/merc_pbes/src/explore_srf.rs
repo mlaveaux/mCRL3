@@ -13,7 +13,6 @@ use mcrl2::DataExpressionRef;
 use mcrl2::DataSpecification;
 use mcrl2::DataVariable;
 use mcrl2::LearnSuccessorsContext;
-use mcrl2::Pbes;
 use mcrl2::PbesPropositionalVariableInstantiation;
 use mcrl2::Protected;
 use mcrl2::SrfPbes;
@@ -36,8 +35,6 @@ use merc_vpg::Priority;
 use crate::cfg_srf::CfgPbesSrfLps;
 use crate::explore_common::ParameterLayoutLPS;
 use crate::explore_common::PbesVertex;
-use crate::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
-use crate::explore_common::UNIFY_RESET_PARAMETERS;
 use crate::explore_common::compute_priorities;
 use crate::explore_common::explore_pbes_impl;
 use crate::explore_common::explore_pbes_parallel_impl;
@@ -51,7 +48,7 @@ use crate::explore_common::explore_pbes_parallel_impl;
 /// pruning by equation index ([`PbesSrfLps::prepare`]) that always applies. The
 /// pruning never changes the resulting parity game.
 pub fn explore_srf_pbes<B: PGBuilder>(
-    pbes: &Pbes,
+    srf_pbes: SrfPbes,
     strategy: ExplorationStrategy,
     caching: CachingStrategy,
     control_flow: bool,
@@ -59,7 +56,7 @@ pub fn explore_srf_pbes<B: PGBuilder>(
     builder: B,
 ) -> Result<B::PG, MercError> {
     if control_flow {
-        let lps = CfgPbesSrfLps::new(pbes)?;
+        let lps = CfgPbesSrfLps::new(srf_pbes)?;
         info!(
             "Control flow analysis identified {} control flow parameter(s)",
             lps.control_flow_parameters().len()
@@ -68,7 +65,7 @@ pub fn explore_srf_pbes<B: PGBuilder>(
         debug!("{}", lps.metrics());
         result
     } else {
-        let lps = PbesSrfLps::new(pbes)?;
+        let lps = PbesSrfLps::new(srf_pbes)?;
         explore_srf_lps(&lps, strategy, caching, timing, builder)
     }
 }
@@ -79,7 +76,7 @@ pub fn explore_srf_pbes<B: PGBuilder>(
 /// As for [`explore_srf_pbes`], `control_flow` layers a [`CfgPbesSrfLps`] on top
 /// of the plain SRF view.
 pub fn explore_srf_pbes_parallel<B: PGBuilder>(
-    pbes: &Pbes,
+    srf_pbes: SrfPbes,
     threads: usize,
     caching: CachingStrategy,
     control_flow: bool,
@@ -88,7 +85,7 @@ pub fn explore_srf_pbes_parallel<B: PGBuilder>(
     builder: B,
 ) -> Result<B::PG, MercError> {
     if control_flow {
-        let lps = CfgPbesSrfLps::new(pbes)?;
+        let lps = CfgPbesSrfLps::new(srf_pbes)?;
         info!(
             "Control flow analysis identified {} control flow parameter(s)",
             lps.control_flow_parameters().len()
@@ -97,7 +94,7 @@ pub fn explore_srf_pbes_parallel<B: PGBuilder>(
         debug!("{}", lps.metrics());
         result
     } else {
-        let lps = PbesSrfLps::new(pbes)?;
+        let lps = PbesSrfLps::new(srf_pbes)?;
         explore_srf_lps_parallel(&lps, threads, caching, pinned, timing, builder)
     }
 }
@@ -272,22 +269,27 @@ pub struct PbesSrfSummand {
 }
 
 impl PbesSrfLps {
-    /// Constructs a new [`PbesSrfLps`] from a PBES by normalising it to SRF and
-    /// unifying the parameter lists.
-    pub fn new(pbes: &Pbes) -> Result<Self, MercError> {
-        let mut srf = SrfPbes::from(pbes)?;
-        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
-
-        if srf.equations().is_empty() {
+    /// Constructs a new [`PbesSrfLps`] from a PBES. Requires that the PBES has
+    /// been converted to SRF and that all equations share the same parameter
+    /// vector.
+    pub fn new(srf_pbes: SrfPbes) -> Result<Self, MercError> {
+        if srf_pbes.equations().is_empty() {
             return Err("PBES has no equations".into());
         }
+        
+        debug_assert!(
+            srf_pbes.is_unified(),
+            "PbesSrfLps::new requires a PBES whose equations share one parameter vector; \
+             call `SrfPbes::unify_parameters` on it first"
+        );
 
-        let num_params = srf.equations()[0].variable().parameters().len();
-        let is_mu: Vec<bool> = srf.equations().iter().map(|e| e.is_mu()).collect();
+        let num_params = srf_pbes.equations().iter().map(|eq| eq.variable().parameters().len()).max().unwrap_or(0);
+
+        let is_mu: Vec<bool> = srf_pbes.equations().iter().map(|e| e.is_mu()).collect();
         let priorities = compute_priorities(&is_mu);
 
         // Equation name -> equation index, used when resolving target PVIs.
-        let name_to_eq: HashMap<String, usize> = srf
+        let name_to_eq: HashMap<String, usize> = srf_pbes
             .equations()
             .iter()
             .enumerate()
@@ -296,7 +298,7 @@ impl PbesSrfLps {
 
         // (Player, Priority) per equation. PBES convention: conjunctive (∧)
         // is owned by ∀ (Odd), disjunctive (∨) is owned by ∃ (Even).
-        let state_info: Vec<PbesVertex> = srf
+        let state_info: Vec<PbesVertex> = srf_pbes
             .equations()
             .iter()
             .enumerate()
@@ -308,7 +310,7 @@ impl PbesSrfLps {
 
         // Cached parameter-variable pointers. After `unify_parameters` all
         // equations share the same list, so we take the one of equation 0.
-        let process_parameters: Vec<*const _aterm> = srf.equations()[0]
+        let process_parameters: Vec<*const _aterm> = srf_pbes.equations()[0]
             .variable()
             .parameters()
             .iter()
@@ -319,13 +321,13 @@ impl PbesSrfLps {
         // by `value_mapping`.
         let value_mapping = Protected::new(ValueMapping::new());
 
-        let data_spec = pbes.data_specification();
+        let data_spec = srf_pbes.data_specification();
         let tau = tau_multi_action();
 
         // Build the initial state vector from the initial PVI.
         // After `unify_parameters`, the SRF's initial PVI has `num_params`
         // arguments; the original `pbes.initial_state()` may have fewer.
-        let initial_pvi = srf.initial_state();
+        let initial_pvi = srf_pbes.initial_state();
         let initial_eq_name = initial_pvi.name().to_string();
         let initial_eq_idx = *name_to_eq
             .get(&initial_eq_name)
@@ -344,8 +346,8 @@ impl PbesSrfLps {
         // Flatten (equation, srf_summand) pairs into a single summand list,
         // recording which flat indices belong to each equation.
         let mut summands = Vec::new();
-        let mut equation_summands: Vec<Vec<usize>> = vec![Vec::new(); srf.equations().len()];
-        for (eq_idx, eq) in srf.equations().iter().enumerate() {
+        let mut equation_summands: Vec<Vec<usize>> = vec![Vec::new(); srf_pbes.equations().len()];
+        for (eq_idx, eq) in srf_pbes.equations().iter().enumerate() {
             // The parameters list of this equation (LHS of the assignment list).
             let eq_param_term: ATerm = eq.variable().parameters().into();
             let params_vec: Vec<DataVariable> = eq.variable().parameters().iter().collect();
@@ -431,7 +433,7 @@ impl PbesSrfLps {
         // always emits boilerplate sink equations for the `true`/`false` PVIs that
         // reset every parameter unconditionally, which would otherwise defeat the
         // analysis even when those sinks are never actually entered.
-        let mut equation_reachable = vec![false; srf.equations().len()];
+        let mut equation_reachable = vec![false; srf_pbes.equations().len()];
         let mut stack = vec![initial_eq_idx];
         equation_reachable[initial_eq_idx] = true;
         while let Some(eq_idx) = stack.pop() {
@@ -445,7 +447,7 @@ impl PbesSrfLps {
         }
 
         Ok(Self {
-            srf,
+            srf: srf_pbes,
             data_spec,
             summands,
             equation_summands,

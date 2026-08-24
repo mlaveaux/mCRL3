@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use mcrl2::Pbes;
+use mcrl2::SrfPbes;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_io::temp_dir;
@@ -16,6 +17,14 @@ use merc_pbes::explore_pbes;
 use merc_pbes::explore_pbes_parallel;
 use merc_pbes::explore_srf_pbes;
 
+/// Converts `pbes` to SRF form and unifies its parameter lists, as every
+/// SRF-based explorer requires (see `PbesSrfLps::new`).
+fn unified_srf(pbes: &Pbes) -> SrfPbes {
+    let mut srf = SrfPbes::from(pbes).expect("Failed to convert to SRF");
+    srf.unify_parameters(false, true).expect("Failed to unify parameters");
+    srf
+}
+
 /// Explores `pbes` with both the SRF path and the general path, solves each
 /// parity game with Zielonka, and asserts the initial-vertex winner agrees.
 fn assert_general_matches_srf(pbes: &Pbes) {
@@ -24,7 +33,7 @@ fn assert_general_matches_srf(pbes: &Pbes) {
     normalised.normalize();
 
     let game_srf = explore_srf_pbes(
-        &normalised,
+        unified_srf(&normalised),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         false,

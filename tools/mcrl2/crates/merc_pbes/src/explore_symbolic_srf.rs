@@ -1,8 +1,8 @@
 use log::debug;
+use mcrl2::SrfPbes;
 use oxidd::ldd::LDDFunction;
 use oxidd::ldd::LDDManagerRef;
 
-use mcrl2::Pbes;
 use merc_symbolic::ReachabilityOptions;
 use merc_symbolic::SymbolicLPS;
 use merc_symbolic::SymbolicLps;
@@ -28,12 +28,17 @@ use crate::explore_srf::PbesSrfLps;
 /// values it has already learned successors for, instead of re-enumerating them.
 pub fn explore_pbes_symbolic(
     storage: &LDDManagerRef,
-    pbes: &Pbes,
+    srf_pbes: SrfPbes,
     encoding: &SymbolicLpsOptions,
     cached: bool,
     timing: &Timing,
 ) -> Result<LDDFunction, MercError> {
-    let lps = PbesSrfLps::new(pbes)?;
+    debug_assert!(
+        srf_pbes.is_unified(),
+        "explore_pbes_symbolic requires a PBES whose equations share one parameter vector; \
+         call `SrfPbes::unify_parameters` on it first"
+    );
+    let lps = PbesSrfLps::new(srf_pbes)?;
     let mut symbolic = SymbolicLps::with_options(storage, lps, encoding)?;
 
     debug!("{symbolic:?}");

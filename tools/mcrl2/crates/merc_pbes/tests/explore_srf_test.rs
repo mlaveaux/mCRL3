@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use mcrl2::Pbes;
+use mcrl2::SrfPbes;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_io::temp_dir;
@@ -14,6 +15,14 @@ use merc_vpg::solve_zielonka;
 
 use merc_pbes::explore_srf_pbes;
 use merc_pbes::explore_srf_pbes_parallel;
+
+/// Converts `pbes` to SRF form and unifies its parameter lists, as every
+/// SRF-based explorer requires (see `PbesSrfLps::new`).
+fn unified_srf(pbes: &Pbes) -> SrfPbes {
+    let mut srf = SrfPbes::from(pbes).expect("Failed to convert to SRF");
+    srf.unify_parameters(false, true).expect("Failed to unify parameters");
+    srf
+}
 
 fn pbessolve_result(pbessolve: &Path, pbes_path: &Path) -> bool {
     let output = Command::new(pbessolve)
@@ -75,7 +84,7 @@ fn compare_text_pbes_with_pbessolve_caching(text_pbes_relative_path: &str, cachi
 
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
     let builder = ParityGameBuilder::new(VertexIndex::new(0));
-    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching, false, &Timing::new(), builder)
+    let game = explore_srf_pbes(unified_srf(&pbes), ExplorationStrategy::Bfs, caching, false, &Timing::new(), builder)
         .expect("Failed to build parity game");
     let (solution, _) = solve_zielonka(&game, false);
     let result = solution[0][0];
@@ -139,7 +148,7 @@ fn compare_mcrl2_spec_with_pbessolve_caching(
 
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
     let builder = ParityGameBuilder::new(VertexIndex::new(0));
-    let game = explore_srf_pbes(&pbes, ExplorationStrategy::Bfs, caching, false, &Timing::new(), builder)
+    let game = explore_srf_pbes(unified_srf(&pbes), ExplorationStrategy::Bfs, caching, false, &Timing::new(), builder)
         .expect("Failed to build parity game");
     let (solution, _) = solve_zielonka(&game, false);
     let result = solution[0][0];
@@ -160,7 +169,7 @@ fn assert_parallel_matches_sequential_pbes(pbes_path: &Path) {
 
     let builder = ParityGameBuilder::new(VertexIndex::new(0));
     let sequential = explore_srf_pbes(
-        &pbes,
+        unified_srf(&pbes),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         false,
@@ -187,7 +196,7 @@ fn assert_parallel_caching_matches_sequential(
     caching: CachingStrategy,
 ) {
     let builder = ParityGameBuilder::new(VertexIndex::new(0));
-    let parallel = explore_srf_pbes_parallel(pbes, 4, caching, false, false, &Timing::new(), builder)
+    let parallel = explore_srf_pbes_parallel(unified_srf(pbes), 4, caching, false, false, &Timing::new(), builder)
         .expect("Parallel exploration failed");
 
     // The parallel explorer numbers vertices sparsely (see `explore_parallel`),

@@ -24,11 +24,19 @@ use merc_pbes::CfgPbesSrfLps;
 use merc_pbes::explore_srf_pbes;
 use merc_pbes::explore_srf_pbes_parallel;
 
+/// Converts `pbes` to SRF form and unifies its parameter lists, as every
+/// SRF-based explorer requires (see `PbesSrfLps::new`).
+fn unified_srf(pbes: &Pbes) -> SrfPbes {
+    let mut srf = SrfPbes::from(pbes).expect("Failed to convert to SRF");
+    srf.unify_parameters(false, true).expect("Failed to unify parameters");
+    srf
+}
+
 /// Parses, normalises and converts `text` into a [`CfgPbesSrfLps`].
 fn cfg_srf(text: &str) -> CfgPbesSrfLps {
     let mut pbes = Pbes::from_text(text).expect("Failed to parse PBES");
     pbes.normalize();
-    CfgPbesSrfLps::new(&pbes).expect("Failed to build control-flow SRF view")
+    CfgPbesSrfLps::new(unified_srf(&pbes)).expect("Failed to build control-flow SRF view")
 }
 
 /// Explores `text` (parsed and normalised) both with the plain SRF explorer
@@ -43,7 +51,7 @@ fn assert_cfg_matches_srf_text(text: &str) {
     pbes.normalize();
 
     let reference = explore_srf_pbes(
-        &pbes,
+        unified_srf(&pbes),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         false,
@@ -53,7 +61,7 @@ fn assert_cfg_matches_srf_text(text: &str) {
     .expect("SRF exploration failed");
 
     let cfg = explore_srf_pbes(
-        &pbes,
+        unified_srf(&pbes),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         true,
@@ -120,16 +128,7 @@ fn parameter_changed_without_a_source_guard_is_still_a_control_flow_parameter() 
 /// hand-simulated stand-in for it: a bare `val(b)` disjunct (as opposed to
 /// `val(b) && Y(...)`, which pairs a data condition with a target and needs no
 /// sink) forces SRF conversion to route through its `true`/`false` sink
-/// equations, and those sinks are reachable here (`Y`'s second disjunct can
-/// take either arm). `s` must still be found as a CFP: this is exactly the
-/// shape `UNIFY_RESET_PARAMETERS` resets every sink parameter to a closed
-/// default for (see [`mcrl2::ControlFlowAnalysis`]'s doc comment) — resetting
-/// is required for this, not merely tolerated. Disabling the reset instead
-/// (`UNIFY_RESET_PARAMETERS = false`) does *not* fix this case: mCRL2 then
-/// fills an equation's undeclared parameters with fresh *existentially
-/// quantified* variables rather than truly forwarding the caller's value, so
-/// the sink's write becomes non-constant and `s` is correctly disqualified
-/// regardless of the `has_source` relaxation above.
+/// equation.
 #[test]
 fn control_flow_parameter_survives_a_reachable_true_false_sink() {
     let text = "pbes mu X(s: Nat, b: Bool) =
@@ -148,6 +147,31 @@ fn control_flow_parameter_survives_a_reachable_true_false_sink() {
     );
 
     assert_cfg_matches_srf_text(text);
+}
+
+/// Regression test for a bug where `unify_parameters(reset = false)` defeated
+/// the analysis.
+#[test]
+fn control_flow_parameter_survives_a_reachable_sink_without_reset() {
+    let text = "pbes mu X(s: Nat, b: Bool) =
+                   (val(s == 0) && val(b) && Y(1, false)) ||
+                   (val(s == 1) && val(!b) && X(0, true));
+                 mu Y(s: Nat, b: Bool) =
+                   val(s == 1) && (val(b) || X(0, b));
+             init X(0, false);";
+
+    let mut pbes = Pbes::from_text(text).expect("Failed to parse PBES");
+    pbes.normalize();
+    let mut srf = SrfPbes::from(&pbes).expect("Failed to convert to SRF");
+    srf.unify_parameters(false, false).expect("Failed to unify parameters");
+    let lps = CfgPbesSrfLps::new(srf).expect("Failed to build control-flow SRF view");
+
+    assert_eq!(
+        lps.control_flow_parameters().len(),
+        1,
+        "`s` must still be found as a CFP when the reachable sink's undeclared parameters are \
+         copied through (`s := s`) rather than reset to a default"
+    );
 }
 
 /// A parameter that is written to constants everywhere but never appears in
@@ -269,7 +293,7 @@ fn assert_cfg_parallel_matches_sequential(text: &str) {
     pbes.normalize();
 
     let sequential = explore_srf_pbes(
-        &pbes,
+        unified_srf(&pbes),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         true,
@@ -281,7 +305,7 @@ fn assert_cfg_parallel_matches_sequential(text: &str) {
 
     for caching in [CachingStrategy::None, CachingStrategy::Local] {
         let parallel = explore_srf_pbes_parallel(
-            &pbes,
+            unified_srf(&pbes),
             4,
             caching,
             true,
@@ -326,7 +350,7 @@ fn control_flow_matches_under_caching() {
         pbes.normalize();
 
         let uncached = explore_srf_pbes(
-            &pbes,
+            unified_srf(&pbes),
             ExplorationStrategy::Bfs,
             CachingStrategy::None,
             true,
@@ -335,7 +359,7 @@ fn control_flow_matches_under_caching() {
         )
         .expect("uncached control-flow exploration failed");
         let cached = explore_srf_pbes(
-            &pbes,
+            unified_srf(&pbes),
             ExplorationStrategy::Bfs,
             CachingStrategy::Local,
             true,

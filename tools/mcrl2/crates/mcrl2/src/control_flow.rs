@@ -26,9 +26,13 @@ pub trait CfgSummand {
     /// The summand's guard.
     fn condition(&self) -> &DataExpression;
 
-    /// The non-identity parameter assignments performed by the summand, as a
-    /// list of `data::assignment` terms (`lhs := rhs`, read with `.arg(0)` /
+    /// The parameter assignments performed by the summand, as a list of
+    /// `data::assignment` terms (`lhs := rhs`, read with `.arg(0)` /
     /// `.arg(1)`). A parameter absent here is left unchanged by the summand.
+    ///
+    /// Implementors are encouraged, but not required, to omit identity
+    /// assignments (`x := x`): [`ControlFlowAnalysis`] re-derives that check
+    /// itself rather than relying on it.
     fn write_assignments(&self) -> &ATermList<ATerm>;
 }
 
@@ -37,7 +41,8 @@ pub trait CfgSummand {
 /// A parameter `d` is a *control flow parameter* (CFP) when, in every summand,
 /// it behaves like a program counter rather than a data variable:
 ///
-/// - whenever a summand changes `d`, it assigns it a closed (constant) value, and
+/// - whenever a summand changes `d`, it assigns it a closed (constant) value
+///   (whether or not that same summand also constrains `d`'s source value), and
 /// - whenever a summand reads `d` to decide its guard, it does so through a
 ///   conjunct `d == c` with `c` a closed value (its *source value*), and
 /// - a summand that does not constrain `d` leaves it unchanged.
@@ -198,9 +203,15 @@ fn analyse_summand<S: CfgSummand>(
     // parameter that appears here is genuinely changed by the summand.
     let mut changed = HashMap::new();
     for assignment in summand.write_assignments().iter() {
-        let lhs = DataVariable::from(assignment.arg(0).protect());
+        let lhs_arg = assignment.arg(0);
+        let rhs_arg = assignment.arg(1);
+        if lhs_arg.copy() == rhs_arg.copy() {
+            continue;
+        }
+
+        let lhs = DataVariable::from(lhs_arg.protect());
         if let Some(index) = parameters.iter().position(|param| *param == lhs) {
-            let rhs = assignment.arg(1).protect();
+            let rhs = rhs_arg.protect();
             changed.insert(index, is_closed(context, &rhs));
         }
     }
@@ -209,9 +220,9 @@ fn analyse_summand<S: CfgSummand>(
 }
 
 /// Returns whether parameter `j` is a control flow parameter across all `live`
-/// `analyses`, i.e. every live summand either leaves it unchanged or constrains
-/// it to a source value and changes it only to a constant, and at least one live
-/// summand constrains it.
+/// `analyses`, i.e. every live summand either leaves it unchanged or changes it
+/// only to a constant, and at least one live summand constrains it to a source
+/// value.
 ///
 /// A summand for which `live[index]` is `false` is skipped entirely: its write
 /// behaviour cannot disqualify `j`, and its source constraint (if any) does not
@@ -226,16 +237,15 @@ fn is_control_flow_parameter(j: usize, analyses: &[SummandAnalysis], live: &[boo
             continue;
         }
 
-        let has_source = analysis.source.contains_key(&j);
-        constrained_somewhere |= has_source;
+        constrained_somewhere |= analysis.source.contains_key(&j);
 
-        if let Some(&changed_to_constant) = analysis.changed.get(&j) {
-            // The summand changes the parameter. For it to remain a control flow
-            // parameter the new value must be a constant and the summand must
-            // also pin down the source value it transitions from.
-            if !has_source || !changed_to_constant {
-                return false;
-            }
+        // The summand changes the parameter. For it to remain a control flow
+        // parameter the new value must be a constant, regardless of whether
+        // this summand also pins down the source value it transitions from.
+        if let Some(&changed_to_constant) = analysis.changed.get(&j)
+            && !changed_to_constant
+        {
+            return false;
         }
     }
 

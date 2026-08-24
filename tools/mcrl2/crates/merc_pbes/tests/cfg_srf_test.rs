@@ -2,6 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 use mcrl2::Pbes;
+use mcrl2::SrfPbes;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_io::temp_dir;
@@ -16,6 +17,14 @@ use merc_vpg::solve_zielonka;
 use merc_pbes::CfgPbesSrfLps;
 use merc_pbes::explore_srf_pbes;
 
+/// Converts `pbes` to SRF form and unifies its parameter lists, as every
+/// SRF-based explorer requires (see `PbesSrfLps::new`).
+fn unified_srf(pbes: &Pbes) -> SrfPbes {
+    let mut srf = SrfPbes::from(pbes).expect("Failed to convert to SRF");
+    srf.unify_parameters(false, true).expect("Failed to unify parameters");
+    srf
+}
+
 /// Explores `pbes` (normalised to positive normal form) both with the plain SRF
 /// explorer and with the control-flow-pruning variant, and asserts the two
 /// parity games have equal vertex/edge counts and agree on the winner of the
@@ -26,7 +35,7 @@ fn assert_cfg_matches_srf(pbes: &Pbes) {
     normalised.normalize();
 
     let reference = explore_srf_pbes(
-        &normalised,
+        unified_srf(&normalised),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         false,
@@ -36,7 +45,7 @@ fn assert_cfg_matches_srf(pbes: &Pbes) {
     .expect("SRF exploration failed");
 
     let cfg = explore_srf_pbes(
-        &normalised,
+        unified_srf(&normalised),
         ExplorationStrategy::Bfs,
         CachingStrategy::None,
         true,
@@ -150,7 +159,7 @@ fn test_cfg_finds_control_flow_parameter() {
     let mut pbes = Pbes::from_text(CFP_PBES).expect("Failed to parse PBES");
     pbes.normalize();
 
-    let lps = CfgPbesSrfLps::new(&pbes).expect("Failed to build control-flow SRF view");
+    let lps = CfgPbesSrfLps::new(unified_srf(&pbes)).expect("Failed to build control-flow SRF view");
     assert_eq!(
         lps.control_flow_parameters().len(),
         1,
