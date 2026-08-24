@@ -444,15 +444,15 @@ impl<L: TransitionLabel> LtsBuilderMem<L> {
     /// bucket (counting) sort on `from` followed by [`merc_collections::dedup_grouped`]
     /// (see its docs for the within-bucket algorithm).
     ///
-    /// Unlike routing the bucket sort through [`merc_collections::bucket_sort`], which
-    /// returns a `Vec<usize>` permutation of length `num_transitions` for the caller to
-    /// scatter through, this scatters `(label, to)` directly into bucket-grouped order in
-    /// one pass. For a large LTS that full-width `usize` permutation (8 bytes per
-    /// transition, regardless of how few bits `StateIndex`/`LabelIndex` actually need) was
-    /// the dominant term in this function's peak memory footprint, on top of the
-    /// (byte-compressed) old and new transition columns it sat alongside; scattering
-    /// directly only needs an `offsets` array of length `num_states`, typically far smaller
-    /// than `num_transitions`.
+    /// The counting sort itself goes through [`merc_collections::scatter_into_buckets`],
+    /// which scatters `(label, to)` directly into the (byte-compressed) grouped columns via
+    /// a write callback, rather than building an explicit `position -> original_index`
+    /// permutation for the caller to gather through: for a large LTS, a full-width `usize`
+    /// permutation (8 bytes per transition, regardless of how few bits
+    /// `StateIndex`/`LabelIndex` actually need) would be the dominant term in this
+    /// function's peak memory footprint, on top of the old and new transition columns it
+    /// would sit alongside; scattering directly needs only the returned `bucket_ends`, of
+    /// length `num_states` -- typically far smaller than `num_transitions`.
     fn remove_duplicates(&mut self) {
         let num_states = self.num_of_states;
         let num_transitions = self.transition_from.len();
@@ -461,32 +461,17 @@ impl<L: TransitionLabel> LtsBuilderMem<L> {
             return;
         }
 
-        // Counting sort on `from`: count each state's out-degree, then prefix-sum into
-        // start offsets (mirrors `merc_collections::bucket_sort`'s first half exactly).
-        let mut offsets = vec![0usize; num_states];
-        for i in 0..num_transitions {
-            offsets[self.transition_from.index(i).value()] += 1;
-        }
-        let mut running = 0usize;
-        for count in &mut offsets {
-            let bucket_len = *count;
-            *count = running;
-            running += bucket_len;
-        }
-
-        // Scatter (label, to) straight into bucket-grouped order, advancing each bucket's
-        // offset as we go; afterwards `offsets[state]` holds the *end* of that bucket, same
-        // as `merc_collections::bucket_sort`'s returned `bucket_ends`.
         let mut grouped_labels = bytevec![LabelIndex::new(0); num_transitions];
         let mut grouped_to = bytevec![StateIndex::new(0); num_transitions];
-        for i in 0..num_transitions {
-            let bucket = self.transition_from.index(i).value();
-            let position = offsets[bucket];
-            grouped_labels.set(position, self.transition_labels.index(i));
-            grouped_to.set(position, self.transition_to.index(i));
-            offsets[bucket] = position + 1;
-        }
-        let bucket_ends = offsets;
+        let bucket_ends = merc_collections::scatter_into_buckets(
+            num_states,
+            num_transitions,
+            |i| self.transition_from.index(i).value(),
+            |position, i| {
+                grouped_labels.set(position, self.transition_labels.index(i));
+                grouped_to.set(position, self.transition_to.index(i));
+            },
+        );
 
         // Free the old columns now that they're copied into `grouped_labels`/`grouped_to`,
         // rather than holding both alive at once during the compaction below.

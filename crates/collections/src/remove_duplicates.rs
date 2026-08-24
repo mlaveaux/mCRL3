@@ -2,6 +2,9 @@ use std::hash::Hash;
 
 use rustc_hash::FxHashMap;
 
+use crate::ByteCompressedVec;
+use crate::bytevec;
+
 /// Below this many entries in a single bucket, duplicates are detected with a
 /// linear scan (cheap, no allocation). Above it, a reused hash map scratch
 /// buffer is used instead, so a handful of very high-multiplicity buckets
@@ -23,29 +26,22 @@ pub enum DedupOutcome {
 }
 
 /// Counts `num_entries` entries (numbered `0..num_entries`, in original
-/// insertion order) per bucket via `bucket_of`, and scatters their original
-/// indices into bucket-grouped order - preserving insertion order within a
-/// bucket - via a counting sort.
+/// insertion order) per bucket via `bucket_of`, then scatters them into
+/// bucket-grouped order - preserving insertion order within a bucket - via a
+/// counting sort, calling `write(position, original_index)` once per entry in
+/// that grouped order.
 ///
-/// Returns `(grouped, bucket_ends)`: `grouped[p]` is the original index of the
-/// entry at "grouped position" `p`, and `bucket_ends[bucket]` is the number of
-/// grouped positions occupied by `bucket` and every bucket before it - so
-/// `bucket`'s own entries occupy `bucket_ends[bucket - 1]..bucket_ends[bucket]`
-/// (reading `bucket_ends[bucket - 1]` as `0` when `bucket == 0`).
-///
-/// This is split out from [`dedup_grouped`] (rather than folded into
-/// [`dedup_by_bucket`] as a single step) so a caller that wants to free its
-/// own pre-dedup storage before allocating the deduplicated copy - as
-/// `LtsBuilderMem::remove_duplicates` does, to avoid holding both the
-/// full-size original and deduplicated transition columns in memory at once -
-/// can physically scatter its own data into bucket-grouped order using
-/// `grouped`, drop the original storage, and only then call [`dedup_grouped`]
-/// against the (now `grouped`-position-indexed) scattered copy.
-pub fn bucket_sort(
+/// Returns `bucket_ends`: `bucket_ends[bucket]` is the number of grouped
+/// positions occupied by `bucket` and every bucket before it - so `bucket`'s
+/// own entries occupy `bucket_ends[bucket - 1]..bucket_ends[bucket]` (reading
+/// `bucket_ends[bucket - 1]` as `0` when `bucket == 0`); this is the same
+/// array [`dedup_grouped`] takes.
+pub fn scatter_into_buckets(
     num_buckets: usize,
     num_entries: usize,
     bucket_of: impl Fn(usize) -> usize,
-) -> (Vec<usize>, Vec<usize>) {
+    mut write: impl FnMut(usize, usize),
+) -> Vec<usize> {
     // Count entries per bucket, then turn the counts into prefix-sum start
     // offsets.
     let mut offsets = vec![0usize; num_buckets];
@@ -60,25 +56,23 @@ pub fn bucket_sort(
         running += bucket_len;
     }
 
-    // Scatter original indices into bucket-grouped order, preserving
-    // insertion order within a bucket. `offsets` doubles as the running
-    // cursor here, so afterwards `offsets[bucket]` holds the *end* of that
-    // bucket (and thus the start of the next one, since buckets are
-    // contiguous) rather than its start.
-    let mut grouped = vec![0usize; num_entries];
+    // Scatter, preserving insertion order within a bucket. `offsets` doubles
+    // as the running cursor here, so afterwards `offsets[bucket]` holds the
+    // *end* of that bucket (and thus the start of the next one, since buckets
+    // are contiguous) rather than its start.
     for i in 0..num_entries {
         let pos = &mut offsets[bucket_of(i)];
-        grouped[*pos] = i;
+        write(*pos, i);
         *pos += 1;
     }
 
-    (grouped, offsets)
+    offsets
 }
 
 /// Compacts entries that are already in bucket-grouped order (see
-/// [`bucket_sort`]) - numbered `0..bucket_ends.last()` by their position in
-/// that grouped order, *not* by any original index - dropping or merging
-/// entries that share the same `key_of` within a bucket.
+/// [`scatter_into_buckets`]) - numbered `0..bucket_ends.last()` by their
+/// position in that grouped order, *not* by any original index - dropping or
+/// merging entries that share the same `key_of` within a bucket.
 ///
 /// # Details
 ///
@@ -92,8 +86,9 @@ pub fn bucket_sort(
 /// walk over each bucket, calling `on_entry(position, bucket, outcome)` once
 /// per entry with a [`DedupOutcome`] as described above (`bucket` is the
 /// entry's bucket id, e.g. its "from" state/vertex - handed back here because
-/// a caller using [`bucket_sort`]'s early-free property, see its docs, has by
-/// this point discarded whatever column it originally read `bucket_of` from).
+/// a caller using [`scatter_into_buckets`]'s early-free property, see its
+/// docs, has by this point discarded whatever column it originally read
+/// `bucket_of` from).
 /// Small buckets (`<= HASH_DEDUP_THRESHOLD`) use a linear scan to find a
 /// duplicate; larger ones a reused hash map, so a handful of very high
 /// out-degree buckets can't make this quadratic in the bucket size.
@@ -173,21 +168,22 @@ where
 
 /// Deduplicates `num_entries` entries - numbered `0..num_entries` in original
 /// insertion order - into `num_buckets` buckets, without ever globally sorting
-/// or permuting the caller's own storage: [`bucket_sort`] followed by
-/// [`dedup_grouped`], translating grouped positions back to original indices
-/// so `on_entry` never has to deal with the grouped order itself.
+/// or permuting the caller's own storage: [`scatter_into_buckets`] builds a
+/// `position -> original_index` permutation, then [`dedup_grouped`] runs
+/// against it, translating grouped positions back to original indices so
+/// `on_entry` never has to deal with the grouped order itself.
 ///
 /// `on_entry` receives the entry's *original* index (and its bucket, e.g. its
 /// "from" state/vertex - the same value `bucket_of` would return for it), not
 /// a grouped or compacted one, so a caller never needs to physically scatter
 /// its own per-entry columns to match the bucket-grouped order - it can index
 /// them directly by that original index from inside the callback. This is
-/// enough for callers that don't need [`bucket_sort`]'s "free the original
-/// storage before building the deduplicated copy" property (see its docs) -
-/// `ParityGameBuilder::remove_duplicates` and
+/// enough for callers that don't need [`scatter_into_buckets`]'s "free the
+/// original storage before building the deduplicated copy" property (see its
+/// docs) - `ParityGameBuilder::remove_duplicates` and
 /// `VariabilityParityGameBuilder::remove_duplicates` both use this directly;
-/// `LtsBuilderMem::remove_duplicates` instead calls [`bucket_sort`] and
-/// [`dedup_grouped`] separately.
+/// `LtsBuilderMem::remove_duplicates` instead calls [`scatter_into_buckets`]
+/// and [`dedup_grouped`] separately.
 pub fn dedup_by_bucket<K, FBucket, FKey, FEntry>(
     num_buckets: usize,
     num_entries: usize,
@@ -204,11 +200,14 @@ pub fn dedup_by_bucket<K, FBucket, FKey, FEntry>(
         return;
     }
 
-    let (grouped, bucket_ends) = bucket_sort(num_buckets, num_entries, bucket_of);
+    let mut grouped: ByteCompressedVec<usize> = bytevec![0usize; num_entries];
+    let bucket_ends = scatter_into_buckets(num_buckets, num_entries, bucket_of, |position, original_index| {
+        grouped.set(position, original_index)
+    });
     dedup_grouped(
         &bucket_ends,
-        |position| key_of(grouped[position]),
-        |position, bucket, outcome| on_entry(grouped[position], bucket, outcome),
+        |position| key_of(grouped.index(position)),
+        |position, bucket, outcome| on_entry(grouped.index(position), bucket, outcome),
     );
 }
 
@@ -225,9 +224,9 @@ mod tests {
 
     use super::DedupOutcome;
     use super::HASH_DEDUP_THRESHOLD;
-    use super::bucket_sort;
     use super::dedup_by_bucket;
     use super::dedup_grouped;
+    use super::scatter_into_buckets;
 
     /// Drops duplicate `(bucket, key)` pairs down to the first occurrence of
     /// each pair, using [`dedup_by_bucket`], and returns the survivors in the
@@ -343,14 +342,14 @@ mod tests {
         });
     }
 
-    /// Exercises `bucket_sort` and `dedup_grouped` directly rather than through
-    /// the `dedup_by_bucket` convenience wrapper, mirroring how
+    /// Exercises `scatter_into_buckets` and `dedup_grouped` directly rather
+    /// than through the `dedup_by_bucket` convenience wrapper, mirroring how
     /// `LtsBuilderMem::remove_duplicates` uses them - scattering its own
-    /// payload into bucket-grouped order (as if freeing the original storage
-    /// in between, and relying on `dedup_grouped`'s `bucket` to rebuild a
-    /// "from" column since the original one is gone) before deduplicating -
-    /// and checks that composition matches the same naive reference as
-    /// [`test_random_drop_matches_naive_reference`].
+    /// payload straight into bucket-grouped order in one pass (as if freeing
+    /// the original storage right after, and relying on `dedup_grouped`'s
+    /// `bucket` to rebuild a "from" column since the original one is gone)
+    /// before deduplicating - and checks that composition matches the same
+    /// naive reference as [`test_random_drop_matches_naive_reference`].
     ///
     /// Unlike [`test_random_drop_matches_naive_reference`], `on_entry` here
     /// compacts `scattered` *in place* (the same storage `key_of` reads from) -
@@ -371,15 +370,22 @@ mod tests {
                 .map(|_| (rng.random_range(0..num_buckets), rng.random_range(0..10)))
                 .collect();
 
-            let (grouped, bucket_ends) = bucket_sort(num_buckets, entries.len(), |i| entries[i].0);
+            // Scatter the payload straight into grouped order via a write callback, as a
+            // caller freeing its original storage would - keeping only the `key` half,
+            // since `bucket` is meant to come back from `dedup_grouped` itself rather than
+            // a scattered copy. Wrapped in a `RefCell` so `key_of` (reading) and `on_entry`
+            // (writing, to compact in place) can both access it - see
+            // `LtsBuilderMem::remove_duplicates`.
+            let scattered = RefCell::new(vec![0u32; entries.len()]);
+            let bucket_ends = scatter_into_buckets(
+                num_buckets,
+                entries.len(),
+                |i| entries[i].0,
+                |position, i| {
+                    scattered.borrow_mut()[position] = entries[i].1;
+                },
+            );
 
-            // Physically scatter the payload into grouped order, as a caller
-            // freeing its original storage would - keeping only the `key`
-            // half, since `bucket` is meant to come back from `dedup_grouped`
-            // itself rather than a scattered copy. Wrapped in a `RefCell` so
-            // `key_of` (reading) and `on_entry` (writing, to compact in place)
-            // can both access it - see `LtsBuilderMem::remove_duplicates`.
-            let scattered = RefCell::new(grouped.iter().map(|&i| entries[i].1).collect::<Vec<u32>>());
             let mut write = 0usize;
             let mut kept_buckets: Vec<usize> = Vec::new();
 

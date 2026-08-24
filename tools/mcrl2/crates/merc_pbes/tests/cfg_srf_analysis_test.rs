@@ -12,7 +12,6 @@
 //! positive one.
 
 use mcrl2::Pbes;
-use mcrl2::SrfPbes;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_utilities::Timing;
@@ -29,8 +28,7 @@ use merc_pbes::explore_srf_pbes_parallel;
 fn cfg_srf(text: &str) -> CfgPbesSrfLps {
     let mut pbes = Pbes::from_text(text).expect("Failed to parse PBES");
     pbes.normalize();
-    let srf_pbes = SrfPbes::from(&pbes).expect("Failed to convert PBES to SRF");
-    CfgPbesSrfLps::new(srf_pbes).expect("Failed to build control-flow SRF view")
+    CfgPbesSrfLps::new(&pbes).expect("Failed to build control-flow SRF view")
 }
 
 /// Explores `text` (parsed and normalised) both with the plain SRF explorer
