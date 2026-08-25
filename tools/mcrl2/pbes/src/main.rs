@@ -45,6 +45,7 @@ use merc_pbes::explore_pbes_impl;
 use merc_pbes::explore_pbes_parallel;
 use merc_pbes::explore_pbes_parallel_impl;
 use merc_pbes::explore_pbes_symbolic;
+use merc_pbes::explore_pbes_symbolic_game;
 use merc_pbes::explore_srf_pbes;
 use merc_pbes::explore_srf_pbes_parallel;
 use merc_pbes::graph_symmetries;
@@ -62,7 +63,9 @@ use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::Solver;
 use merc_vpg::VertexIndex;
+use merc_vpg::convert_symbolic_parity_game;
 use merc_vpg::solve_priority_promotion;
+use merc_vpg::solve_symbolic_zielonka;
 use merc_vpg::solve_zielonka;
 use merc_vpg::verify_solution;
 use merc_vpg::write_pg;
@@ -132,6 +135,9 @@ enum Commands {
     ExploreSymbolic(ExploreSymbolicArgs),
     /// Solve a PBES by exploring it into a parity game and solving the game.
     Solve(SolveArgs),
+    /// Solve a PBES symbolically, by exploring it into a symbolic parity game and solving that
+    /// with Zielonka's algorithm.
+    SolveSymbolic(SolveSymbolicArgs),
 }
 
 /// The PBES to read, shared by every subcommand.
@@ -294,12 +300,11 @@ struct ExploreExplicitArgs {
     explore: ExploreArgs,
 }
 
-/// The PBES to explore symbolically, and how its equations are grouped and ordered.
+/// How to encode a PBES symbolically: the summand grouping and variable order, shared by every
+/// subcommand that explores one (`explore-symbolic` and `solve-symbolic`), mirroring how
+/// [`ExploreArgs`] is shared between `explore-explicit` and `solve`.
 #[derive(clap::Args, Debug)]
-struct ExploreSymbolicArgs {
-    #[command(flatten)]
-    input: InputArgs,
-
+struct SymbolicExploreArgs {
     /// How the equations are distributed over the transition groups: 'none' (one group per equation),
     /// 'used' (join equations using the same parameters), 'simple' (join equations with the same
     /// read/write pattern) or a partition of the equation indices, e.g. '0; 1 3 4; 2 5'.
@@ -332,7 +337,7 @@ struct ExploreSymbolicArgs {
     dump_srf: Option<PathBuf>,
 }
 
-impl ExploreSymbolicArgs {
+impl SymbolicExploreArgs {
     /// Returns the variable order to explore with, resolving the KaHyPar tool when `--reorder` is set.
     fn variable_order(&self) -> Result<VariableOrder, MercError> {
         if !self.reorder {
@@ -363,6 +368,40 @@ impl ExploreSymbolicArgs {
         }
         Ok(srf)
     }
+
+    /// Returns the encoding options these flags select.
+    fn encoding(&self) -> Result<SymbolicLpsOptions, MercError> {
+        Ok(SymbolicLpsOptions {
+            grouping: self.groups.clone(),
+            order: self.variable_order()?,
+        })
+    }
+}
+
+/// The PBES to explore symbolically, and how its equations are grouped and ordered.
+#[derive(clap::Args, Debug)]
+struct ExploreSymbolicArgs {
+    #[command(flatten)]
+    input: InputArgs,
+
+    #[command(flatten)]
+    symbolic: SymbolicExploreArgs,
+}
+
+/// The PBES to solve symbolically, and how its equations are grouped and ordered.
+#[derive(clap::Args, Debug)]
+struct SolveSymbolicArgs {
+    #[command(flatten)]
+    input: InputArgs,
+
+    #[command(flatten)]
+    symbolic: SymbolicExploreArgs,
+
+    /// Write the explicit decoding of the symbolic parity game to this file in the PGSolver `.pg`
+    /// format, for debugging. Not an mCRL2 feature; reuses `merc_vpg::convert_symbolic_parity_game`
+    /// and `write_pg`. Can be expensive for a large game — every reachable vertex is enumerated.
+    #[arg(long, short('o'), value_name = "FILE")]
+    output: Option<PathBuf>,
 }
 
 /// Parses the `--groups` argument, since [`MercError`] is not a [`std::error::Error`] that clap accepts.
@@ -426,6 +465,7 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
             Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing, preprocess)?,
             Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing, preprocess)?,
             Commands::Solve(args) => handle_solve(args, timing, preprocess)?,
+            Commands::SolveSymbolic(args) => handle_solve_symbolic(cli, args, timing, preprocess)?,
         }
     }
 
@@ -627,14 +667,51 @@ fn handle_explore_symbolic(
 ) -> Result<(), MercError> {
     let pbes = args.input.read(timing, preprocess)?;
     let storage = init_ldd_manager(cli);
-    let encoding = SymbolicLpsOptions {
-        grouping: args.groups.clone(),
-        order: args.variable_order()?,
-    };
+    let encoding = args.symbolic.encoding()?;
 
-    let srf_pbes = args.build_srf(&pbes)?;
-    let states = explore_pbes_symbolic(&storage, srf_pbes, &encoding, args.cached, timing)?;
+    let srf_pbes = args.symbolic.build_srf(&pbes)?;
+    let states = explore_pbes_symbolic(&storage, srf_pbes, &encoding, args.symbolic.cached, timing)?;
     println!("Number of states: {}", states.len());
+    Ok(())
+}
+
+/// Handles the solve-symbolic command: explores a PBES symbolically into a symbolic parity game
+/// and solves it with Zielonka's algorithm, printing the solution of the initial vertex.
+///
+/// Prints `winner.solution()` (`"true"`/`"false"`), the same as [`handle_solve`], so the two
+/// commands' output is byte-identical and directly comparable.
+fn handle_solve_symbolic(
+    cli: &Cli,
+    args: &SolveSymbolicArgs,
+    timing: &Timing,
+    preprocess: bool,
+) -> Result<(), MercError> {
+    let pbes = args.input.read(timing, preprocess)?;
+    let storage = init_ldd_manager(cli);
+    let encoding = args.symbolic.encoding()?;
+    let srf_pbes = args.symbolic.build_srf(&pbes)?;
+
+    let symbolic = timing.measure("instantiation", || {
+        explore_pbes_symbolic_game(&storage, srf_pbes, &encoding, args.symbolic.cached, timing)
+    })?;
+
+    if let Some(output) = &args.output {
+        let (game, _) = convert_symbolic_parity_game(&storage, &symbolic.game, &symbolic.vertices)?;
+        let mut output_file = File::create(output)?;
+        write_pg(&mut output_file, &game)?;
+        info!("Parity game written to '{}'", output.display());
+    }
+
+    let (winner, _) = timing.measure("solve", || {
+        solve_symbolic_zielonka(
+            &symbolic.game,
+            &symbolic.initial_vertex,
+            &symbolic.vertices,
+            &symbolic.sinks,
+        )
+    })?;
+    println!("{}", winner.solution());
+
     Ok(())
 }
 
