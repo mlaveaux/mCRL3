@@ -1,18 +1,3 @@
-//! Port of mCRL2's `symbolic_pbessolve_algorithm`, restricted to what
-//! `symbolic_pbessolve_algorithm::solve` needs: strategies, partial solving
-//! (`partial_solve`, `detect_solitair_cycles`, `detect_forced_cycles`,
-//! `detect_fatal_attractors`) and `check_strategy` are all out of scope — none of them is
-//! reachable without partial exploration (`--max-iterations`), which merc does not have, and
-//! parity with the explicit [`crate::solve_zielonka`] (which has none of them either) is the
-//! correct bar for this port.
-//!
-//! # Recursion depth
-//!
-//! `zielonka` recurses at most twice per distinct priority (see the two branches below), so the
-//! recursion depth is bounded by the number of priorities — the block count of the PBES being
-//! solved — not by the state count. Unlike the state-count-bounded recursions this repository's
-//! `docs/stack-overflow-recursion-audit.md` is about, this needs no explicit stack.
-
 use log::debug;
 use log::trace;
 
