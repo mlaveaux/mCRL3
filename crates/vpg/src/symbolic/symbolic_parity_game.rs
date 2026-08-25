@@ -69,12 +69,10 @@ impl SymbolicParityGame {
         Ok(game)
     }
 
-    /// Constructs a symbolic parity game where the owner and priority of every vertex is
-    /// determined by the value at `level` of its state vector (mCRL2's first constructor,
-    /// combined with `detail::compute_equation_info`).
+    /// Constructs a symbolic parity game where the owner and priority of every
+    /// vertex is determined by the value at `level` of its state vector.
     ///
-    /// Takes `level` rather than hard-coding 0 (as mCRL2's `fix_first_element`-based constructor
-    /// does) because a permuted state vector (e.g. after `--reorder`) does not necessarily put
+    /// Takes `level` because a permuted state vector does not necessarily put
     /// the discriminating value at level 0; see [`fix_element`].
     pub fn from_block_index<G: TransitionGroup>(
         manager: &LDDManagerRef,
@@ -314,13 +312,13 @@ impl SymbolicParityGame {
 /// Prints per-priority and per-owner vertex counts.
 impl fmt::Display for SymbolicParityGame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "--- symbolic parity game information ---")?;
         for (priority, block) in &self.priorities {
-            writeln!(f, "priority {priority}: there are {} vertices", block.len())?;
+            writeln!(f, "priority {priority}: {} vertices", block.len())?;
         }
+
         write!(
             f,
-            "there are {} even vertices and {} odd vertices",
+            "{} even vertices and {} odd vertices",
             self.vertices[Player::Even.to_index()].len(),
             self.vertices[Player::Odd.to_index()].len()
         )

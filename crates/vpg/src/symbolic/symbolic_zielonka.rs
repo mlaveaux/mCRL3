@@ -37,14 +37,9 @@ fn includes(winning: &LDDFunction, vertex: &LDDFunction) -> Result<bool, MercErr
     Ok(vertex.minus(winning)?.is_empty())
 }
 
-/// Solves `game` restricted to `vertices`, with `sinks` as the deadlocks to resolve (assigned to
-/// the opponent of their owner — see [`SymbolicParityGame::compute_total_graph`]), and returns
-/// the winner of `initial_vertex` together with the full winning partition.
-///
-/// Mirrors `symbolic_pbessolve_algorithm::solve`, with its `partial_solution` and
-/// `allow_early_termination` parameters dropped for the MVP: there is no partial solution to
-/// resume from yet, and early termination (skip the recursive solve entirely when
-/// `compute_total_graph`'s sink handling already resolved `initial_vertex`) is unconditional.
+/// Solves `game` restricted to `vertices`, with `sinks` as the deadlocks to
+/// resolve, and returns the winner of `initial_vertex` together with the full
+/// winning partition.
 pub fn solve_symbolic_zielonka(
     game: &SymbolicParityGame,
     initial_vertex: &LDDFunction,
@@ -89,7 +84,10 @@ fn zielonka(game: &SymbolicParityGame, v: &LDDFunction, depth: usize) -> Result<
     let alpha = Player::from_priority(priority);
     let not_alpha = alpha.opponent();
 
-    debug!("{indent}|V| = {}, priority = {priority}, player = {alpha}", v.len());
+    debug!(
+        "{indent}zielonka: |V| = {}, priority = {priority}, player = {alpha}",
+        v.len()
+    );
     trace!("{indent}U (highest priority vertices) has {} elements", u.len());
 
     let a = game.attractor(alpha, &u, v, &vplayer, None)?;

@@ -463,6 +463,15 @@ impl PbesSrfLps {
         self.num_params
     }
 
+    /// The `(Player, Priority)` of every equation, indexed by equation index.
+    ///
+    /// This is the same information `LPS::state_info` reports per-state, exposed directly so the
+    /// symbolic path (which learns equation *values*, not per-state `state_info` calls) can build a
+    /// [`merc_vpg::SymbolicParityGame`] from it without recomputing `compute_priorities`.
+    pub fn equation_info(&self) -> &[PbesVertex] {
+        &self.state_info
+    }
+
     /// The unified data parameters, in state-vector order: entry `i` occupies
     /// state position `1 + i`.
     pub fn parameters(&self) -> Vec<DataVariable> {
