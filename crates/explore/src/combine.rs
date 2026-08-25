@@ -150,10 +150,8 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     timing.measure("compose", || -> Result<(), MercError> {
         while let Some(current) = working.pop() {
             // Reconstruct the current state vector from the discovered set.
-            debug_assert!(
-                discovered.get_into(current, &mut current_state_raw),
-                "StateRef from working set must be valid"
-            );
+            let found = discovered.get_into(current, &mut current_state_raw);
+            debug_assert!(found, "StateRef from working set must be valid");
             current_state_vector.clear();
             current_state_vector.extend(current_state_raw.iter().copied().map(StateIndex::new));
 
