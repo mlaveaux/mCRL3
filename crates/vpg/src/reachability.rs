@@ -31,7 +31,10 @@ pub fn compute_reachable<G: PG>(game: &G) -> (ParityGame, Vec<Option<usize>>) {
     let mut new_priorities =
         ByteCompressedVec::with_capacity(num_vertices, game.highest_priority().value().bytes_required());
     let mut new_vertices = vec![0]; // Start with offset 0
-    let mut new_edges_to = Vec::new();
+    // New vertex indices are always < num_vertices, so the required width is
+    // known up front.
+    let mut new_edges_to: ByteCompressedVec<VertexIndex> =
+        ByteCompressedVec::with_capacity(game.num_of_edges(), num_vertices.bytes_required());
 
     // Helper closure to add a vertex to the new game
     let mut add_vertex = |v: VertexIndex| -> usize {

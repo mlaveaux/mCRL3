@@ -9,6 +9,7 @@ use oxidd::bdd::BDDFunction;
 use oxidd::bdd::BDDManagerRef;
 
 use merc_collections::ByteCompressedVec;
+use merc_collections::CompressedEntry;
 use merc_symbolic::FormatConfigSet;
 use merc_symbolic::minus;
 use merc_utilities::MercError;
@@ -99,13 +100,14 @@ impl VariabilityParityGame {
             result
         });
 
-        // Place the transitions, and increment the end for every state.
-        let mut edges_to = vec![VertexIndex::new(0); num_of_edges];
+        // Place the transitions directly into a byte-compressed array.
+        let mut edges_to = ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required());
+        edges_to.resize_zeroed(num_of_edges, num_of_vertices.bytes_required());
         let mut edges_configuration =
             manager_ref.with_manager_shared(|manager| vec![BDDFunction::f(manager); num_of_edges]);
         for (from, config, to) in edges() {
             let start = &mut vertices[*from];
-            edges_to[*start] = to;
+            edges_to.set(*start, to);
             edges_configuration[*start] = config;
             *start += 1;
         }

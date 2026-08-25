@@ -3,7 +3,7 @@
 use std::marker::PhantomData;
 
 use merc_collections::ByteCompressedVec;
-use merc_collections::bytevec;
+use merc_collections::CompressedEntry;
 
 use crate::LTS;
 use crate::LabelIndex;
@@ -26,9 +26,16 @@ pub struct IncomingTransitions<'a> {
 
 impl<'a> IncomingTransitions<'a> {
     pub fn new<L: LTS>(lts: &'a L) -> Self {
-        let mut transition_labels = bytevec![LabelIndex::new(0); lts.num_of_transitions()];
-        let mut transition_from = bytevec![StateIndex::new(0); lts.num_of_transitions()];
-        let mut state2incoming = bytevec![0usize; lts.num_of_states()];
+        // Sized for their final byte width up front.
+        let mut transition_labels =
+            ByteCompressedVec::with_capacity(lts.num_of_transitions(), lts.num_of_labels().bytes_required());
+        transition_labels.resize_zeroed(lts.num_of_transitions(), lts.num_of_labels().bytes_required());
+        let mut transition_from =
+            ByteCompressedVec::with_capacity(lts.num_of_transitions(), lts.num_of_states().bytes_required());
+        transition_from.resize_zeroed(lts.num_of_transitions(), lts.num_of_states().bytes_required());
+        let mut state2incoming =
+            ByteCompressedVec::with_capacity(lts.num_of_states(), lts.num_of_transitions().bytes_required());
+        state2incoming.resize_zeroed(lts.num_of_states(), lts.num_of_transitions().bytes_required());
 
         // Count the number of incoming transitions for each state
         for state_index in lts.iter_states() {

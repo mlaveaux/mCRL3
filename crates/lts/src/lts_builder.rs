@@ -9,7 +9,6 @@ use std::sync::Mutex;
 
 use merc_collections::ByteCompressedVec;
 use merc_collections::CompressedEntry;
-use merc_collections::bytevec;
 use merc_utilities::MercError;
 
 use crate::LabelIndex;
@@ -461,8 +460,11 @@ impl<L: TransitionLabel> LtsBuilderMem<L> {
             return;
         }
 
-        let mut grouped_labels = bytevec![LabelIndex::new(0); num_transitions];
-        let mut grouped_to = bytevec![StateIndex::new(0); num_transitions];
+        // Sized for their final byte width up front.
+        let mut grouped_labels = ByteCompressedVec::with_capacity(num_transitions, self.labels.len().bytes_required());
+        grouped_labels.resize_zeroed(num_transitions, self.labels.len().bytes_required());
+        let mut grouped_to = ByteCompressedVec::with_capacity(num_transitions, num_states.bytes_required());
+        grouped_to.resize_zeroed(num_transitions, num_states.bytes_required());
         let bucket_ends = merc_collections::scatter_into_buckets(
             num_states,
             num_transitions,

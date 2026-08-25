@@ -345,6 +345,22 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
         self.data.reserve(additional * self.bytes_per_entry);
     }
 
+    /// Grows the vector to `new_len` entries, filling the new ones with an
+    /// all-zero byte pattern, via a single bulk fill rather than `resize_with`'s
+    /// entry-at-a-time `push`. Only meaningful for entry types where an all-zero
+    /// byte pattern decodes to a valid "zero" value.
+    ///
+    /// Meant for pre-allocating a vector whose entries are about to be filled in
+    /// out of order via [`Self::set`] (e.g. placing edge targets by offset) -
+    /// without ever materialising a full `T`-per-entry array on the side first.
+    pub fn resize_zeroed(&mut self, new_len: usize, bytes_per_entry: usize) {
+        self.resize_entries(bytes_per_entry);
+        let target_len = new_len * self.bytes_per_entry;
+        if target_len > self.data.len() {
+            self.data.resize(target_len, 0);
+        }
+    }
+
     /// Releases any excess allocated capacity back to the allocator.
     ///
     /// Like [`Vec::shrink_to_fit`], this is a hint: the allocator is not
@@ -614,6 +630,21 @@ mod tests {
         for i in 0..10 {
             assert_eq!(vec.index(i), i);
         }
+    }
+
+    #[test]
+    fn test_resize_zeroed() {
+        let mut vec: ByteCompressedVec<usize> = ByteCompressedVec::with_capacity(10, 4);
+        vec.resize_zeroed(10, 4);
+        assert_eq!(vec.len(), 10);
+        for i in 0..10 {
+            assert_eq!(vec.index(i), 0);
+        }
+
+        // Entries can then be filled in out of order via `set`.
+        vec.set(5, 12345);
+        assert_eq!(vec.index(5), 12345);
+        assert_eq!(vec.index(4), 0);
     }
 
     #[test]

@@ -57,7 +57,7 @@ pub struct ThreadTermPool {
     /// A separate protection set for sendable terms, see [crate::ATermSend].
     send_term_protection_set: Arc<Mutex<ProtectionSet<ATermIndex>>>,
 
-    /// A separate protection set for sendable containers, see [crate::GlobalProtected].
+    /// A separate protection set for sendable containers, see [crate::ProtectedSend].
     send_container_protection_set: SendContainerProtectionSet,
 
     /// Counts down the number of terms this thread may still create before it must consume the
@@ -544,7 +544,7 @@ impl ThreadTermPool {
         &self.send_term_protection_set
     }
 
-    /// Returns a reference to the send container protection set, see [crate::GlobalProtected].
+    /// Returns a reference to the send container protection set, see [crate::ProtectedSend].
     pub fn send_container_protection_set(&self) -> &SendContainerProtectionSet {
         &self.send_container_protection_set
     }

@@ -3,7 +3,7 @@ use std::hash::Hash;
 use rustc_hash::FxHashMap;
 
 use crate::ByteCompressedVec;
-use crate::bytevec;
+use crate::CompressedEntry;
 
 /// Below this many entries in a single bucket, duplicates are detected with a
 /// linear scan (cheap, no allocation). Above it, a reused hash map scratch
@@ -104,39 +104,41 @@ where
     FKey: Fn(usize) -> K,
     FEntry: FnMut(usize, usize, DedupOutcome),
 {
-    // `survivor_keys[position]` is the key of the survivor at rank `position`
-    // (the `position` reported to callers). Comparisons cache the key itself
-    // rather than re-deriving it via `key_of(some_earlier_read)`: `on_entry`
-    // is free to physically compact its own storage in place (as
-    // `LtsBuilderMem::remove_duplicates` does), which can move an earlier
-    // survivor's data to a new position - including, for a bucket with
-    // duplicates before it, a position `key_of` would later be asked about
-    // again - so re-reading storage by original read position is not safe in
-    // general, only a cached copy of the key value is.
-    let mut survivor_keys: Vec<K> = Vec::new();
+    // That cache only ever needs to cover the *current* bucket: a later bucket
+    // never looks back at an earlier one's keys.
+    let mut bucket_keys: Vec<K> = Vec::new();
     let mut scratch: FxHashMap<K, usize> = FxHashMap::default();
     let mut start = 0usize;
+    let mut total_survivors = 0usize;
 
     for (bucket, &end) in bucket_ends.iter().enumerate() {
-        let bucket_start = survivor_keys.len();
+        let bucket_start_position = total_survivors;
 
         if end - start <= HASH_DEDUP_THRESHOLD {
             // Small bucket: a linear scan avoids any allocation.
+            bucket_keys.clear();
             for read in start..end {
                 let key = key_of(read);
-                let seen = (bucket_start..survivor_keys.len()).find(|&position| survivor_keys[position] == key);
+                let seen = bucket_keys.iter().position(|&seen_key| seen_key == key);
 
-                if let Some(position) = seen {
-                    on_entry(read, bucket, DedupOutcome::Duplicate { position });
+                if let Some(local_position) = seen {
+                    on_entry(
+                        read,
+                        bucket,
+                        DedupOutcome::Duplicate {
+                            position: bucket_start_position + local_position,
+                        },
+                    );
                 } else {
                     on_entry(
                         read,
                         bucket,
                         DedupOutcome::Keep {
-                            position: survivor_keys.len(),
+                            position: total_survivors,
                         },
                     );
-                    survivor_keys.push(key);
+                    bucket_keys.push(key);
+                    total_survivors += 1;
                 }
             }
         } else {
@@ -149,15 +151,15 @@ where
                 if let Some(&position) = scratch.get(&key) {
                     on_entry(read, bucket, DedupOutcome::Duplicate { position });
                 } else {
-                    scratch.insert(key, survivor_keys.len());
+                    scratch.insert(key, total_survivors);
                     on_entry(
                         read,
                         bucket,
                         DedupOutcome::Keep {
-                            position: survivor_keys.len(),
+                            position: total_survivors,
                         },
                     );
-                    survivor_keys.push(key);
+                    total_survivors += 1;
                 }
             }
         }
@@ -200,7 +202,11 @@ pub fn dedup_by_bucket<K, FBucket, FKey, FEntry>(
         return;
     }
 
-    let mut grouped: ByteCompressedVec<usize> = bytevec![0usize; num_entries];
+    // `grouped` holds `original_index` values up to `num_entries - 1`, written
+    // in original-index order (0, 1, 2, ...) at scattered positions.
+    let mut grouped: ByteCompressedVec<usize> =
+        ByteCompressedVec::with_capacity(num_entries, num_entries.bytes_required());
+    grouped.resize_zeroed(num_entries, num_entries.bytes_required());
     let bucket_ends = scatter_into_buckets(num_buckets, num_entries, bucket_of, |position, original_index| {
         grouped.set(position, original_index)
     });

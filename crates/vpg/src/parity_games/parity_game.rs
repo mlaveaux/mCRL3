@@ -124,11 +124,12 @@ impl ParityGame {
             result
         });
 
-        // Place the transitions, and increment the end for every state.
-        let mut edges_to = vec![VertexIndex::new(0); num_of_edges];
+        // Place the transitions directly into a byte-compressed array.
+        let mut edges_to = ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required());
+        edges_to.resize_zeroed(num_of_edges, num_of_vertices.bytes_required());
         for (from, to) in edges() {
             let start = &mut vertices[*from];
-            edges_to[*start] = to;
+            edges_to.set(*start, to);
             *start += 1;
         }
 
@@ -139,7 +140,7 @@ impl ParityGame {
                 let previous = if vertex_idx > 0 { vertices[vertex_idx - 1] } else { 0 };
                 if start == previous {
                     // No outgoing edges, add self-loop
-                    edges_to[start] = VertexIndex::new(vertex_idx);
+                    edges_to.set(start, VertexIndex::new(vertex_idx));
                     vertices[vertex_idx] += 1; // Increment end offset
 
                     // Change the priority of the vertex such that the self-loop is winning for the opponent.
@@ -161,37 +162,30 @@ impl ParityGame {
 
     /// Constructs a parity game directly from the given arrays.
     ///
-    /// `vertices` and `edges_to` are taken as plain vectors since every caller
-    /// builds them with a construction that repeatedly mutates offsets
-    /// in place.
+    /// `vertices` is taken as a plain vector since every caller builds it with a
+    /// construction that repeatedly mutates offsets.
     pub(crate) fn new(
         initial_vertex: VertexIndex,
         owner: PlayerVec,
         priority: ByteCompressedVec<Priority>,
         vertices: Vec<usize>,
-        edges_to: Vec<VertexIndex>,
+        edges_to: ByteCompressedVec<VertexIndex>,
     ) -> Self {
-        // The offsets are monotonically increasing up to the sentinel, and every
-        // edge target is a valid vertex index, so their maxima bound the number
-        // of bytes needed without having to scan for the actual maximum.
+        // The offsets are monotonically increasing up to the sentinel, so its
+        // maximum bounds the number of bytes needed without having to scan for
+        // the actual maximum.
         let num_of_edges = edges_to.len();
-        let num_of_vertices = owner.len();
 
         let mut compressed_vertices = ByteCompressedVec::with_capacity(vertices.len(), num_of_edges.bytes_required());
         for offset in vertices {
             compressed_vertices.push(offset);
         }
 
-        let mut compressed_edges_to = ByteCompressedVec::with_capacity(num_of_edges, num_of_vertices.bytes_required());
-        for to in edges_to {
-            compressed_edges_to.push(to);
-        }
-
         let result = Self {
             owner,
             priority,
             vertices: compressed_vertices,
-            edges_to: compressed_edges_to,
+            edges_to,
             initial_vertex,
         };
         result.assert_consistent();
