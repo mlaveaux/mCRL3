@@ -1,6 +1,3 @@
-use oxidd::ManagerRef;
-use oxidd::ldd::LDDFunction;
-use oxidd::ldd::LDDManagerRef;
 use oxidd::ldd::Value;
 use rand::Rng;
 use rand::RngExt;
@@ -23,25 +20,6 @@ pub fn random_vector_set<R: Rng>(rng: &mut R, amount: usize, length: usize, max_
     // Insert 'amount' number of vectors into the result.
     for _ in 0..amount {
         result.insert(random_vector(rng, length, max_value));
-    }
-
-    result
-}
-
-/// Returns an LDD containing all elements of the given iterator over vectors.
-pub fn from_iter<'a, I>(manager: &LDDManagerRef, iter: I) -> LDDFunction
-where
-    I: Iterator<Item = &'a Vec<Value>>,
-{
-    let mut result = manager
-        .with_manager_shared(|m| LDDFunction::empty_set(m))
-        .expect("Failed to create the empty set");
-
-    for vector in iter {
-        let single = manager
-            .with_manager_shared(|m| LDDFunction::singleton(m, vector))
-            .expect("Failed to create a singleton");
-        result = result.union(&single).expect("Failed to compute the union");
     }
 
     result
