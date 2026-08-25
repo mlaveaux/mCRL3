@@ -1452,6 +1452,7 @@ impl Mcrl2Parser {
     }
 
     fn EqnSpec(spec: ParseNode) -> ParseResult<Vec<EqnSpec>> {
+        let span = spec.as_span();
         let mut ids = Vec::new();
 
         match_nodes!(spec.into_children();
@@ -1459,11 +1460,12 @@ impl Mcrl2Parser {
                 ids.push(EqnSpec {
                     variables: variables.into_iter().map(|v| v.retag::<EqnVarId>()).collect(),
                     equations: decls.collect(),
+                    span: span.into(),
                     id: None,
                 });
             },
             [EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect(), id: None });
+                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect(), span: span.into(), id: None });
             },
         );
 

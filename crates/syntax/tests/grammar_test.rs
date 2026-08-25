@@ -209,3 +209,27 @@ fn test_machine_number_spec(spec: &str) {
         }
     }
 }
+
+/// `EqnSpec` (an `eqn`/`var ... eqn` block) used to have no `span` field at all, unlike every
+/// other declaration, which forced callers that need its location (e.g. an LSP building a
+/// document outline) to synthesize one from its children's spans instead.
+#[test]
+fn eqn_spec_span_covers_the_whole_block() {
+    let text = "sort D;\nvar x: D;\neqn x = x;";
+    let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
+    let eqn_spec = &spec.equation_declarations[0];
+
+    let block = &text[eqn_spec.span.start..eqn_spec.span.end];
+    assert_eq!(block, "var x: D;\neqn x = x;", "span should cover both the `var` and `eqn` sections");
+}
+
+/// A block with no `var` section starts its span at `eqn`, not at some earlier declaration.
+#[test]
+fn eqn_spec_span_without_a_var_section_starts_at_eqn() {
+    let text = "map f: Bool;\neqn f = true;";
+    let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
+    let eqn_spec = &spec.equation_declarations[0];
+
+    let block = &text[eqn_spec.span.start..eqn_spec.span.end];
+    assert_eq!(block, "eqn f = true;");
+}

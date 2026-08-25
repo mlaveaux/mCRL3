@@ -277,6 +277,9 @@ impl SortDecl {
 pub struct EqnSpec {
     pub variables: Vec<IdDecl<EqnVarId>>,
     pub equations: Vec<EqnDecl>,
+    /// The span of the whole `var ... eqn ...` block, from `var`/`eqn` (whichever comes first) to
+    /// the final `;`.
+    pub span: Span,
     /// Unique ID assigned to this block during declaration-id resolution.
     pub id: Option<EqnSpecId>,
 }
