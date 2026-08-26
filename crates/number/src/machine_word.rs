@@ -441,6 +441,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_square_root_bounds() {
         // For the integer square root `r` of `n`, the defining property is
         // `r*r <= n < (r+1)*(r+1)`.

@@ -517,6 +517,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_sections_populated() {
         let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse(
@@ -643,6 +644,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_set_enumeration_literal_container_equations_present() {
         // As above, but for a set-enumeration literal (`FSet(Nat)`, never
         // declared textually).
@@ -720,6 +722,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bag_extensionality_equation_survives_lowering() {
         // `bag.mcrl2`'s counterpart of the Set extensionality equation.
         let spec =
