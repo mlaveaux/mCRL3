@@ -72,7 +72,6 @@ pub use symbolic::detect_solitair_cycles_within_safe_vertices;
 pub use symbolic::encode_parity_game;
 pub use symbolic::partial_solve;
 pub use symbolic::solve_symbolic_zielonka;
-pub use symbolic::verify_symbolic_solution;
 pub use translate::translate;
 pub use variability_translate::translate_vpg;
 pub use variability_zielonka::solve_variability_product_zielonka;

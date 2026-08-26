@@ -306,6 +306,7 @@ where
     type Value = usize;
     type Label = P::Label;
     type StateInfo = P::StateInfo;
+    const HAS_LABELS: bool = P::HAS_LABELS;
     type Summand = QuotientSummand<P>;
 
     fn initial_state(&self) -> Vec<usize> {

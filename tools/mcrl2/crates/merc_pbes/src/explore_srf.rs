@@ -524,6 +524,8 @@ impl LPS for PbesSrfLps {
     type Value = usize;
     type Label = ();
     type StateInfo = PbesVertex;
+    // A PBES has no notion of an action; do not encode a trailing "action" dimension for it.
+    const HAS_LABELS: bool = false;
     type Summand = PbesSrfSummand;
 
     fn initial_state(&self) -> Vec<usize> {
