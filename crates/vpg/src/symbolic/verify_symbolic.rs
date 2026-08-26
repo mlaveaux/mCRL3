@@ -1,43 +1,111 @@
-use oxidd::ManagerRef;
 use oxidd::ldd::LDDFunction;
-use oxidd::ldd::LDDManagerRef;
 
 use merc_utilities::MercError;
 
-use crate::PG;
-use crate::ParityGameBuilder;
+use crate::ExtendedParityGame;
 use crate::Player;
-use crate::solve_zielonka;
+use crate::solve_symbolic_zielonka;
 use crate::symbolic::SymbolicParityGame;
 use crate::symbolic::SymbolicSolution;
+use crate::symbolic::includes;
+
+#[cfg(test)]
+use oxidd::ManagerRef;
+#[cfg(test)]
+use oxidd::ldd::LDDManagerRef;
+#[cfg(test)]
 use crate::symbolic::convert_symbolic_parity_game;
+#[cfg(test)]
+use crate::PG;
+#[cfg(test)]
+use crate::ParityGameBuilder;
+#[cfg(test)]
+use crate::solve_zielonka;
+#[cfg(test)]
 use crate::verify_solution;
 
-/// Independently certifies a [`SymbolicSolution`] against the game it was computed for.
+/// Checks that `solution.strategy` really does win the vertices `solution.winning` claims.
 ///
 /// # Details
 ///
-/// [`solve_zielonka`]/[`verify_solution`] already give the explicit path a certificate checker:
-/// a strategy is only trusted once it has been shown, by an independent solitaire-game fixed
-/// point, to actually win every vertex it claims. The symbolic solver has no strategy of its
-/// own to hand to that checker (see the module-level plan doc, §6), so this reuses the checker
-/// a different way: decode the *solved* symbolic game into an explicit [`crate::ParityGame`]
-/// with [`convert_symbolic_parity_game`], re-solve that explicit game from scratch with a fresh
-/// [`solve_zielonka`] call (which does compute a strategy), certify that strategy with
-/// [`verify_solution`], and only then compare the certified winner of every vertex against what
-/// `solution` claims.
+/// This is the efficient certificate: it stays entirely at the LDD level, so it scales to large
+/// models the same way the rest of the symbolic solver does. Restrict `game` to the initial
+/// vertex's winner's own strategy via [`SymbolicParityGame::apply_strategy`], re-solve the
+/// restricted game from scratch, and require the two solutions to agree. Prefer this over
+/// [`verify_symbolic_solution`], which is meant for tests only.
 ///
-/// This is strictly stronger than comparing just the initial vertex's winner (as
-/// `solve_symbolic_test.rs`'s `assert_symbolic_matches_explicit` already does one level up, via
-/// the *SRF* exploration path rather than this LDD decoding): every vertex the symbolic solver
-/// resolved is checked, and the explicit side is checked by construction, not by trusting
-/// `solve_zielonka` to agree with itself.
+/// Panics with a description of the mismatch if the strategy fails to certify.
+pub fn check_strategy(
+    game: &SymbolicParityGame,
+    initial_vertex: &LDDFunction,
+    vertices: &LDDFunction,
+    solution: &SymbolicSolution,
+) -> Result<(), MercError> {
+    let winner = solution
+        .winner(initial_vertex)
+        .ok_or("check_strategy: initial vertex was not resolved by the solver")?;
+    let strategy = solution
+        .strategy
+        .as_ref()
+        .ok_or("check_strategy: solution has no strategy (game was not built with compute_strategy)")?;
+
+    let restricted = game.apply_strategy(winner, &strategy[winner.to_index()])?;
+    let new_sinks = restricted.sinks(vertices, vertices)?;
+
+    let (new_winner, new_solution) = solve_symbolic_zielonka(
+        &ExtendedParityGame {
+            game: &restricted,
+            initial_vertex,
+            vertices,
+            sinks: &new_sinks,
+        },
+        false,
+    )?;
+
+    if new_winner != winner {
+        panic!(
+            "check_strategy: restricting {winner}'s own strategy changed the winner of the initial \
+             vertex to {new_winner}"
+        );
+    }
+
+    let solved = solution.winning[0].union(&solution.winning[1])?;
+    if includes(&solved, vertices)? {
+        for player in [Player::Even, Player::Odd] {
+            let i = player.to_index();
+            if solution.winning[i] != new_solution.winning[i] {
+                panic!(
+                    "check_strategy: after restricting {winner}'s strategy, {player}'s winning set \
+                     changed even though the original solution covered every vertex"
+                );
+            }
+        }
+    } else {
+        for player in [Player::Even, Player::Odd] {
+            let i = player.to_index();
+            if !includes(&new_solution.winning[i], &solution.winning[i])? {
+                panic!("check_strategy: after restricting {winner}'s strategy, {player}'s winning set shrank");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Independently certifies a [`SymbolicSolution`] against the game it was computed for, by
+/// decoding to an explicit [`crate::ParityGame`] and re-solving with [`solve_zielonka`].
+///
+/// # Details
+///
+/// This is a slow, differently-implemented cross-check meant for tests only — production code
+/// should use the efficient [`check_strategy`] instead, which never leaves the LDD level.
 ///
 /// `vertices` must be the same reachable-vertex set `solution` was computed over (i.e. the
 /// `total` graph `compute_total_graph` returned, unioned back with its sinks — in practice, the
-/// same `vertices` passed to [`crate::solve_symbolic_zielonka`]). Panics (via [`verify_solution`])
-/// if the certified strategy is inconsistent, or if the two solvers disagree on any vertex.
-pub fn verify_symbolic_solution(
+/// same `vertices` passed to [`crate::solve_symbolic_zielonka`]). Panics if the certified
+/// strategy is inconsistent, or if the two solvers disagree on any vertex.
+#[cfg(test)]
+pub(crate) fn verify_symbolic_solution_explicit(
     manager: &LDDManagerRef,
     game: &SymbolicParityGame,
     vertices: &LDDFunction,
@@ -63,7 +131,7 @@ pub fn verify_symbolic_solution(
         if symbolic_winner != certified_winner {
             panic!(
                 "verify_symbolic_solution: vertex {index} (cube {cube:?}) is won by {symbolic_winner} \
-                 symbolically but by {certified_winner} in the independently certified solution"
+                symbolically but by {certified_winner} in the independently certified solution"
             );
         }
     }
@@ -79,6 +147,9 @@ pub fn verify_symbolic_solution(
 /// with no enabled summand is `false`) — this function exists only so both paths share that one
 /// implementation instead of each re-deriving it, since [`convert_symbolic_parity_game`]
 /// deliberately keeps sinks rather than fabricating self-loops itself.
+///
+/// Shared by [`verify_symbolic_solution`] and `symbolic_zielonka`'s random-test oracle.
+#[cfg(test)]
 pub(crate) fn make_parity_game_total<G: PG>(game: &G) -> crate::ParityGame {
     let mut builder = ParityGameBuilder::with_capacity(game.initial_vertex(), game.num_of_edges());
     for vertex in game.iter_vertices() {
@@ -106,7 +177,8 @@ mod tests {
     use crate::random_parity_game;
     use crate::solve_symbolic_zielonka;
 
-    use super::verify_symbolic_solution;
+    use super::check_strategy;
+    use super::verify_symbolic_solution_explicit;
 
     /// Cross-checks [`verify_symbolic_solution`] against random *total* games: `symbolic_zielonka`'s
     /// own random test already cross-checks the solution against the explicit solver, so this only
@@ -137,7 +209,7 @@ mod tests {
             };
             let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
 
-            verify_symbolic_solution(&manager, &symbolic, &all_vertices, &solution).unwrap();
+            verify_symbolic_solution_explicit(&manager, &symbolic, &all_vertices, &solution).unwrap();
         });
     }
 
@@ -168,7 +240,69 @@ mod tests {
             };
             let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
 
-            verify_symbolic_solution(&manager, &symbolic, &all_vertices, &solution).unwrap();
+            verify_symbolic_solution_explicit(&manager, &symbolic, &all_vertices, &solution).unwrap();
+        });
+    }
+
+    /// Cross-checks [`check_strategy`] (native, LDD-level certification via
+    /// [`crate::SymbolicParityGame::apply_strategy`]) against random *total* games.
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_check_strategy_random_total() {
+        random_test(100, |rng| {
+            let game = random_parity_game(rng, true, 60, 5, 3);
+
+            let manager = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+            let radix = rng.random_range(2..=5);
+            let num_groups = rng.random_range(1..=3);
+            let (symbolic, all_vertices, cubes) =
+                encode_parity_game(&manager, &game, rng, radix, num_groups, true).unwrap();
+
+            let empty_sinks = symbolic.sinks(&all_vertices, &all_vertices).unwrap();
+            let initial = manager
+                .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
+                .unwrap();
+
+            let epg = ExtendedParityGame {
+                game: &symbolic,
+                initial_vertex: &initial,
+                vertices: &all_vertices,
+                sinks: &empty_sinks,
+            };
+            let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
+
+            check_strategy(&symbolic, &initial, &all_vertices, &solution).unwrap();
+        });
+    }
+
+    /// Same as [`test_check_strategy_random_total`], but for random *non-total* games, so
+    /// `apply_strategy`'s fresh-sink handling is exercised too.
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_check_strategy_random_non_total() {
+        random_test(100, |rng| {
+            let game = random_parity_game(rng, false, 60, 5, 3);
+
+            let manager = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+            let radix = rng.random_range(2..=5);
+            let num_groups = rng.random_range(1..=3);
+            let (symbolic, all_vertices, cubes) =
+                encode_parity_game(&manager, &game, rng, radix, num_groups, true).unwrap();
+
+            let sinks = symbolic.sinks(&all_vertices, &all_vertices).unwrap();
+            let initial = manager
+                .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
+                .unwrap();
+
+            let epg = ExtendedParityGame {
+                game: &symbolic,
+                initial_vertex: &initial,
+                vertices: &all_vertices,
+                sinks: &sinks,
+            };
+            let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
+
+            check_strategy(&symbolic, &initial, &all_vertices, &solution).unwrap();
         });
     }
 }

@@ -12,7 +12,7 @@ use crate::symbolic::RecursionProgress;
 use crate::symbolic::SymbolicParityGame;
 use crate::symbolic::SymbolicSolution;
 use crate::symbolic::symbolic_zielonka::ExtendedParityGame;
-use crate::symbolic::symbolic_zielonka::empty_like;
+use crate::symbolic::symbolic_zielonka::empty_set;
 use crate::symbolic::symbolic_zielonka::empty_strategy_pair;
 use crate::symbolic::symbolic_zielonka::includes;
 use crate::symbolic::symbolic_zielonka::pack_strategy_pair;
@@ -185,7 +185,7 @@ fn detect_solitair_cycles_impl(
     for alpha in [Player::Even, Player::Odd] {
         let i = alpha.to_index();
 
-        let mut u = empty_like(game)?;
+        let mut u = empty_set(game)?;
         let mut u_next = intersect(&parity[i], &vplayer[i])?;
         if let SafetyMode::Restricted(safe) = &mode {
             u_next = intersect(&u_next, &safe[i])?;
@@ -266,7 +266,7 @@ fn detect_forced_cycles_impl(
     for alpha in [Player::Even, Player::Odd] {
         let i = alpha.to_index();
 
-        let mut u = empty_like(game)?;
+        let mut u = empty_set(game)?;
         let mut u_next = parity[i].clone();
         if let SafetyMode::Restricted(safe) = &mode {
             u_next = intersect(&u_next, &safe[i])?;
@@ -422,7 +422,7 @@ fn detect_fatal_attractors_impl(
             SafetyMode::Safe => block.clone(),
             SafetyMode::Restricted(_) => intersect(block, search_space)?,
         };
-        let mut y = empty_like(game)?;
+        let mut y = empty_set(game)?;
 
         while !x.is_empty() && x != y {
             y = x.clone();

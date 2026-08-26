@@ -256,7 +256,7 @@ fn zielonka_rec(
     let indent = Repeat::new(" ", depth);
 
     if v.is_empty() {
-        let empty = empty_like(game)?;
+        let empty = empty_set(game)?;
         let strategy = game
             .compute_strategy()
             .then(|| Ok::<_, MercError>([empty.clone(), empty.clone()]))
@@ -289,7 +289,7 @@ fn zielonka_rec(
     let solution_v_minus_a = zielonka_rec(game, &v_minus_a, depth + 1, recursion_progress, attractor_progress)?;
 
     let solution = if solution_v_minus_a.winning[not_alpha.to_index()].is_empty() {
-        let mut winning = [empty_like(game)?, empty_like(game)?];
+        let mut winning = [empty_set(game)?, empty_set(game)?];
         winning[alpha.to_index()] = a.union(&solution_v_minus_a.winning[alpha.to_index()])?;
 
         let strategy = if game.compute_strategy() {
@@ -306,7 +306,7 @@ fn zielonka_rec(
                 .union(&solution_v_minus_a.strategy.as_ref().expect("compute_strategy is set")[alpha.to_index()])?
                 .union(&extra)?;
 
-            let mut strategy = [empty_like(game)?, empty_like(game)?];
+            let mut strategy = [empty_set(game)?, empty_set(game)?];
             strategy[alpha.to_index()] = combined;
             Some(strategy)
         } else {
@@ -354,76 +354,9 @@ fn zielonka_rec(
     Ok(solution)
 }
 
-pub(crate) fn empty_like(game: &SymbolicParityGame) -> Result<LDDFunction, MercError> {
+/// Returns an empty set in the same manager as `game`.
+pub(crate) fn empty_set(game: &SymbolicParityGame) -> Result<LDDFunction, MercError> {
     Ok(game.manager().with_manager_shared(LDDFunction::empty_set)?)
-}
-
-/// Checks that `solution.strategy` really does win the vertices
-/// `solution.winning` claims, native, this scales to large models the same way
-/// the rest of the symbolic solver does).
-///
-/// # Details
-///
-/// Restrict `game` to the initial vertex's winner's own strategy via
-/// [`SymbolicParityGame::apply_strategy`], re-solve the restricted game from
-/// scratch, and require the two solutions to agree.
-///
-/// Panics with a description of the mismatch if the strategy fails to certify.
-pub fn check_strategy(
-    game: &SymbolicParityGame,
-    initial_vertex: &LDDFunction,
-    vertices: &LDDFunction,
-    solution: &SymbolicSolution,
-) -> Result<(), MercError> {
-    let winner = solution
-        .winner(initial_vertex)
-        .ok_or("check_strategy: initial vertex was not resolved by the solver")?;
-    let strategy = solution
-        .strategy
-        .as_ref()
-        .ok_or("check_strategy: solution has no strategy (game was not built with compute_strategy)")?;
-
-    let restricted = game.apply_strategy(winner, &strategy[winner.to_index()])?;
-    let new_sinks = restricted.sinks(vertices, vertices)?;
-
-    let (new_winner, new_solution) = solve_symbolic_zielonka(
-        &ExtendedParityGame {
-            game: &restricted,
-            initial_vertex,
-            vertices,
-            sinks: &new_sinks,
-        },
-        false,
-    )?;
-
-    if new_winner != winner {
-        panic!(
-            "check_strategy: restricting {winner}'s own strategy changed the winner of the initial \
-             vertex to {new_winner}"
-        );
-    }
-
-    let solved = solution.winning[0].union(&solution.winning[1])?;
-    if includes(&solved, vertices)? {
-        for player in [Player::Even, Player::Odd] {
-            let i = player.to_index();
-            if solution.winning[i] != new_solution.winning[i] {
-                panic!(
-                    "check_strategy: after restricting {winner}'s strategy, {player}'s winning set \
-                     changed even though the original solution covered every vertex"
-                );
-            }
-        }
-    } else {
-        for player in [Player::Even, Player::Odd] {
-            let i = player.to_index();
-            if !includes(&new_solution.winning[i], &solution.winning[i])? {
-                panic!("check_strategy: after restricting {winner}'s strategy, {player}'s winning set shrank");
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -549,68 +482,6 @@ mod tests {
                 };
                 assert_eq!(symbolic_winner, expected_winner, "vertex {v}");
             }
-        });
-    }
-
-    /// Cross-checks [`super::check_strategy`] (native, LDD-level certification via
-    /// [`crate::SymbolicParityGame::apply_strategy`]) against random *total* games.
-    #[test]
-    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_check_strategy_random_total() {
-        random_test(100, |rng| {
-            let game = random_parity_game(rng, true, 60, 5, 3);
-
-            let manager = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
-            let radix = rng.random_range(2..=5);
-            let num_groups = rng.random_range(1..=3);
-            let (symbolic, all_vertices, cubes) =
-                encode_parity_game(&manager, &game, rng, radix, num_groups, true).unwrap();
-
-            let empty_sinks = symbolic.sinks(&all_vertices, &all_vertices).unwrap();
-            let initial = manager
-                .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
-                .unwrap();
-
-            let epg = ExtendedParityGame {
-                game: &symbolic,
-                initial_vertex: &initial,
-                vertices: &all_vertices,
-                sinks: &empty_sinks,
-            };
-            let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
-
-            super::check_strategy(&symbolic, &initial, &all_vertices, &solution).unwrap();
-        });
-    }
-
-    /// Same as [`test_check_strategy_random_total`], but for random *non-total* games, so
-    /// `apply_strategy`'s fresh-sink handling is exercised too.
-    #[test]
-    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
-    fn test_check_strategy_random_non_total() {
-        random_test(100, |rng| {
-            let game = random_parity_game(rng, false, 60, 5, 3);
-
-            let manager = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
-            let radix = rng.random_range(2..=5);
-            let num_groups = rng.random_range(1..=3);
-            let (symbolic, all_vertices, cubes) =
-                encode_parity_game(&manager, &game, rng, radix, num_groups, true).unwrap();
-
-            let sinks = symbolic.sinks(&all_vertices, &all_vertices).unwrap();
-            let initial = manager
-                .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
-                .unwrap();
-
-            let epg = ExtendedParityGame {
-                game: &symbolic,
-                initial_vertex: &initial,
-                vertices: &all_vertices,
-                sinks: &sinks,
-            };
-            let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
-
-            super::check_strategy(&symbolic, &initial, &all_vertices, &solution).unwrap();
         });
     }
 }
