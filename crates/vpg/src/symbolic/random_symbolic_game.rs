@@ -21,23 +21,16 @@ use crate::VertexIndex;
 /// Encodes an arbitrary explicit parity game symbolically, for use as an oracle
 /// in round-trip and solver cross-check tests.
 ///
+/// # Details
+///
 /// Every vertex `v` is encoded as its base-`radix` digits over `k =
 /// ceil(log_radix(n))` positions; `radix` should be drawn from `2..=5` so `k >
-/// 1` and the resulting LDD actually has several levels. Edges are partitioned
-/// at random into `num_groups` transition relations *per owner* (so `2 *
-/// num_groups` groups in total; empty ones are dropped), each reading and
-/// writing *every* position (`0..k`): a short relation that only reads a
-/// subset of positions is a projection, which adds spurious edges for any two
-/// states that agree on the read positions — correct when encoding a real
-/// LPS, wrong here, where the input is an arbitrary graph with no such
-/// structure to exploit. Splitting by owner first matters for
-/// [`crate::SymbolicParityGame::apply_strategy`]: it decides which player a
-/// group belongs to as a single yes/no answer for the *whole* group (mirroring
-/// mCRL2's own `apply_strategy`, and sound there because a real summand group
-/// is built from one equation's summands and so never actually mixes owners),
-/// so a synthetic group straddling both owners — which a plain random bucket
-/// assignment produces whenever `num_groups` is small — would silently
-/// misattribute one owner's real edges to the other and corrupt the game.
+/// 1` and the resulting LDD actually has several levels.
+///
+/// Edges are partitioned at random into `num_groups` transition relations *per
+/// owner* , each reading and writing *every* position (`0..k`): a short
+/// relation that only reads a subset of positions is a projection, which adds
+/// spurious edges for any two states that agree on the read positions.
 ///
 /// Returns the symbolic game, the LDD of all vertices, and the vertex index →
 /// cube mapping (so a test can look up an explicit vertex's encoding).
