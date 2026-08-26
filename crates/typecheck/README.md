@@ -51,6 +51,36 @@ standalone expression. Note that a resolved *sort* embedded in a `TypedNode`
 carries no reliable source span of its own — only spans on the original
 specification's declarations and expressions are meaningful.
 
+### Whole-process type checking
+
+`ProcessSpecification::from_untyped` extends the above to a full
+`UntypedProcessSpecification`: it type checks the data specification first
+(exactly as `DataSpecification::from_untyped_with` does), then every `act`
+argument sort, every `glob`/`proc` parameter sort, and every `proc` body and
+`init` — action and process-instantiation arguments against their declared
+sorts (with overload resolution when a name is declared more than once),
+`sum`/`dist`-bound variables in scope for the subtree they bind, conditions
+against `Bool`, and time bounds/`dist` weights against `Real`. Errors are
+`ProcessError`, a superset of `WellTypedError`/`InferenceError`.
+
+**Known limitation**: mCRL2's concrete syntax overloads several tokens between
+the process algebra and the data language — most notably `.` (process
+sequential composition vs. the data "at"/indexing operator) and `+` (process
+choice vs. data addition) — and disambiguating between the two readings needs
+semantic information a context-free grammar doesn't have, so `merc_syntax`'s
+grammar always parses the greedier data-expression reading first. This means
+`act(args) . cond -> P <> Q` parses `act(args) . cond` as a single data
+expression rather than an action step followed by the real condition.
+`ProcessSpecification` recovers the common case of this — a single leading
+action or process-instantiation step before a genuine condition — using the
+same declaration tables it already built (see `crate::process::check`'s
+`check_condition`), but not every shape the ambiguity produces, most commonly
+a `+`-separated chain of guarded alternatives whose guard bodies contain
+actions. `crates/typecheck/tests/example_tests.rs` documents which specifications
+in the example corpus are affected. Fully resolving this needs either a
+semantics-directed reparse or a grammar change in `merc_syntax`; both are out
+of scope for this crate.
+
 `DataSpecification::from_untyped_with` additionally takes a `NumberEncoding`,
 selecting how number literals are lowered to their Appendix-B constructor
 chains: the recursive-binary encoding (the default), or a 64-bit machine-word

@@ -28,6 +28,7 @@ use crate::Signature;
 use crate::TypeCheckContext;
 use crate::TypingInfo;
 use crate::WellTypedError;
+use crate::apply_sorts_in_data_expr;
 use crate::apply_sorts_in_spec;
 use crate::assign_declaration_ids;
 use crate::basic_sort_data_specification;
@@ -475,6 +476,24 @@ impl DataSpecification {
     ) -> (&mut TypeCheckContext, &UntypedDataSpecification, &UntypedDataSpecification) {
         (&mut self.context, &self.spec, &self.system)
     }
+
+    /// Resolves the sort names of every binder (`lambda`/`forall`/`exists`/a comprehension) in
+    /// `expr`, in place.
+    ///
+    /// An equation's own binder sorts are resolved as part of `from_untyped_with`'s pipeline
+    /// (`resolve_sort_ids`'s `apply_sorts_in_spec` walks into every equation body for exactly
+    /// this reason). An expression from *outside* the data specification — a process-body
+    /// expression (an action argument, a condition, …), or a caller-supplied expression to
+    /// [`Self::typecheck_expression`] — never goes through that pass, so a binder over a
+    /// user-declared sort name (as opposed to a built-in like `Nat`, which parses straight to a
+    /// primitive sort with no name to resolve) would otherwise still be an unresolved `Reference`
+    /// when inference's `binder_sort` tries to intern it — this is the fix-up step for that.
+    pub(crate) fn resolve_expression_binder_sorts(&mut self, expr: &mut DataExpr) -> Result<(), WellTypedError> {
+        apply_sorts_in_data_expr(expr, &mut |sort: &SortExpression| -> Result<SortExpression, WellTypedError> {
+            let flattened = flatten_function_sorts(sort);
+            resolve_sort_id(&flattened, &self.sorts)
+        })
+    }
 }
 
 /// Returns the target sort of a sort expression, i.e. the range of a function
@@ -505,7 +524,11 @@ pub(crate) fn argument_sorts(sort: &SortExpression) -> &[SortExpression] {
 
 /// Rewrites every `Function` node of `sort` into a `FlattenedFunction` whose
 /// domain is the flattened `Product` spine (`(A#B)->C` becomes `A#B->C`).
-fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
+///
+/// `pub(crate)`: also used by [`crate::process`] to resolve a binder sort embedded in a
+/// process-body expression, the same way it's used below for every sort in the data
+/// specification proper (including equation-embedded binder sorts, via `apply_sorts_in_spec`).
+pub(crate) fn flatten_function_sorts(sort: &SortExpression) -> SortExpression {
     sort.clone()
         .apply(|expr| -> Result<_, Infallible> {
             if let SortExpressionKind::Function { domain, range } = &expr.node {
