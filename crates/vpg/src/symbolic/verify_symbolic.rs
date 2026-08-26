@@ -10,10 +10,6 @@ use crate::symbolic::SymbolicSolution;
 use crate::symbolic::symbolic_zielonka::includes;
 
 #[cfg(test)]
-use oxidd::ManagerRef;
-#[cfg(test)]
-use oxidd::ldd::LDDManagerRef;
-#[cfg(test)]
 use crate::PG;
 #[cfg(test)]
 use crate::ParityGameBuilder;
@@ -23,6 +19,10 @@ use crate::solve_zielonka;
 use crate::symbolic::convert_symbolic_parity_game;
 #[cfg(test)]
 use crate::verify_solution;
+#[cfg(test)]
+use oxidd::ManagerRef;
+#[cfg(test)]
+use oxidd::ldd::LDDManagerRef;
 
 /// Checks that `solution.strategy` really does win the vertices `solution.winning` claims.
 ///
@@ -42,9 +42,10 @@ pub fn verify_symbolic_strategy(
     let winner = solution
         .winner(initial_vertex)
         .ok_or("verify_symbolic_strategy: initial vertex was not resolved by the solver")?;
-    let strategy = solution.strategy.as_ref().ok_or(
-        "verify_symbolic_strategy: solution has no strategy (game was not built with compute_strategy)",
-    )?;
+    let strategy = solution
+        .strategy
+        .as_ref()
+        .ok_or("verify_symbolic_strategy: solution has no strategy (game was not built with compute_strategy)")?;
 
     let restricted = game.apply_strategy(winner, &strategy[winner.to_index()])?;
     let new_sinks = restricted.sinks(restricted.vertices(), restricted.vertices())?;
