@@ -64,12 +64,12 @@ use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::Solver;
 use merc_vpg::VertexIndex;
-use merc_vpg::check_strategy;
 use merc_vpg::convert_symbolic_parity_game;
 use merc_vpg::solve_priority_promotion;
 use merc_vpg::solve_symbolic_zielonka;
 use merc_vpg::solve_zielonka;
 use merc_vpg::verify_solution;
+use merc_vpg::verify_symbolic_strategy;
 use merc_vpg::write_pg;
 
 /// Default number of nodes for the Oxidd LDD manager.
@@ -710,24 +710,14 @@ fn handle_solve_symbolic(
         info!("Parity game written to '{}'", output.display());
     }
 
+    let epg = ExtendedParityGame::new(symbolic.game, symbolic.initial_vertex, symbolic.sinks);
+
     // Verifying needs the full winning partition, not just the initial vertex's winner, so it
     // disables the early termination plain solving relies on for speed.
-    let (winner, solution) = timing.measure("solve", || {
-        solve_symbolic_zielonka(
-            &ExtendedParityGame {
-                game: &symbolic.game,
-                initial_vertex: &symbolic.initial_vertex,
-                vertices: &symbolic.vertices,
-                sinks: &symbolic.sinks,
-            },
-            !args.verify_solution,
-        )
-    })?;
+    let (winner, solution) = timing.measure("solve", || solve_symbolic_zielonka(&epg, !args.verify_solution))?;
 
     if args.verify_solution {
-        timing.measure("verify", || {
-            check_strategy(&symbolic.game, &symbolic.initial_vertex, &symbolic.vertices, &solution)
-        })?;
+        timing.measure("verify", || verify_symbolic_strategy(&epg.game, &epg.initial_vertex, &solution))?;
     }
 
     println!("{}", winner.solution());

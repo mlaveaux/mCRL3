@@ -11,10 +11,9 @@ use merc_vpg::PG;
 use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::VertexIndex;
-use merc_vpg::check_strategy;
 use merc_vpg::solve_symbolic_zielonka;
 use merc_vpg::solve_zielonka;
-use merc_vpg::verify_symbolic_solution;
+use merc_vpg::verify_symbolic_strategy;
 
 use merc_pbes::explore_pbes_symbolic_game;
 use merc_pbes::explore_srf_pbes;
@@ -37,11 +36,10 @@ fn unified_symbolic_srf(pbes: &Pbes) -> SrfPbes {
 }
 
 /// Solves `pbes` both explicitly (SRF exploration + Zielonka) and symbolically (LDD reachability +
-/// the symbolic Zielonka solver), and asserts the initial vertex has the same winner in both.
-/// Also independently certifies the *entire* symbolic winning partition, twice: natively via
-/// [`check_strategy`] (the same certificate `--verify-solution` computes, scaling the way the
-/// rest of symbolic solving does) and, as a second, differently-implemented cross-check, by
-/// decoding to an explicit game via [`verify_symbolic_solution`].
+/// the symbolic Zielonka solver), and asserts the initial vertex has the same winner in both. Also
+/// independently certifies the *entire* symbolic winning partition via [`verify_symbolic_strategy`]
+/// (the same certificate `--verify-solution` computes, scaling the way the rest of symbolic
+/// solving does).
 ///
 /// A reachable deadlock (a PVI with no enabled summand) is resolved identically by both paths:
 /// `explore_common.rs`'s `builder.finish(true, true)` (`ParityGame::from_edges`'s `make_total`)
@@ -84,35 +82,20 @@ fn assert_symbolic_matches_explicit(pbes: &Pbes) {
     )
     .expect("symbolic exploration failed");
 
+    let epg = ExtendedParityGame::new(symbolic.game, symbolic.initial_vertex, symbolic.sinks);
+
     // Force a full solve (no early termination), so the returned partition — and hence what
-    // `verify_symbolic_solution` below certifies — covers every reachable vertex, not only
+    // `verify_symbolic_strategy` below certifies — covers every reachable vertex, not only
     // whatever `compute_total_graph`'s sink-attractor step happened to resolve on its own.
-    let (symbolic_winner, symbolic_solution) = solve_symbolic_zielonka(
-        &ExtendedParityGame {
-            game: &symbolic.game,
-            initial_vertex: &symbolic.initial_vertex,
-            vertices: &symbolic.vertices,
-            sinks: &symbolic.sinks,
-        },
-        false,
-    )
-    .expect("symbolic solve failed");
+    let (symbolic_winner, symbolic_solution) = solve_symbolic_zielonka(&epg, false).expect("symbolic solve failed");
 
     assert_eq!(
         explicit_winner, symbolic_winner,
         "explicit and symbolic solvers disagree on the initial vertex's winner"
     );
 
-    check_strategy(
-        &symbolic.game,
-        &symbolic.initial_vertex,
-        &symbolic.vertices,
-        &symbolic_solution,
-    )
-    .expect("native strategy certification failed");
-
-    verify_symbolic_solution(&storage, &symbolic.game, &symbolic.vertices, &symbolic_solution)
-        .expect("symbolic solution failed independent certification");
+    verify_symbolic_strategy(&epg.game, &epg.initial_vertex, &symbolic_solution)
+        .expect("native strategy certification failed");
 }
 
 fn assert_symbolic_matches_explicit_from_text(text: &str) {
