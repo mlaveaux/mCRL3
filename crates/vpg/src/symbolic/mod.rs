@@ -8,11 +8,15 @@
 //!
 
 mod convert_symbolic_game;
+mod partial_solve;
 mod random_symbolic_game;
 mod symbolic_parity_game;
 mod symbolic_zielonka;
+mod verify_symbolic;
 
 pub use convert_symbolic_game::*;
+pub use partial_solve::*;
 pub use random_symbolic_game::*;
 pub use symbolic_parity_game::*;
 pub use symbolic_zielonka::*;
+pub use verify_symbolic::*;
