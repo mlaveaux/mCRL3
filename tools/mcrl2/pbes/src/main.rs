@@ -30,8 +30,6 @@ use merc_utilities::Timing;
 
 use merc_pbes::Bsgs;
 use merc_pbes::GapConfig;
-use merc_pbes::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
-use merc_pbes::explore_common::UNIFY_RESET_PARAMETERS;
 use merc_pbes::ParameterLayoutLPS;
 use merc_pbes::PbesLps;
 use merc_pbes::PbesSrfLps;
@@ -40,6 +38,8 @@ use merc_pbes::Permutation;
 use merc_pbes::QuotientLps;
 use merc_pbes::SymmetryAlgorithm;
 use merc_pbes::check_parameter_basis;
+use merc_pbes::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
+use merc_pbes::explore_common::UNIFY_RESET_PARAMETERS;
 use merc_pbes::explore_pbes;
 use merc_pbes::explore_pbes_impl;
 use merc_pbes::explore_pbes_parallel;

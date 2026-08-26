@@ -65,7 +65,7 @@ pub struct CfgEdge<V> {
 /// statically known set of locations, and every summand's effect on it is
 /// exactly one edge (see [`CfgEdge`]) between two such locations: the graph
 /// `(locations, edges)` is the control flow graph of `d`.
-/// 
+///
 /// The generic `V` is the representation of the values of the parameters.
 pub struct ControlFlowGraph<V> {
     /// The indices into `parameters` identified as control flow parameters.

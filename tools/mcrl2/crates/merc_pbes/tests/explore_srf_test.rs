@@ -84,8 +84,15 @@ fn compare_text_pbes_with_pbessolve_caching(text_pbes_relative_path: &str, cachi
 
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
     let builder = ParityGameBuilder::new(VertexIndex::new(0));
-    let game = explore_srf_pbes(unified_srf(&pbes), ExplorationStrategy::Bfs, caching, false, &Timing::new(), builder)
-        .expect("Failed to build parity game");
+    let game = explore_srf_pbes(
+        unified_srf(&pbes),
+        ExplorationStrategy::Bfs,
+        caching,
+        false,
+        &Timing::new(),
+        builder,
+    )
+    .expect("Failed to build parity game");
     let (solution, _) = solve_zielonka(&game, false);
     let result = solution[0][0];
 
@@ -148,8 +155,15 @@ fn compare_mcrl2_spec_with_pbessolve_caching(
 
     let pbes = Pbes::from_file(pbes_path.to_str().unwrap()).expect("Failed to read PBES");
     let builder = ParityGameBuilder::new(VertexIndex::new(0));
-    let game = explore_srf_pbes(unified_srf(&pbes), ExplorationStrategy::Bfs, caching, false, &Timing::new(), builder)
-        .expect("Failed to build parity game");
+    let game = explore_srf_pbes(
+        unified_srf(&pbes),
+        ExplorationStrategy::Bfs,
+        caching,
+        false,
+        &Timing::new(),
+        builder,
+    )
+    .expect("Failed to build parity game");
     let (solution, _) = solve_zielonka(&game, false);
     let result = solution[0][0];
 

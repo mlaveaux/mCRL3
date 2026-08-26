@@ -276,14 +276,19 @@ impl PbesSrfLps {
         if srf_pbes.equations().is_empty() {
             return Err("PBES has no equations".into());
         }
-        
+
         debug_assert!(
             srf_pbes.is_unified(),
             "PbesSrfLps::new requires a PBES whose equations share one parameter vector; \
              call `SrfPbes::unify_parameters` on it first"
         );
 
-        let num_params = srf_pbes.equations().iter().map(|eq| eq.variable().parameters().len()).max().unwrap_or(0);
+        let num_params = srf_pbes
+            .equations()
+            .iter()
+            .map(|eq| eq.variable().parameters().len())
+            .max()
+            .unwrap_or(0);
 
         let is_mu: Vec<bool> = srf_pbes.equations().iter().map(|e| e.is_mu()).collect();
         let priorities = compute_priorities(&is_mu);
@@ -426,7 +431,8 @@ impl PbesSrfLps {
 
         // Equation-level reachability from the initial equation, ignoring data
         // guards: a coarse, conservative over-approximation of actual state
-        // reachability.        let mut equation_reachable = vec![false; srf_pbes.equations().len()];
+        // reachability.
+        let mut equation_reachable = vec![false; srf_pbes.equations().len()];
         let mut stack = vec![initial_eq_idx];
         equation_reachable[initial_eq_idx] = true;
         while let Some(eq_idx) = stack.pop() {

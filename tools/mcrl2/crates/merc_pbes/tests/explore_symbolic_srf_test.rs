@@ -49,7 +49,9 @@ fn assert_symbolic_matches_explicit(text_pbes_relative_path: &str) {
     let storage = oxidd::ldd::new_manager(1 << 20, 1 << 20, 1);
     let timing = Timing::new();
     let mut symbolic_srf = SrfPbes::from(&pbes).expect("Failed to convert to SRF");
-    symbolic_srf.unify_parameters(true, false).expect("Failed to unify parameters");
+    symbolic_srf
+        .unify_parameters(true, false)
+        .expect("Failed to unify parameters");
     let states = explore_pbes_symbolic(&storage, symbolic_srf, &SymbolicLpsOptions::default(), false, &timing)
         .expect("Failed to explore PBES symbolically");
 

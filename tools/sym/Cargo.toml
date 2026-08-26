@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# Enable additional metrics.
+metrics = ["merc_symbolic/metrics"]
+
 [dependencies]
 merc_io.workspace = true
 merc_lts = { workspace = true, features = ["clap"] }

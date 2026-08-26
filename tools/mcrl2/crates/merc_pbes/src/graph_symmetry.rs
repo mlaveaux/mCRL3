@@ -229,7 +229,7 @@ impl fmt::Display for EdgeColour {
 }
 
 /// `C(e)`, the colour of an edge, passed to GAP as a native edge colour.
-/// 
+///
 /// Note that this is a set of positions or roles, not a single position or
 /// role, because GAP cannot deal with parallel edges.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
