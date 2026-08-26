@@ -333,7 +333,7 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
     }
 
     fn action_label_index(&self) -> Option<usize> {
-        Some(self.read_indices.len() + self.write_indices.len())
+        L::HAS_LABELS.then_some(self.read_indices.len() + self.write_indices.len())
     }
 
     fn meta(&self) -> &LDDFunction {
@@ -372,13 +372,20 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
         // are overlaid from each short state below.
         let mut full_state = self.lps.initial_state();
 
-        // The trailing dimension of `interleaved` carries the interned action
-        // label, one past the read/write positions — matching the convention
-        // [`crate::SummandGroup`] uses for relations read from a real `.sym` file.
+        // The trailing dimension of `interleaved` carries the interned action label, one past the
+        // read/write positions — matching the convention [`crate::SummandGroup`] uses for relations
+        // read from a real `.sym` file. Generators with no notion of an action (`L::HAS_LABELS` is
+        // `false`, e.g. a PBES in SRF form) omit this dimension entirely rather than pad every
+        // relation with a dummy value that always interns to the same index.
         let action_position = self.read_indices.len() + self.write_indices.len();
+        let vector_len = if L::HAS_LABELS {
+            action_position + 1
+        } else {
+            action_position
+        };
 
         // Reusable interleaved short vector for the relation singletons.
-        let mut interleaved: Vec<Value> = vec![0; action_position + 1];
+        let mut interleaved: Vec<Value> = vec![0; vector_len];
 
         // Accumulate into a local relation so the enumeration callback does not
         // have to borrow `self`.
@@ -434,8 +441,10 @@ impl<L: LPS> TransitionGroup for SymbolicLpsGroup<L> {
                         interleaved[write_positions[m]] = *value as Value;
                     }
 
-                    let (label_index, _) = labels.insert(label.clone());
-                    interleaved[action_position] = *label_index as Value;
+                    if L::HAS_LABELS {
+                        let (label_index, _) = labels.insert(label.clone());
+                        interleaved[action_position] = *label_index as Value;
+                    }
 
                     let cube = storage.with_manager_shared(|m| LDDFunction::singleton(m, interleaved.as_slice()))?;
                     *relation = relation.union(&cube)?;
