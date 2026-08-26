@@ -74,13 +74,6 @@ fn is_commutative(name: &str, arity: usize) -> bool {
 }
 
 /// True iff `name` is associative-commutative and its chains should be flattened into one n-ary SDG vertex.
-///
-/// Flattening goes beyond Definition 3, whose colouring only accounts for
-/// commutativity: there `a && b && c` is the nested `&&(&&(a,b),c)` and an
-/// automorphism can only swap operands within each binary node, so of the six
-/// orderings only two are found. One n-ary vertex with `k` uncoloured edges
-/// gives the full `S_k`, which is sound for the same reason the commutative
-/// case is -- the semantics of the operator is invariant under it.
 fn is_flat_operator(name: &str, arity: usize) -> bool {
     arity == 2 && ASSOCIATIVE_FUNCTION_SYMBOLS.contains(&name)
 }
@@ -92,16 +85,9 @@ enum SdgVertex {
     /// `NodeIndex(k) == Parameter(k)`.
     Parameter(usize),
 
-    /// A subformula or subterm, identified by its (maximally shared) term.
-    /// Since mCRL2 terms are hash-consed, using the term itself as the
-    /// deduplication key is exactly Definition 2's `sub(E)` being a *set*:
-    /// two occurrences of the syntactically identical subterm (even across
-    /// different equations) collapse to a single vertex, with [`Sdg`]'s
-    /// per-vertex `C_eq` accumulating every equation that reaches it.
-    ///
-    /// Typed as a [`PbesExpression`] since that is exactly what is walked: the
-    /// PBES connectives, and the data expressions below them (in mCRL2 every
-    /// data expression is a PBES expression).
+    /// A subformula or subterm, identified by its maximally shared term. This
+    /// means that (syntactically) identical subterms across different equations
+    /// collapse to a single vertex.
     Term(PbesExpression),
 
     /// The synthetic update position `X_{i,k}`: not a PBES term, and never
@@ -118,28 +104,22 @@ enum SdgVertex {
 /// `C_eq` component (see [`Sdg::equations`]).
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum VertexColour {
-    /// `C(x) = par` for a PBES parameter vertex, refined by the parameter's sort.
+    /// `C(x) = par` for a PBES parameter vertex, refined by the parameter's
+    /// sort.
     ///
     /// The sort is part of the colour because function symbols are coloured by
-    /// name alone (`==` and `<` exist at every sort), so without it two parameters
-    /// of different sorts with isomorphic neighbourhoods would be interchangeable
-    /// and GAP would report cross-sort permutations. Those are not symmetries: the
-    /// quotient would feed a value of the wrong sort to `set_assignments`.
+    /// name alone and mCRL2 has overloading, e.g. `==` and `<` exist at every
+    /// sort but cannot be interchanged.
     Parameter(SortExpression),
 
     /// A quantifier-bound variable, coloured by its sort but, like
     /// [`VertexColour::Quantifier`], deliberately *not* by name.
     ///
     /// This is coarser than the paper's `C(x) = x` for `x` not a parameter,
-    /// which colours a bound variable by its name and so only ever identifies
-    /// two branches that were alpha-renamed to agree (the assumption the paper
-    /// states it needs). Colouring by sort instead identifies branches up to
-    /// alpha-equivalence, which is what mCRL2 input actually looks like:
-    /// `lps2pbes` hands out a fresh name per branch, so name-colouring would
-    /// discard most real symmetries. The binder structure is still pinned down
-    /// by the edges and by [`VertexColour::Quantifier`], and the separate
-    /// colour keeps a bound variable from being mapped onto a PBES parameter of
-    /// the same sort.
+    /// which colours a bound variable by its name. In the paper we assume
+    /// structural alpha renaming, but in practice we obtain PBESes where all
+    /// bound variables are freshly named, so name-colouring would discard most
+    /// real symmetries. This fact is enforced by [`SdgBuilder::push_scope`]
     BoundVariable(SortExpression),
 
     /// `C(f(t1,...,tk)) = f`, identified by name. Also used for nullary
@@ -156,22 +136,11 @@ enum VertexColour {
     Connective(Connective),
 
     /// `C(Qe:D.phi) = (Q,D)`, with the bound variable's *name* dropped for the
-    /// reason given on [`VertexColour::BoundVariable`] (the paper's `Qe: D`
-    /// keeps it). Generalized from a single sort to a vector of sorts, since
-    /// mCRL2 quantifiers may bind more than one variable at once (`forall
-    /// e1:D1, e2:D2 . phi`).
+    /// reason given on [`VertexColour::BoundVariable`]. Also generalised to a
+    /// vector of sorts.
     Quantifier(Quantifier, Vec<SortExpression>),
 
     /// `C(X(t1,...,tn)) = pvi`.
-    ///
-    /// Note that this drops the predicate variable's name, which the paper's
-    /// `C(X(t1,...,tn)) = X` keeps and which its Lemma 3 uses in the PVI case
-    /// (`Jh(X(t))K` and `Jpi(X(t))K` are only equal for arbitrary `eta` when `h`
-    /// cannot rename `X`). What blocks the confusion here instead is the
-    /// orthogonal `C_eq` component (see [`Sdg::equations`]), which the paper
-    /// does not have; that is not the same argument, so adding the name here
-    /// would be strictly safer and cannot cost a genuine symmetry (the group
-    /// action of Definition 5 preserves predicate variable names).
     Pvi,
 
     /// `C(X_{i,k}) = update`.
@@ -259,42 +228,26 @@ impl fmt::Display for EdgeColour {
     }
 }
 
-/// `C(e)`, the colour of an edge, passed to GAP as a native edge colour (no
-/// port-vertex subdivision gadget is needed).
-///
-/// Both set-valued variants implement the same idea: when an edge's
-/// "natural" single label would coincide with another edge already present
-/// between the same pair of vertices, the labels are combined into one set
-/// instead of creating a duplicate `(source, target, colour)` triple (GAP's
-/// `AutomorphismGroup` with edge colours disallows two edges sharing source,
-/// range *and* colour). In the common, non-colliding case this is just a
-/// singleton set, so it costs nothing and changes nothing versus the paper's
-/// literal per-position/per-role reading. See [`SdgBuilder::add_or_merge_edge`].
+/// `C(e)`, the colour of an edge, passed to GAP as a native edge colour.
+/// 
+/// Note that this is a set of positions or roles, not a single position or
+/// role, because GAP cannot deal with parallel edges.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum EdgeColour {
     /// The set of positions `{i | t_i = psi}` of a non-commutative
-    /// function's argument `psi` -- a singleton `{i}` unless `psi` repeats
-    /// across positions (e.g. `f(x,y,x)` gets one edge to `x` coloured
-    /// `{1,3}`, not two parallel edges). Exactly the paper's
-    /// `C(f(t1,...,tk), t) = {i | exists i in [k]. t = t_i}`.
+    /// function's argument `psi`. For duplicated positions `f(x,y,x)` we get an
+    /// edge to `x` coloured `{1,3}`, not two parallel edges.
     Argument(BTreeSet<usize>),
 
     /// Any argument of a commutative function; any other edge the paper gives
-    /// the "no colour" label `*` (`(+)` operands, quantifier body, abstraction
-    /// body, ...).
+    /// the "no colour" label.
     Uncoloured,
 
-    /// The set of [`UpdateRole`]s that coincide on the same target vertex of
-    /// an update vertex `X_{i,k}` -- a singleton unless the PVI's k'th
-    /// argument is literally the current value of parameter `d_k` (a
-    /// "copy", which is extremely common in practice), in which case the
-    /// `Data` and `Par` edges land on the same vertex and are combined.
-    ///
-    /// The paper leaves these three edges uncoloured (`C(e) = *`), which its
-    /// Lemma 3 then silently works around: the PVI case has to know that the
-    /// image of the `data(X,i,k)` edge is again a `data` edge and the image of
-    /// the `d_k` edge again a parameter edge, and nothing in an uncoloured
-    /// triple says so. Colouring by role is what makes that step true.
+    /// The set of [`UpdateRole`]s that coincide on the same target vertex of an
+    /// update vertex `X_{i,k}`. Note that for copy updates (see
+    /// [`SdgBuilder::add_update_vertices`]) the `Data` and `Par` edges land on
+    /// the same vertex and are combined, so this is a set, not a singleton.
+    /// vertex and are combined.
     Update(BTreeSet<UpdateRole>),
 }
 
@@ -328,15 +281,8 @@ pub struct Sdg {
     /// `C(v)`, indexed by `NodeIndex::index()`.
     colours: Vec<VertexColour>,
 
-    /// `C_eq(v)`: the set of (0-based) equation indices whose right-hand
-    /// side reaches this vertex, indexed by `NodeIndex::index()`.
-    ///
-    /// Not part of the paper's colouring, and what makes its Lemma 2
-    /// (`h(phi_X) = phi_X`) actually hold: size preservation alone only rules
-    /// out mapping a right-hand side to a *proper* subformula of itself, not to
-    /// the equally-sized right-hand side of another equation. With `C_eq`,
-    /// `h(phi_X) = phi_Y` would need `C_eq(phi_X) = C_eq(phi_Y)`, i.e. each of
-    /// `phi_X`, `phi_Y` a subformula of the other, hence `phi_X = phi_Y`.
+    /// `C_eq(v)`: the set of equation indices whose right-hand side reaches
+    /// this vertex, indexed by `NodeIndex::index()`.
     equations: Vec<BTreeSet<usize>>,
 
     /// The unified parameter vector; `parameters[k]` is the vertex
