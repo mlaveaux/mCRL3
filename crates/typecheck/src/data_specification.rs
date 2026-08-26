@@ -36,6 +36,7 @@ use crate::build_system_defined_specification;
 use crate::check_aliases;
 use crate::check_equations;
 use crate::check_no_system_function_redeclaration;
+use crate::check_products_within_domains;
 use crate::check_system_equations;
 use crate::check_system_specification;
 use crate::desugar_structured_sorts;
@@ -50,6 +51,8 @@ use crate::lower_data_specification;
 use crate::lower_expression;
 use crate::merge_signatures;
 use crate::normalize_sorts;
+use crate::resolve_sort;
+use crate::resolve_sort_id;
 use crate::resolve_sort_ids;
 use crate::resolve_system_signature;
 use crate::resolve_system_signature_full;
@@ -449,6 +452,28 @@ impl DataSpecification {
             }
         }
         info
+    }
+
+    /// Resolves a sort expression that occurs *outside* the data specification proper — an
+    /// action argument, a process parameter, a global variable declaration — against this
+    /// already-resolved specification's declared sort names.
+    ///
+    /// Requires `sort` to contain no anonymous `struct`: this specification's own desugaring
+    /// ([`crate::hoist_anonymous_structs`]) only ever ran over the data specification, so callers
+    /// outside it (see [`crate::process`]) must reject that themselves before calling this.
+    pub(crate) fn resolve_declared_sort(&mut self, sort: &SortExpression) -> Result<crate::ResolvedSortId, WellTypedError> {
+        check_products_within_domains(sort)?;
+        let resolved = resolve_sort_id(sort, &self.sorts)?;
+        Ok(resolve_sort(&mut self.context, &self.spec, &resolved))
+    }
+
+    /// Splits into simultaneous borrows of the query context and the two specifications, for a
+    /// caller (process-level checking, see [`crate::process`]) that needs to run inference
+    /// against a variable scope of its own rather than one of `self`'s own equations.
+    pub(crate) fn context_and_specs_mut(
+        &mut self,
+    ) -> (&mut TypeCheckContext, &UntypedDataSpecification, &UntypedDataSpecification) {
+        (&mut self.context, &self.spec, &self.system)
     }
 }
 

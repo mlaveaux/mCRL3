@@ -326,13 +326,23 @@ fn infer_equation(
         EquationRole::System => &system.equation_declarations[eqn_spec_id],
     };
     let equation = &eqn_spec.equations[equation_id];
+
+    // Resolved here rather than inside `infer`, so `infer` stays agnostic to where a scope came
+    // from — a process-level scope ([`crate::process`]) is already resolved by the time it
+    // reaches `infer`, and this is the same resolution [`infer`] used to do internally before.
+    let scope: Vec<(&str, ResolvedSortId)> = eqn_spec
+        .variables
+        .iter()
+        .map(|var| (var.identifier.as_str(), resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var)))
+        .collect();
+
     infer(
         ctx,
         spec,
         system,
         role,
         eqn_spec_id,
-        &eqn_spec.variables,
+        &scope,
         Roots::Equation {
             condition: equation.condition.as_ref(),
             lhs: &equation.lhs,
@@ -363,16 +373,40 @@ pub(crate) fn infer_expression(
     system: &UntypedDataSpecification,
     expr: &DataExpr,
 ) -> Result<EquationTyping, InferenceError> {
+    infer_expression_in_scope(ctx, spec, system, expr, &[], None)
+}
+
+/// As [`infer_expression`], but against an externally-supplied variable `scope` (rather than
+/// none) and, when `expected` is given, additionally constrained to be a subsort of it (rather
+/// than typed purely from the expression's own structure) — see [`Roots::ExpressionAgainst`].
+///
+/// Used by [`crate::process`] to check an action argument, a process-instantiation argument, a
+/// `sum`/`dist` condition or time bound, or similar, each against its own already-known expected
+/// sort and its own enclosing variable scope (global variables, process parameters, `sum`/`dist`
+/// binders) — none of which is an equation's `var` block, so [`infer_expression`]'s own closed-
+/// expression restriction doesn't apply here.
+pub(crate) fn infer_expression_in_scope(
+    ctx: &mut TypeCheckContext,
+    spec: &UntypedDataSpecification,
+    system: &UntypedDataSpecification,
+    expr: &DataExpr,
+    scope: &[(&str, ResolvedSortId)],
+    expected: Option<ResolvedSortId>,
+) -> Result<EquationTyping, InferenceError> {
+    let roots = match expected {
+        Some(expected) => Roots::ExpressionAgainst { expr, expected },
+        None => Roots::Expression(expr),
+    };
     infer(
         ctx,
         spec,
         system,
         EquationRole::User,
-        // Unused: the `User` role reads no per-group state, and there are no
-        // equation variables whose sort would be resolved against a block.
+        // Unused: the `User` role reads no per-group state, and a scope here is never an
+        // equation's `var` block.
         EqnSpecId::new(0),
-        &[],
-        Roots::Expression(expr),
+        scope,
+        roots,
         &|| expr.to_string(),
         &expr.span,
     )
@@ -388,12 +422,23 @@ enum Roots<'a> {
     },
     /// A single standalone expression, typed on its own (see [infer_expression]).
     Expression(&'a DataExpr),
+    /// A single expression checked against an already-known expected sort — an action argument
+    /// or a process-instantiation argument's declared sort, a `sum`/`dist` condition or time
+    /// bound — rather than typed purely from its own structure (see
+    /// [infer_expression_in_scope]/[crate::process]).
+    ExpressionAgainst { expr: &'a DataExpr, expected: ResolvedSortId },
 }
 
 /// Generates the constraints of `roots`, solves them by ranked backtracking,
-/// and extracts the sorts of the best solution. Shared by [infer_equation] and
-/// [infer_expression]; `text` renders the whole input for diagnostics and
-/// `span` locates it in the source.
+/// and extracts the sorts of the best solution. Shared by [infer_equation],
+/// [infer_expression], and [infer_expression_in_scope]; `text` renders the whole input for
+/// diagnostics and `span` locates it in the source.
+///
+/// `scope` is a pre-resolved `(name, sort)` list rather than `&[IdDecl<EqnVarId>]`: an equation's
+/// own variables need [resolve_equation_variable_sort]'s per-role lookup to resolve, but a
+/// process-level scope ([crate::process]) is already fully resolved by the time it reaches here,
+/// so resolving *both* the same way — here, once, up front at each call site — keeps this
+/// function itself agnostic to where a scope came from.
 #[allow(clippy::too_many_arguments)]
 fn infer<'a>(
     ctx: &mut TypeCheckContext,
@@ -401,7 +446,7 @@ fn infer<'a>(
     system: &UntypedDataSpecification,
     role: EquationRole,
     eqn_spec_id: EqnSpecId,
-    equation_variables: &'a [IdDecl<EqnVarId>],
+    scope: &'a [(&'a str, ResolvedSortId)],
     roots: Roots<'a>,
     equation_text: &dyn Fn() -> String,
     equation_span: &Span,
@@ -410,13 +455,12 @@ fn infer<'a>(
 
     let mut unifier = Unifier::new();
 
-    // The equation variables shadow constructors and mappings on lookup; their
-    // declared sorts are concrete, so all uses of a variable share one node.
+    // The in-scope variables shadow constructors and mappings on lookup; their declared sorts
+    // are concrete, so all uses of a variable share one node.
     let mut variables = HashMap::new();
-    for var in equation_variables {
-        let sort = resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var);
+    for &(name, sort) in scope {
         let node = unifier.resolved_node(sort);
-        variables.insert(var.identifier.as_str(), node);
+        variables.insert(name, node);
     }
 
     // The signatures are cloned out of the context (cheaply, behind `Rc`)
@@ -474,6 +518,7 @@ fn infer<'a>(
     let generated = match roots {
         Roots::Equation { condition, lhs, rhs } => generator.generate(condition, lhs, rhs),
         Roots::Expression(expr) => generator.generate_expression(expr),
+        Roots::ExpressionAgainst { expr, expected } => generator.generate_against(expr, expected),
     };
     match generated {
         Ok(()) => {}
@@ -592,13 +637,8 @@ fn infer<'a>(
 
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
-                    for var in equation_variables {
-                        let sort = resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var);
-                        trace!(
-                            "inference:   variable {}: {}",
-                            var.identifier,
-                            DisplaySortContext::new(ctx, spec, system, sort)
-                        );
+                    for &(name, sort) in scope {
+                        trace!("inference:   variable {}: {}", name, DisplaySortContext::new(ctx, spec, system, sort));
                     }
                     for (&sort, text) in sorts.iter().zip(&expr_texts) {
                         trace!(
@@ -899,6 +939,22 @@ impl<'a> ConstraintGenerator<'a> {
         debug_assert!(is_lowered(expr), "inference requires lowered expressions");
 
         self.visit(expr)?;
+        Ok(())
+    }
+
+    /// As [`Self::generate_expression`], but additionally constrains `expr`'s sort to be a
+    /// subsort of `expected` — the same `Sub`-into-a-target encoding an equation's two sides use
+    /// against their shared fresh join variable ([`Self::generate`]), except `expected` here is
+    /// already concrete rather than fresh. The solver's existing widening search (see
+    /// `Solver::solve_join_seq`'s "a concrete target met from below" branch) already handles a
+    /// bound target, so overload disambiguation and implicit upcasts against `expected` come for
+    /// free from the same machinery an equation's join already relies on.
+    fn generate_against(&mut self, expr: &'a DataExpr, expected: ResolvedSortId) -> Result<(), GenFailure> {
+        debug_assert!(is_lowered(expr), "inference requires lowered expressions");
+
+        let sort = self.visit(expr)?;
+        let target = self.unifier.resolved_node(expected);
+        self.constraints.push(Constraint::Sub(SubConstraint { lhs: sort, rhs: target }));
         Ok(())
     }
 
