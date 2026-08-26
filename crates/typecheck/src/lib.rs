@@ -5,6 +5,7 @@ mod ir;
 mod number_encoding;
 mod resolution;
 mod signature;
+mod typing_info;
 
 // The internal passes are flattened to the crate root for convenience; their
 // exact module is not part of the interface. Only the items below marked `pub`
@@ -22,3 +23,6 @@ pub use data_specification::DataSpecification;
 pub use inference::InferenceError;
 pub use number_encoding::NumberEncoding;
 pub use signature::WellTypedError;
+pub use typing_info::ResolvedName;
+pub use typing_info::TypedNode;
+pub use typing_info::TypingInfo;

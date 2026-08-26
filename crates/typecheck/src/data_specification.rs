@@ -26,6 +26,7 @@ use crate::InferenceError;
 use crate::NumberEncoding;
 use crate::Signature;
 use crate::TypeCheckContext;
+use crate::TypingInfo;
 use crate::WellTypedError;
 use crate::apply_sorts_in_spec;
 use crate::assign_declaration_ids;
@@ -53,6 +54,7 @@ use crate::resolve_sort_ids;
 use crate::resolve_system_signature;
 use crate::resolve_system_signature_full;
 use crate::structured_sort_equations;
+use crate::typing_info;
 
 /// A type checked and well-typed data specification.
 ///
@@ -306,8 +308,6 @@ impl DataSpecification {
     /// The resolved sort of the constructor declaration with the given
     /// [ConstructorId]. Requires `id` to be a valid constructor id from this
     /// specification; panics if called before `from_untyped` has completed.
-    // Currently exercised by tests only.
-    #[allow(dead_code)]
     pub(crate) fn sort_of_constructor(&self, id: ConstructorId) -> crate::ResolvedSortId {
         self.context
             .sort_of_constructor
@@ -319,8 +319,6 @@ impl DataSpecification {
     /// The resolved sort of the map declaration with the given [MapId].
     /// Requires `id` to be a valid map id from this specification; panics if
     /// called before `from_untyped` has completed.
-    // Currently exercised by tests only.
-    #[allow(dead_code)]
     pub(crate) fn sort_of_map(&self, id: MapId) -> crate::ResolvedSortId {
         self.context
             .sort_of_map
@@ -356,8 +354,6 @@ impl DataSpecification {
     /// The Phase-3 typing of the equation identified by `key`, read from the
     /// `equation_typing` cache that `from_untyped` populated. Requires `key` to
     /// index an equation of this specification.
-    // Currently exercised by tests only.
-    #[allow(dead_code)]
     pub(crate) fn equation_typing(&self, key: (EqnSpecId, EquationId)) -> &EquationTyping {
         self.context
             .equation_typing
@@ -403,17 +399,56 @@ impl DataSpecification {
     /// it — an internal inconsistency between the two phases, treated the same
     /// way as for a user equation in [`Self::lower_data_specification`].
     pub fn typecheck_expression(&mut self, expr: &DataExpr) -> Result<DataExpression, InferenceError> {
+        self.typecheck_expression_with_typing(expr).map(|(lowered, _typing_info)| lowered)
+    }
+
+    /// As [`Self::typecheck_expression`], additionally returning `expr`'s [`TypingInfo`] — the
+    /// same information [`Self::equation_typing_info`] exposes for a user equation, span-keyed so
+    /// a caller can look up the sort or name resolution of any sub-expression by source position
+    /// (see [`TypingInfo::at_offset`]). `expr` here is the caller's own, unlowered expression, so
+    /// `TypingInfo`'s spans line up with the text the caller parsed it from.
+    ///
+    /// # Panics
+    ///
+    /// Same as [`Self::typecheck_expression`].
+    pub fn typecheck_expression_with_typing(
+        &mut self,
+        expr: &DataExpr,
+    ) -> Result<(DataExpression, TypingInfo), InferenceError> {
         // The built-in operator nodes (`x + y`, `[x, y]`, `f[x -> y]`) become
         // applications first, exactly as `from_untyped_with` does for the
         // equations: inference and lowering both require a lowered expression.
-        let expr = lower_data_expr(expr.clone());
+        let lowered_expr = lower_data_expr(expr.clone());
 
-        let typing = infer_expression(&mut self.context, &self.spec, &self.system, &expr)?;
+        let typing = infer_expression(&mut self.context, &self.spec, &self.system, &lowered_expr)?;
+        let info = typing_info::build(self, &typing);
 
-        Ok(
-            lower_expression(&self.context, &self.spec, &self.system, &typing, &expr, self.encoding)
-                .unwrap_or_else(|| panic!("expression '{expr}' passed inference but failed lowering")),
-        )
+        let lowered = lower_expression(&self.context, &self.spec, &self.system, &typing, &lowered_expr, self.encoding)
+            .unwrap_or_else(|| panic!("expression '{lowered_expr}' passed inference but failed lowering"));
+        Ok((lowered, info))
+    }
+
+    /// The typing of one user equation, span-keyed so hover/go-to-definition can look up a
+    /// sub-expression by source position (see [`TypingInfo::at_offset`]).
+    ///
+    /// `key` must index an equation of this specification (the `EqnSpecId`/`EquationId` on
+    /// [`Self::data_specification`]); panics otherwise, the same as [`Self::equation_typing`].
+    pub fn equation_typing_info(&self, key: (EqnSpecId, EquationId)) -> TypingInfo {
+        typing_info::build(self, self.equation_typing(key))
+    }
+
+    /// Every user equation's typing, merged into one table, in declaration order. See
+    /// [`Self::equation_typing_info`] for the per-equation version.
+    pub fn typing_info(&self) -> TypingInfo {
+        let mut info = TypingInfo::default();
+        for eqn_spec in &self.spec.equation_declarations {
+            let eqn_spec_id = eqn_spec.id.expect("assign_declaration_ids ran during from_untyped");
+            for equation in &eqn_spec.equations {
+                let equation_id = equation.id.expect("assign_declaration_ids ran during from_untyped");
+                info.merge(self.equation_typing_info((eqn_spec_id, equation_id)));
+            }
+        }
+        info
     }
 }
 

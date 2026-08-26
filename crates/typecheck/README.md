@@ -40,6 +40,17 @@ let spec = DataSpecification::from_untyped(untyped).unwrap();
 let lowered = spec.lower_data_specification();
 ```
 
+`DataSpecification::typing_info` (and its per-equation counterpart,
+`equation_typing_info`) returns a `TypingInfo`: the sort and name resolution of
+every checked expression node, keyed by source `Span` rather than any internal
+id, so a consumer such as an editor integration can look up hover text or a
+go-to-definition target by byte offset via `TypingInfo::at_offset` without
+needing to know anything about how inference numbers its nodes internally.
+`typecheck_expression_with_typing` returns the same information for a single
+standalone expression. Note that a resolved *sort* embedded in a `TypedNode`
+carries no reliable source span of its own — only spans on the original
+specification's declarations and expressions are meaningful.
+
 `DataSpecification::from_untyped_with` additionally takes a `NumberEncoding`,
 selecting how number literals are lowered to their Appendix-B constructor
 chains: the recursive-binary encoding (the default), or a 64-bit machine-word
