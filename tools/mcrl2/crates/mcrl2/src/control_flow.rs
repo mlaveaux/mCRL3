@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::fmt;
+
+use itertools::Itertools;
 
 use crate::ATerm;
 use crate::ATermList;
@@ -133,76 +136,27 @@ impl<V> ControlFlowGraph<V> {
             edges.push(summand_edges);
         }
 
-        log::debug!(
-            "Control flow parameters: {:?}",
-            control_flow_parameters
-                .iter()
-                .map(|&j| parameters[j].name().to_string())
-                .collect::<Vec<_>>()
-        );
-
-        // Describe the identified control flow graph: per parameter the distinct
-        // source and target locations (the locations it can be in), and per
-        // summand the source/target locations of the edge it contributes.
-        if log::log_enabled!(log::Level::Debug) {
-            for &j in &control_flow_parameters {
-                let mut sources: Vec<String> = analyses
-                    .iter()
-                    .filter_map(|analysis| analysis.source.get(&j))
-                    .map(|value| value.to_string())
-                    .collect();
-                sources.sort();
-                sources.dedup();
-
-                let mut targets: Vec<String> = analyses
-                    .iter()
-                    .filter_map(|analysis| analysis.target.get(&j).and_then(|value| value.as_ref()))
-                    .map(|value| value.to_string())
-                    .collect();
-                targets.sort();
-                targets.dedup();
-
-                log::debug!(
-                    "Control flow graph for {}: source locations {:?}, target locations {:?}",
-                    parameters[j].name(),
-                    sources,
-                    targets
-                );
-            }
-
-            for (index, analysis) in analyses.iter().enumerate() {
-                let edges: Vec<String> = control_flow_parameters
-                    .iter()
-                    .filter_map(|&j| {
-                        let source = analysis.source.get(&j).map(ToString::to_string);
-                        let target = analysis
-                            .target
-                            .get(&j)
-                            .and_then(|value| value.as_ref())
-                            .map(ToString::to_string);
-
-                        if source.is_none() && target.is_none() {
-                            return None;
-                        }
-
-                        Some(format!(
-                            "{}: {} -> {}",
-                            parameters[j].name(),
-                            source.as_deref().unwrap_or("*"),
-                            target.as_deref().unwrap_or("*"),
-                        ))
-                    })
-                    .collect();
-                if !edges.is_empty() {
-                    log::debug!("Summand {index} edges {edges:?}");
-                }
-            }
-        }
-
-        Self {
+        let result = Self {
             control_flow_parameters,
             edges,
-        }
+        };
+
+        // Describe the identified control flow graph: the control flow
+        // parameters, per parameter the distinct source and target locations
+        // (the locations it can be in), and per summand the source/target
+        // locations of the edge it contributes. `log::debug!` only evaluates
+        // its arguments (and hence `CfgDisplay::fmt`, which does the actual
+        // work of walking `analyses`) when the debug level is enabled.
+        log::debug!(
+            "{}",
+            CfgDisplay {
+                graph: &result,
+                parameters,
+                analyses: &analyses,
+            }
+        );
+
+        result
     }
 
     /// The indices into the caller's parameter vector identified as control
@@ -216,6 +170,102 @@ impl<V> ControlFlowGraph<V> {
     /// representation `V` chosen by [`ControlFlowGraph::new`]'s `intern`.
     pub fn edges(&self, index: usize) -> &[CfgEdge<V>] {
         &self.edges[index]
+    }
+}
+
+/// Displays a [`ControlFlowGraph`] together with the [`SummandAnalysis`] it was
+/// built from: the control flow parameters, the distinct source and target
+/// locations of each, and the edge each summand contributes.
+///
+/// The underlying `analyses` are not retained by [`ControlFlowGraph`] itself
+/// (only their interned edges are), so this borrows them separately; it exists
+/// purely to give [`ControlFlowGraph::new`]'s debug logging a `Display` impl to
+/// format against instead of assembling the description into intermediate
+/// `String`s by hand.
+struct CfgDisplay<'a, V> {
+    /// The graph being described; only its [`ControlFlowGraph::control_flow_parameters`] are used.
+    graph: &'a ControlFlowGraph<V>,
+
+    /// The process parameters `graph` was built over, indexed by
+    /// [`ControlFlowGraph::control_flow_parameters`], used to print their names.
+    parameters: &'a [DataVariable],
+
+    /// The per-summand analysis `graph` was built from.
+    analyses: &'a [SummandAnalysis],
+}
+
+impl<V> fmt::Display for CfgDisplay<'_, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let control_flow_parameters = self.graph.control_flow_parameters();
+
+        writeln!(
+            f,
+            "control flow parameters: {}",
+            control_flow_parameters
+                .iter()
+                .format_with(", ", |&j, f| f(&self.parameters[j].name()))
+        )?;
+
+        // Per parameter, the distinct source and target locations it is seen
+        // at across all summands (the locations it can be in).
+        for &j in control_flow_parameters {
+            let sources = self
+                .analyses
+                .iter()
+                .filter_map(|analysis| analysis.source.get(&j))
+                .sorted_by_cached_key(ToString::to_string)
+                .dedup();
+            let targets = self
+                .analyses
+                .iter()
+                .filter_map(|analysis| analysis.target.get(&j).and_then(Option::as_ref))
+                .sorted_by_cached_key(ToString::to_string)
+                .dedup();
+
+            writeln!(
+                f,
+                "control flow graph for {}: source locations [{}], target locations [{}]",
+                self.parameters[j].name(),
+                sources.format(", "),
+                targets.format(", "),
+            )?;
+        }
+
+        // Per summand, the source/target locations of the edge it contributes
+        // for each control flow parameter it constrains and/or changes.
+        for (index, analysis) in self.analyses.iter().enumerate() {
+            let mut edges = control_flow_parameters
+                .iter()
+                .filter_map(|&j| {
+                    let source = analysis.source.get(&j);
+                    let target = analysis.target.get(&j).and_then(Option::as_ref);
+                    (source.is_some() || target.is_some()).then_some((j, source, target))
+                })
+                .peekable();
+
+            if edges.peek().is_some() {
+                writeln!(
+                    f,
+                    "summand {index} edges: {}",
+                    edges.format_with(", ", |(j, source, target), f| {
+                        f(&self.parameters[j].name())?;
+                        f(&": ")?;
+                        match source {
+                            Some(value) => f(value)?,
+                            None => f(&"*")?,
+                        }
+                        f(&" -> ")?;
+                        match target {
+                            Some(value) => f(value)?,
+                            None => f(&"*")?,
+                        }
+                        Ok(())
+                    })
+                )?;
+            }
+        }
+
+        Ok(())
     }
 }
 
