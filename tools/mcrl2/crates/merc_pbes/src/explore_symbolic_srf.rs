@@ -55,6 +55,7 @@ pub fn explore_pbes_symbolic_game(
     srf_pbes: SrfPbes,
     encoding: &SymbolicLpsOptions,
     cached: bool,
+    compute_strategy: bool,
     timing: &Timing,
 ) -> Result<SymbolicPbes, MercError> {
     debug_assert!(
@@ -99,6 +100,7 @@ pub fn explore_pbes_symbolic_game(
         result.states.clone(),
         level,
         &blocks,
+        compute_strategy,
     )?;
 
     Ok(SymbolicPbes {
@@ -121,5 +123,5 @@ pub fn explore_pbes_symbolic(
     cached: bool,
     timing: &Timing,
 ) -> Result<LDDFunction, MercError> {
-    Ok(explore_pbes_symbolic_game(storage, srf_pbes, encoding, cached, timing)?.vertices)
+    Ok(explore_pbes_symbolic_game(storage, srf_pbes, encoding, cached, false, timing)?.vertices)
 }

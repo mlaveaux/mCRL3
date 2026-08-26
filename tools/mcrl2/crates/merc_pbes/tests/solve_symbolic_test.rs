@@ -6,12 +6,15 @@ use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_symbolic::SymbolicLpsOptions;
 use merc_utilities::Timing;
+use merc_vpg::ExtendedParityGame;
 use merc_vpg::PG;
 use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::VertexIndex;
+use merc_vpg::check_strategy;
 use merc_vpg::solve_symbolic_zielonka;
 use merc_vpg::solve_zielonka;
+use merc_vpg::verify_symbolic_solution;
 
 use merc_pbes::explore_pbes_symbolic_game;
 use merc_pbes::explore_srf_pbes;
@@ -35,6 +38,10 @@ fn unified_symbolic_srf(pbes: &Pbes) -> SrfPbes {
 
 /// Solves `pbes` both explicitly (SRF exploration + Zielonka) and symbolically (LDD reachability +
 /// the symbolic Zielonka solver), and asserts the initial vertex has the same winner in both.
+/// Also independently certifies the *entire* symbolic winning partition, twice: natively via
+/// [`check_strategy`] (the same certificate `--verify-solution` computes, scaling the way the
+/// rest of symbolic solving does) and, as a second, differently-implemented cross-check, by
+/// decoding to an explicit game via [`verify_symbolic_solution`].
 ///
 /// A reachable deadlock (a PVI with no enabled summand) is resolved identically by both paths:
 /// `explore_common.rs`'s `builder.finish(true, true)` (`ParityGame::from_edges`'s `make_total`)
@@ -72,15 +79,22 @@ fn assert_symbolic_matches_explicit(pbes: &Pbes) {
         unified_symbolic_srf(pbes),
         &SymbolicLpsOptions::default(),
         false,
+        true,
         &Timing::new(),
     )
     .expect("symbolic exploration failed");
 
-    let (symbolic_winner, _) = solve_symbolic_zielonka(
-        &symbolic.game,
-        &symbolic.initial_vertex,
-        &symbolic.vertices,
-        &symbolic.sinks,
+    // Force a full solve (no early termination), so the returned partition — and hence what
+    // `verify_symbolic_solution` below certifies — covers every reachable vertex, not only
+    // whatever `compute_total_graph`'s sink-attractor step happened to resolve on its own.
+    let (symbolic_winner, symbolic_solution) = solve_symbolic_zielonka(
+        &ExtendedParityGame {
+            game: &symbolic.game,
+            initial_vertex: &symbolic.initial_vertex,
+            vertices: &symbolic.vertices,
+            sinks: &symbolic.sinks,
+        },
+        false,
     )
     .expect("symbolic solve failed");
 
@@ -88,6 +102,17 @@ fn assert_symbolic_matches_explicit(pbes: &Pbes) {
         explicit_winner, symbolic_winner,
         "explicit and symbolic solvers disagree on the initial vertex's winner"
     );
+
+    check_strategy(
+        &symbolic.game,
+        &symbolic.initial_vertex,
+        &symbolic.vertices,
+        &symbolic_solution,
+    )
+    .expect("native strategy certification failed");
+
+    verify_symbolic_solution(&storage, &symbolic.game, &symbolic.vertices, &symbolic_solution)
+        .expect("symbolic solution failed independent certification");
 }
 
 fn assert_symbolic_matches_explicit_from_text(text: &str) {
