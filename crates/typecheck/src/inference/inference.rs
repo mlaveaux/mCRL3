@@ -77,8 +77,27 @@ pub(crate) enum NameTarget {
 pub(crate) struct EquationTyping {
     /// The inferred sort of every expression node, indexed by [ExprId].
     pub(crate) sorts: Vec<ResolvedSortId>,
+    /// The source span of every expression node, parallel to `sorts`. Only
+    /// filled for [EquationRole::User] (see [crate::typing_info], the sole
+    /// consumer): the much larger system-defined equation set never needs it,
+    /// so it stays empty there rather than paying for a `Vec<Span>` per node.
+    ///
+    /// A synthesized node (the desugared `Id("+")` of `x + y`, a list
+    /// literal's cons chain, …) inherits the span of the whole surface
+    /// expression it was lowered from, since it has no span of its own in the
+    /// original source.
+    pub(crate) spans: Vec<Span>,
     /// The resolution of every name, keyed by the [ExprId] of its `Id` node.
     pub(crate) names: HashMap<ExprId, NameTarget>,
+    /// The identifier text of every `Id` node, keyed the same way as `names`.
+    /// Recorded separately from [NameTarget] (rather than folding the name
+    /// into it) so [NameTarget]'s solver-facing shape — read on the hot path
+    /// by every constraint-solving branch — doesn't change; this field is
+    /// solver-independent (the surface name of an `Id` node is the same
+    /// regardless of which overload the solver eventually picks for it), so
+    /// it's recorded once, unconditionally, in `ConstraintGenerator::gen_name`.
+    /// Only filled for [EquationRole::User], like `spans`.
+    pub(crate) identifier_names: HashMap<ExprId, String>,
 }
 
 /// The errors of Phase-3 sort inference. `Clone` so a failure can be stored in
@@ -445,6 +464,9 @@ fn infer<'a>(
         expr_sorts: Vec::new(),
         expr_texts: Vec::new(),
         log_texts: log::log_enabled!(log::Level::Debug),
+        expr_spans: Vec::new(),
+        expr_names: HashMap::new(),
+        collect_typing_info: matches!(role, EquationRole::User),
         names: HashMap::new(),
         constraints: Vec::new(),
     };
@@ -480,6 +502,8 @@ fn infer<'a>(
     let ConstraintGenerator {
         expr_sorts,
         expr_texts,
+        expr_spans,
+        expr_names,
         names,
         constraints,
         ..
@@ -557,6 +581,14 @@ fn infer<'a>(
                     expr_texts.is_empty() || expr_texts.len() == sorts.len(),
                     "expr_texts is parallel to the expression nodes when filled"
                 );
+                debug_assert!(
+                    expr_spans.is_empty() || expr_spans.len() == sorts.len(),
+                    "expr_spans is parallel to the expression nodes when filled"
+                );
+                debug_assert!(
+                    expr_names.keys().all(|id| **id < sorts.len()),
+                    "every recorded identifier name keys an expression node"
+                );
 
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
@@ -575,7 +607,12 @@ fn infer<'a>(
                         );
                     }
                 }
-                Ok(EquationTyping { sorts, names })
+                Ok(EquationTyping {
+                    sorts,
+                    spans: expr_spans,
+                    names,
+                    identifier_names: expr_names,
+                })
             }
         },
     }
@@ -793,6 +830,21 @@ struct ConstraintGenerator<'a> {
     /// so `expr_texts` stays parallel to `expr_sorts` even under a log filter
     /// that changes mid-equation.
     log_texts: bool,
+    /// The source span of every expression, parallel to `expr_sorts`; only
+    /// filled when [Self::collect_typing_info]. Becomes [EquationTyping::spans].
+    expr_spans: Vec<Span>,
+    /// The identifier text of every `Id` node, keyed by its [ExprId]; only
+    /// filled when [Self::collect_typing_info]. Becomes
+    /// [EquationTyping::identifier_names].
+    expr_names: HashMap<ExprId, String>,
+    /// Whether [Self::expr_spans]/[Self::expr_names] should be filled — i.e.
+    /// whether `role` is [EquationRole::User]. Sampled once at construction,
+    /// the same way [Self::log_texts] is, even though (unlike log filtering)
+    /// `role` cannot actually change mid-equation; kept as its own field
+    /// rather than matching on `role` at every [Self::visit]/[Self::gen_name]
+    /// call for symmetry with `log_texts` and to keep the hot path a single
+    /// bool check.
+    collect_typing_info: bool,
     /// The targets of names resolved during generation (variables and
     /// single-candidate names); disjunction choices are added by the solver.
     names: HashMap<ExprId, NameTarget>,
@@ -858,6 +910,9 @@ impl<'a> ConstraintGenerator<'a> {
         self.expr_sorts.push(node);
         if self.log_texts {
             self.expr_texts.push(expr.to_string());
+        }
+        if self.collect_typing_info {
+            self.expr_spans.push(expr.span.clone());
         }
 
         match &expr.node {
@@ -1103,6 +1158,14 @@ impl<'a> ConstraintGenerator<'a> {
     /// function-update operations, the comparison operators and `if`), each
     /// instantiated fresh per occurrence.
     fn gen_name(&mut self, id: ExprId, node: InferSortId, name: &'a str, span: &Span) -> Result<(), GenFailure> {
+        // Recorded unconditionally, ahead of every branch below: the surface name of an `Id`
+        // node doesn't depend on which candidate (variable / a specific overload / builtin) it
+        // eventually resolves to, including the disjunction case, which the solver — not this
+        // function — resolves later.
+        if self.collect_typing_info {
+            self.expr_names.insert(id, name.to_string());
+        }
+
         if let Some(&sort) = self.variables.get(name) {
             self.names.insert(id, NameTarget::Variable);
             self.bind_fresh(node, sort);
@@ -1720,12 +1783,40 @@ mod tests {
 
         // Ids: 0 = `f(n)`, 1 = `n` (arguments before the function), 2 = `f`,
         // 3 = `true`.
-        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
+        let EquationTyping { sorts, names, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         let interner = &spec.context().sorts;
         assert_eq!(sorts[0], interner.bool_sort());
         assert_eq!(sorts[1], interner.nat_sort());
         assert_eq!(sorts[3], interner.bool_sort());
         assert_eq!(names[&ExprId::new(1)], NameTarget::Variable);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_equation_typing_records_spans_and_identifier_names_for_user_equations() {
+        let text = "map f: Nat -> Bool; var n: Nat; eqn f(n) = true;";
+        let spec = typed(text);
+
+        // Same node numbering as `test_infers_basic_equation`: 0 = `f(n)`,
+        // 1 = `n`, 2 = `f`, 3 = `true`.
+        let EquationTyping { sorts, spans, identifier_names, .. } =
+            spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
+
+        // `spans` is parallel to `sorts`, one entry per expression node.
+        assert_eq!(spans.len(), sorts.len());
+
+        // Each recorded span slices back to the exact source substring it names.
+        assert_eq!(&text[spans[1].start..spans[1].end], "n");
+        assert_eq!(&text[spans[2].start..spans[2].end], "f");
+        assert_eq!(&text[spans[3].start..spans[3].end], "true");
+        // Node 0 (`f(n)`, the application) spans the whole call.
+        assert_eq!(&text[spans[0].start..spans[0].end], "f(n)");
+
+        // `identifier_names` covers exactly the `Id` nodes (1 and 2 here), keyed the same way as
+        // `names`, and independently of what each one resolved to (a variable vs. a mapping).
+        assert_eq!(identifier_names[&ExprId::new(1)], "n");
+        assert_eq!(identifier_names[&ExprId::new(2)], "f");
+        assert_eq!(identifier_names.len(), 2);
     }
 
     #[test]
@@ -1770,7 +1861,7 @@ mod tests {
         let spec = typed("sort D; cons d: D; map b: Bool; eqn b = d == d;");
 
         // Ids: 0 = `b`, 1 = `==(d, d)`, 2/3 = `d`, 4 = `==`.
-        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
+        let EquationTyping { sorts, names, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         assert_eq!(names[&ExprId::new(4)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.bool_sort());
         assert_eq!(sorts[2], spec.sort_of_constructor(merc_syntax::ConstructorId::new(0)));
@@ -1783,7 +1874,7 @@ mod tests {
 
         // Ids: 0 = `n`, 1 = the application, 2 = `true`, 3 = `1`, 4 = `2`,
         // 5 = `if`. The branches stay `Pos`; the join upcasts to `Nat`.
-        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
+        let EquationTyping { sorts, names, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         assert_eq!(names[&ExprId::new(5)], NameTarget::Builtin);
         assert_eq!(sorts[1], spec.context().sorts.pos_sort());
     }
@@ -1948,7 +2039,7 @@ mod tests {
 
     /// Extracts the inferred sorts and name targets of the first equation.
     fn typing(spec: &DataSpecification) -> (&[ResolvedSortId], &HashMap<ExprId, NameTarget>) {
-        let EquationTyping { sorts, names } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
+        let EquationTyping { sorts, names, .. } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
         (sorts, names)
     }
 

@@ -408,7 +408,7 @@ pub(crate) fn lower_equation(
     rhs: &DataExpr,
     encoding: NumberEncoding,
 ) -> Option<LoweredEquation> {
-    let EquationTyping { sorts, names } = typing;
+    let EquationTyping { sorts, names, .. } = typing;
 
     let mut walker = Lowering {
         ctx,
@@ -459,7 +459,7 @@ pub(crate) fn lower_expression(
     expr: &DataExpr,
     encoding: NumberEncoding,
 ) -> Option<DataExpression> {
-    let EquationTyping { sorts, names } = typing;
+    let EquationTyping { sorts, names, .. } = typing;
 
     Lowering {
         ctx,
