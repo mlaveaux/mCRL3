@@ -297,7 +297,7 @@ impl BlockPartition {
     }
 
     /// Returns true iff the given element has already been marked.
-    pub(crate) fn is_element_marked(&self, element: StateIndex) -> bool {
+    pub fn is_element_marked(&self, element: StateIndex) -> bool {
         let block_index = self.element_to_block[element];
         let offset = self.element_offset[element];
         let marked_split = self.blocks[block_index].marked_split;
@@ -306,17 +306,17 @@ impl BlockPartition {
     }
 
     /// Return a reference to the given block.
-    pub(crate) fn block(&self, block_index: BlockIndex) -> &Block {
+    pub fn block(&self, block_index: BlockIndex) -> &Block {
         &self.blocks[block_index]
     }
 
     /// Returns the number of blocks in the partition.
-    pub(crate) fn num_of_blocks(&self) -> usize {
+    pub fn num_of_blocks(&self) -> usize {
         self.blocks.len()
     }
 
     /// Returns an iterator over the elements of a given block.
-    pub(crate) fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
+    pub fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
         BlockIter {
             elements: &self.elements,
             index: self.blocks[block_index].begin,
@@ -434,7 +434,7 @@ impl fmt::Display for BlockPartition {
 ///
 /// Invariant: `start` <= `middle` <= `end` && `start` < `end`.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Block {
+pub struct Block {
     begin: usize,
     marked_split: usize,
     end: usize,
@@ -542,7 +542,7 @@ impl Block {
     }
 }
 
-pub(crate) struct BlockIter<'a> {
+pub struct BlockIter<'a> {
     elements: &'a [StateIndex],
     index: usize,
     end: usize,
