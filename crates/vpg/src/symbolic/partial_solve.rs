@@ -20,34 +20,16 @@ use crate::symbolic::symbolic_zielonka::total_graph_with_early_exit;
 use crate::symbolic::symbolic_zielonka::unpack_strategy_pair;
 use crate::symbolic::symbolic_zielonka::zielonka;
 
-/// Which of the two ways [`detect_solitair_cycles`]/[`detect_forced_cycles`]/
-/// [`detect_fatal_attractors`] (and their `_within_safe_vertices` counterparts) stay sound
-/// against `incomplete`'s unlearned edges. Resolved once, right after `total` is known (via
-/// [`Self::resolve`]), and threaded from there as one value — replacing what used to be a
-/// `safe_variant: bool` paired independently with an `Option<[LDDFunction; 2]>` that every caller
-/// had to keep in sync by hand (see the `.expect("safe_variant is ...")` calls this replaced).
+/// Which of two equivalent ways [`detect_solitair_cycles`]/[`detect_forced_cycles`]/
+/// [`detect_fatal_attractors`] (and their `_within_safe_vertices` counterparts) stay sound against
+/// `incomplete`'s unlearned edges. Resolved once, right after `total` is known (via
+/// [`Self::resolve`]), and threaded from there as one value.
 ///
-/// The two constructions are *provably equal*, not a soundness trade-off: for [`detect_forced_cycles`]
-/// and [`detect_fatal_attractors`] this equality is exactly the paper's Propositions 2 and 3
-/// (`C_for^α = C_s-for^α`, `F_s^α = F^α`), which rest on Lemma 3 (`cpre_α(⅁ ∩ safe_α(⅁), X) =
-/// spre_α(⅁, X)` for `X ⊆ safe_α(⅁)`); for [`detect_solitair_cycles`] the cycle search itself
-/// needs neither (Proposition 1: `C_sol^α(⅁) ⊆ safe_α(⅁)` unconditionally), so the two variants
-/// only actually differ in how [`accept_cycle`]'s closing attractor is computed, via Lemma 4
-/// (`Attr_α(⅁ ∩ safe_α(⅁), X) = SAttr_α(⅁, X)`). Nor is [`Self::Restricted`] cheaper:
-/// [`Self::resolve`] pays two extra full `safe_vertices` attractor fixed points *up front* to
-/// build it, exactly the cost the safe-attractor mechanism ([`Self::Safe`]) exists to avoid by
-/// folding one `minus(incomplete)` into each control-predecessor step instead — matching the
-/// paper's own measurements, where the safe-attractor variant is "almost always beneficial with
-/// minimal overhead". [`Self::Restricted`] earns its keep only when `safe_vertices` was already
-/// computed anyway for some other reason (as [`partial_solve`] does).
-///
-/// Named `SafetyMode` rather than after either of the "safe" concepts it distinguishes, since the
-/// paper this module ports overloads that word for two different things: the *safe attractor*/
-/// *safe control predecessor* mechanism ([`Self::Safe`], mCRL2's `safe_control_predecessors`/
-/// `safe_attractor` — folds `incomplete` into the search directly) and the *α-safe vertex set*
-/// ([`Self::Restricted`], [`SymbolicParityGame::safe_vertices`] — restricts the search to a
-/// precomputed subgame instead). See [`detect_solitair_cycles`]'s doc comment for which one each
-/// public entry point uses.
+/// [`Self::Restricted`] is not cheaper than [`Self::Safe`]: [`Self::resolve`] pays two extra full
+/// `safe_vertices` attractor fixed points *up front* to build it, exactly the cost
+/// [`Self::Safe`]'s per-step `minus(incomplete)` folding avoids. [`Self::Restricted`] earns its
+/// keep only when `safe_vertices` was already computed anyway for some other reason (as
+/// [`partial_solve`] does).
 enum SafetyMode {
     /// Fold `incomplete` directly into every attractor/control-predecessor call.
     Safe,
@@ -76,8 +58,8 @@ impl SafetyMode {
     }
 }
 
-/// Solves as much of `epg.vertices` as [`SymbolicParityGame::compute_total_graph`] and two plain
-/// [`zielonka`] calls, restricted to the *safe* vertices of each player.
+/// Solves as much of `epg.game.vertices()` as [`SymbolicParityGame::compute_total_graph`] and two
+/// plain [`zielonka`] calls, restricted to the *safe* vertices of each player.
 pub fn partial_solve(
     epg: &ExtendedParityGame,
     incomplete: &LDDFunction,
@@ -92,7 +74,7 @@ pub fn partial_solve(
         ControlFlow::Break(solution) => return Ok(solution),
         ControlFlow::Continue(total) => total,
     };
-    let game = epg.game;
+    let game = &epg.game;
 
     let safe_even = game.safe_vertices(Player::Even, &total, incomplete, attractor_progress)?;
     let mut solution0 = zielonka(game, &safe_even, recursion_progress, attractor_progress)?;
@@ -103,7 +85,7 @@ pub fn partial_solve(
         solution0.strategy = Some(s);
     }
 
-    if includes(&solution0.winning[0], epg.initial_vertex)? {
+    if includes(&solution0.winning[0], &epg.initial_vertex)? {
         solution0.winning[1] = winning[1].clone();
         if game.compute_strategy() {
             let mut s = solution0.strategy.take().expect("compute_strategy is set");
@@ -136,9 +118,8 @@ pub fn partial_solve(
 /// least one edge staying inside `U`, so `alpha` can simply choose to loop inside `U` forever
 /// (winning it outright, since `U` only ever contains vertices at `alpha`'s own parity).
 ///
-/// Port of `detect_solitair_cycles`, using [`SafetyMode::Safe`] — see
-/// [`detect_solitair_cycles_within_safe_vertices`] for the [`SafetyMode::Restricted`] variant,
-/// and [`partial_solve`] for why `incomplete = ∅` is the only case exercised today.
+/// Uses [`SafetyMode::Safe`] — see [`detect_solitair_cycles_within_safe_vertices`] for the
+/// [`SafetyMode::Restricted`] variant.
 pub fn detect_solitair_cycles(
     epg: &ExtendedParityGame,
     incomplete: &LDDFunction,
@@ -176,7 +157,7 @@ fn detect_solitair_cycles_impl(
         ControlFlow::Break(solution) => return Ok(solution),
         ControlFlow::Continue(total) => total,
     };
-    let game = epg.game;
+    let game = &epg.game;
 
     let vplayer = game.players(&total)?;
     let parity = game.parity(&total)?;
@@ -221,8 +202,8 @@ fn detect_solitair_cycles_impl(
 /// [`detect_solitair_cycles`], `U` is not restricted to `alpha`'s own vertices, so an
 /// opponent-owned vertex only joins `U` once every one of its edges is proven to stay inside.
 ///
-/// Port of `detect_forced_cycles`, using [`SafetyMode::Safe`] — see
-/// [`detect_forced_cycles_within_safe_vertices`] for the [`SafetyMode::Restricted`] variant.
+/// Uses [`SafetyMode::Safe`] — see [`detect_forced_cycles_within_safe_vertices`] for the
+/// [`SafetyMode::Restricted`] variant.
 pub fn detect_forced_cycles(
     epg: &ExtendedParityGame,
     incomplete: &LDDFunction,
@@ -257,7 +238,7 @@ fn detect_forced_cycles_impl(
         ControlFlow::Break(solution) => return Ok(solution),
         ControlFlow::Continue(total) => total,
     };
-    let game = epg.game;
+    let game = &epg.game;
 
     let vplayer = game.players(&total)?;
     let parity = game.parity(&total)?;
@@ -308,8 +289,8 @@ fn detect_forced_cycles_impl(
 
 /// Records `U` (a solitair or forced winning cycle for `alpha`, already found by the caller) as
 /// won, with an overapproximate `merge(U, U)` strategy — cut down to real edges by
-/// [`SymbolicParityGame::apply_strategy`], the same trick every other strategy contribution in
-/// this module relies on — and extends `winning`/`strategy` with the attractor into `U`.
+/// [`SymbolicParityGame::apply_strategy`] — and extends `winning`/`strategy` with the attractor
+/// into `U`.
 ///
 /// Shared by [`detect_solitair_cycles_impl`] and [`detect_forced_cycles_impl`], which differ only
 /// in how they compute `u`, not in what happens once they have it.
@@ -352,18 +333,13 @@ fn accept_cycle(
 /// searches for a set of priority-`c` vertices that `alpha = Player::from_priority(c)` can force
 /// play to always return to — winning `alpha` the whole attractor into that set.
 ///
-/// Port of `detect_fatal_attractors`, using [`SafetyMode::Safe`] — see
-/// [`detect_fatal_attractors_within_safe_vertices`] for the [`SafetyMode::Restricted`] variant.
-/// Unlike [`detect_solitair_cycles`]/[`detect_forced_cycles`], this has no
-/// [`SymbolicSolution`]-shaped input/output: mCRL2's own version takes and returns raw winning
-/// sets with no strategy at all (its internal `safe_attractor` calls still compute one when
-/// [`SymbolicParityGame::compute_strategy`] is set, but it is discarded — ported faithfully here
-/// rather than "improved", since fatal-attractor strategies are genuinely underspecified: a
-/// vertex can belong to fatal attractors for *different* priorities on different iterations, and
-/// mCRL2 does not attempt to reconcile that into one strategy).
+/// Uses [`SafetyMode::Safe`] — see [`detect_fatal_attractors_within_safe_vertices`] for the
+/// [`SafetyMode::Restricted`] variant. Unlike [`detect_solitair_cycles`]/[`detect_forced_cycles`],
+/// this has no [`SymbolicSolution`]-shaped input/output and never computes a strategy: a vertex
+/// can belong to fatal attractors for *different* priorities on different iterations, which does
+/// not reconcile into one strategy.
 ///
-/// `w0`/`w1` seed the winning sets exactly like mCRL2's optional `W0`/`W1` parameters (pass
-/// empty sets to start from scratch).
+/// `w0`/`w1` seed the winning sets (pass empty sets to start from scratch).
 pub fn detect_fatal_attractors(
     epg: &ExtendedParityGame,
     incomplete: &LDDFunction,
@@ -396,20 +372,18 @@ fn detect_fatal_attractors_impl(
     attractor_progress: &AttractorProgress,
 ) -> Result<[LDDFunction; 2], MercError> {
     let mut winning = [w0.clone(), w1.clone()];
-    let mut strategy = empty_strategy_pair(epg.game)?;
+    let mut strategy = empty_strategy_pair(&epg.game)?;
 
     let total = match total_graph_with_early_exit(epg, incomplete, &mut winning, &mut strategy, attractor_progress)? {
         ControlFlow::Break(solution) => return Ok(solution.winning),
         ControlFlow::Continue(total) => total,
     };
-    let game = epg.game;
+    let game = &epg.game;
 
     let vplayer = game.players(&total)?;
     let mode = SafetyMode::resolve(restrict_to_safe_vertices, game, &total, incomplete, attractor_progress)?;
 
-    // Ascending order: under merc's max-parity encoding this is mCRL2's own descending (least to
-    // most significant) rank order — see `SymbolicParityGame::max_priority`'s doc comment for
-    // the general inversion rule this follows.
+    // Ascending order: from least to most significant priority.
     for (&priority, block) in game.priorities() {
         let alpha = Player::from_priority(priority);
         let i = alpha.to_index();
@@ -530,12 +504,7 @@ mod tests {
                 strategy: None,
             };
 
-            let epg = ExtendedParityGame {
-                game: &symbolic,
-                initial_vertex: &initial,
-                vertices: &all_vertices,
-                sinks: &empty_sinks,
-            };
+            let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
             let solution = partial_solve(
                 &epg,
                 &incomplete,
@@ -551,7 +520,7 @@ mod tests {
                 Player::Odd
             };
             assert_eq!(
-                solution.winner(&initial),
+                solution.winner(&epg.initial_vertex),
                 Some(initial_winner),
                 "initial vertex must be resolved"
             );
@@ -599,12 +568,7 @@ mod tests {
                 .unwrap();
             let empty = manager.with_manager_shared(LDDFunction::empty_set).unwrap();
 
-            let epg = ExtendedParityGame {
-                game: &symbolic,
-                initial_vertex: &initial,
-                vertices: &all_vertices,
-                sinks: &empty_sinks,
-            };
+            let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
 
             let expected_winner = |v: usize| {
                 if expected[Player::Even.to_index()][v] {
@@ -720,12 +684,7 @@ mod tests {
             strategy: None,
         };
 
-        let epg = ExtendedParityGame {
-            game: &symbolic,
-            initial_vertex: &initial,
-            vertices: &all_vertices,
-            sinks: &empty_sinks,
-        };
+        let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
         let solution = detect_solitair_cycles_within_safe_vertices(
             &epg,
             &incomplete,
@@ -792,12 +751,7 @@ mod tests {
         let initial = manager
             .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
             .unwrap();
-        let epg = ExtendedParityGame {
-            game: &symbolic,
-            initial_vertex: &initial,
-            vertices: &all_vertices,
-            sinks: &empty_sinks,
-        };
+        let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
 
         // The solitair detector must not resolve anything here: vertex 0 (the only vertex at an
         // even priority owned by anyone) is owned by Odd, so it never seeds the search.
@@ -864,12 +818,7 @@ mod tests {
         let initial = manager
             .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
             .unwrap();
-        let epg = ExtendedParityGame {
-            game: &symbolic,
-            initial_vertex: &initial,
-            vertices: &all_vertices,
-            sinks: &empty_sinks,
-        };
+        let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
 
         let winning = detect_fatal_attractors_within_safe_vertices(
             &epg,

@@ -57,30 +57,36 @@ pub(crate) fn includes(winning: &LDDFunction, vertex: &LDDFunction) -> Result<bo
     Ok(vertex.minus(winning)?.is_empty())
 }
 
-/// The "problem instance" every on-the-fly solving entry point in this module and
-/// [`crate::symbolic::partial_solve`] operates over: the game itself, the subgame [`Self::vertices`]
-/// currently being solved, its [`Self::sinks`], and the [`Self::initial_vertex`] whose winner every
-/// entry point returns as soon as it is known. Bundles the four parameters
-/// [`solve_symbolic_zielonka`] and every function in [`crate::symbolic::partial_solve`] take
-/// identically, so they travel together as one named value instead of four positional arguments
-/// that always appear in the same order anyway.
+/// The problem instance every on-the-fly solving entry point in this module and
+/// [`crate::symbolic::partial_solve`] operates over: the game to solve, its deadlocks to resolve,
+/// and its initial vertex, whose winner every entry point returns as soon as it is known. Bundles
+/// what [`solve_symbolic_zielonka`] and every function in [`crate::symbolic::partial_solve`] take
+/// identically, so they travel together as one named, owned value.
 ///
-/// Deliberately does *not* also carry `incomplete`, `safe_variant`, or the recursion/attractor
-/// progress trackers: those vary per call in ways `game`/`vertices`/`sinks`/`initial_vertex` don't
-/// (see [`crate::symbolic::partial_solve`]'s `SafetyMode` for the `incomplete`/`safe_variant`
-/// pair specifically).
-pub struct ExtendedParityGame<'a> {
-    pub game: &'a SymbolicParityGame,
-    pub initial_vertex: &'a LDDFunction,
-    pub vertices: &'a LDDFunction,
-    pub sinks: &'a LDDFunction,
+/// Deliberately does *not* also carry `incomplete` or `safe_variant`: those vary per call in ways
+/// `game`/`sinks`/`initial_vertex` don't (see [`crate::symbolic::partial_solve`]'s `SafetyMode`
+/// for the `incomplete`/`safe_variant` pair specifically).
+pub struct ExtendedParityGame {
+    pub game: SymbolicParityGame,
+    pub initial_vertex: LDDFunction,
+    pub sinks: LDDFunction,
+}
+
+impl ExtendedParityGame {
+    pub fn new(game: SymbolicParityGame, initial_vertex: LDDFunction, sinks: LDDFunction) -> Self {
+        Self {
+            game,
+            initial_vertex,
+            sinks,
+        }
+    }
 }
 
 /// The shared preamble every entry point in [`crate::symbolic::partial_solve`] runs first:
-/// removes the winning regions from `epg.vertices` via [`SymbolicParityGame::compute_total_graph`]
-/// (growing `winning`/`strategy` in place), then returns early with the accumulated
-/// [`SymbolicSolution`] if that alone already resolved `epg.initial_vertex` — otherwise continues
-/// with the resulting total subgraph.
+/// removes the winning regions from `epg.game.vertices()` via
+/// [`SymbolicParityGame::compute_total_graph`] (growing `winning`/`strategy` in place), then
+/// returns early with the accumulated [`SymbolicSolution`] if that alone already resolved
+/// `epg.initial_vertex` — otherwise continues with the resulting total subgraph.
 ///
 /// Factored out because every partial-solving accelerator needs exactly this preamble, byte for
 /// byte, before it can even start searching for its own accelerator-specific dominion shape.
@@ -92,15 +98,15 @@ pub(crate) fn total_graph_with_early_exit(
     attractor_progress: &AttractorProgress,
 ) -> Result<ControlFlow<SymbolicSolution, LDDFunction>, MercError> {
     let total = epg.game.compute_total_graph(
-        epg.vertices,
-        epg.sinks,
+        epg.game.vertices(),
+        &epg.sinks,
         winning,
         strategy,
         Some(incomplete),
         attractor_progress,
     )?;
 
-    if includes(&winning[0], epg.initial_vertex)? || includes(&winning[1], epg.initial_vertex)? {
+    if includes(&winning[0], &epg.initial_vertex)? || includes(&winning[1], &epg.initial_vertex)? {
         return Ok(ControlFlow::Break(SymbolicSolution {
             winning: winning.clone(),
             strategy: pack_strategy_pair(strategy.clone()),
@@ -110,8 +116,8 @@ pub(crate) fn total_graph_with_early_exit(
     Ok(ControlFlow::Continue(total))
 }
 
-/// Solves `epg.game` restricted to `epg.vertices`, with `epg.sinks` as the deadlocks to resolve,
-/// and returns the winner of `epg.initial_vertex` together with the winning partition.
+/// Solves `epg.game` restricted to `epg.game.vertices()`, with `epg.sinks` as the deadlocks to
+/// resolve, and returns the winner of `epg.initial_vertex` together with the winning partition.
 ///
 /// When `allow_early_termination` is true, the solver will terminate as soon as
 /// `epg.initial_vertex` is resolved.
@@ -119,15 +125,15 @@ pub fn solve_symbolic_zielonka(
     epg: &ExtendedParityGame,
     allow_early_termination: bool,
 ) -> Result<(Player, SymbolicSolution), MercError> {
-    let game = epg.game;
+    let game = &epg.game;
     let empty = game.manager().with_manager_shared(LDDFunction::empty_set)?;
     let mut winning = [empty.clone(), empty];
     let mut strategy = empty_strategy_pair(game)?;
     let attractor_progress = new_attractor_progress();
 
     let total = game.compute_total_graph(
-        epg.vertices,
-        epg.sinks,
+        game.vertices(),
+        &epg.sinks,
         &mut winning,
         &mut strategy,
         None,
@@ -135,7 +141,7 @@ pub fn solve_symbolic_zielonka(
     )?;
 
     let already_resolved = allow_early_termination
-        && (includes(&winning[0], epg.initial_vertex)? || includes(&winning[1], epg.initial_vertex)?);
+        && (includes(&winning[0], &epg.initial_vertex)? || includes(&winning[1], &epg.initial_vertex)?);
 
     if !already_resolved {
         let recursion_progress = new_recursion_progress();
@@ -147,9 +153,9 @@ pub fn solve_symbolic_zielonka(
 
     let strategy = pack_strategy_pair(strategy);
 
-    if includes(&winning[0], epg.initial_vertex)? {
+    if includes(&winning[0], &epg.initial_vertex)? {
         Ok((Player::Even, SymbolicSolution { winning, strategy }))
-    } else if includes(&winning[1], epg.initial_vertex)? {
+    } else if includes(&winning[1], &epg.initial_vertex)? {
         Ok((Player::Odd, SymbolicSolution { winning, strategy }))
     } else {
         Err("solve_symbolic_zielonka: initial vertex was not resolved by the solver".into())
@@ -215,19 +221,13 @@ fn union_strategy_pair_in_place(
 /// exposes.
 pub(crate) fn pack_strategy_pair(strategy: [Option<LDDFunction>; 2]) -> Option<[LDDFunction; 2]> {
     let [even, odd] = strategy;
-    match (even, odd) {
-        (Some(even), Some(odd)) => Some([even, odd]),
-        _ => None,
-    }
+    Some([even?, odd?])
 }
 
 /// The inverse of [`pack_strategy_pair`]: unpacks a [`SymbolicSolution`]'s strategy into the
 /// `Option`-per-player accumulator shape [`SymbolicParityGame::compute_total_graph`] grows.
 pub(crate) fn unpack_strategy_pair(strategy: Option<[LDDFunction; 2]>) -> [Option<LDDFunction>; 2] {
-    match strategy {
-        Some([even, odd]) => [Some(even), Some(odd)],
-        None => [None, None],
-    }
+    strategy.map_or([None, None], |[even, odd]| [Some(even), Some(odd)])
 }
 
 /// The recursive Zielonka solver, restricted to the vertex set `v` — entry point that hides the
@@ -404,12 +404,7 @@ mod tests {
             let initial = manager
                 .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
                 .unwrap();
-            let epg = ExtendedParityGame {
-                game: &symbolic,
-                initial_vertex: &initial,
-                vertices: &all_vertices,
-                sinks: &empty_sinks,
-            };
+            let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
             let (_, solution) = solve_symbolic_zielonka(&epg, true).unwrap();
 
             for v in game.iter_vertices() {
@@ -459,16 +454,11 @@ mod tests {
                 .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
                 .unwrap();
 
-            let epg = ExtendedParityGame {
-                game: &symbolic,
-                initial_vertex: &initial,
-                vertices: &all_vertices,
-                sinks: &sinks,
-            };
+            let epg = ExtendedParityGame::new(symbolic, initial, sinks);
             let (_, solution) = solve_symbolic_zielonka(&epg, false).unwrap();
 
             let (early_winner, _) = solve_symbolic_zielonka(&epg, true).unwrap();
-            assert_eq!(Some(early_winner), solution.winner(&initial));
+            assert_eq!(Some(early_winner), solution.winner(&epg.initial_vertex));
 
             for v in game.iter_vertices() {
                 let vertex = manager
