@@ -28,6 +28,9 @@ pub trait LPS {
     /// Plain LPSs typically use `()`.
     type StateInfo;
 
+    /// Whether transitions carry a meaningful action label.
+    const HAS_LABELS: bool = true;
+
     /// A single condition action effect summand of the LPS.
     type Summand: Summand<Value = Self::Value, Label = Self::Label>;
 
@@ -72,6 +75,7 @@ impl<P: LPS> LPS for &P {
     type Value = P::Value;
     type Label = P::Label;
     type StateInfo = P::StateInfo;
+    const HAS_LABELS: bool = P::HAS_LABELS;
     type Summand = P::Summand;
 
     fn initial_state(&self) -> Vec<Self::Value> {
