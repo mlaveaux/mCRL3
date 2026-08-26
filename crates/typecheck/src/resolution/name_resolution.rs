@@ -148,7 +148,11 @@ where
 
 /// Rewrites every `Reference` node of `sort` to `Resolved(name, DefId)` using
 /// the sort-name index built by [resolve_sort_ids], or fails on an undeclared name.
-fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Result<SortExpression, WellTypedError> {
+///
+/// `pub(crate)`: also used by [`crate::process`] to resolve an `act`/`proc`/`glob` sort
+/// expression, which never goes through [resolve_sort_ids] itself (that only ever runs over the
+/// data specification).
+pub(crate) fn resolve_sort_id(sort: &SortExpression, resolved: &IndexedSet<String>) -> Result<SortExpression, WellTypedError> {
     sort.clone().apply(|expr| {
         if let SortExpressionKind::Reference(name) = &expr.node {
             if let Some(id) = resolved.index(name) {
