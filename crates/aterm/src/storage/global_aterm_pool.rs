@@ -44,8 +44,8 @@ pub(crate) const GC_BUDGET_CHUNK: usize = 4096;
 /// A type alias for the global term pool guard
 pub(crate) type GlobalTermPoolGuard<'a> = RecursiveLockReadGuard<'a, GlobalTermPool>;
 
-/// The `Mutex`-guarded, globally-scanned protection set backing [`crate::GlobalProtected`]; see
-/// its docs. One is created per registered thread pool.
+/// The `Mutex`-guarded, globally-scanned protection set. One is created per
+/// registered thread pool.
 pub(crate) type SendContainerProtectionSet = Arc<Mutex<ProtectionSet<Arc<dyn Markable + Sync + Send>>>>;
 
 /// The single global (singleton) term pool, accessed via [GLOBAL_TERM_POOL].
@@ -56,9 +56,9 @@ pub(crate) struct GlobalTermPool {
     symbol_pool: SymbolPool,
     /// The thread-specific protection sets.
     thread_pools: ThreadPoolList,
-    /// A separate protection set for sendable terms, see [crate::ATermSend].
+    /// A separate protection set for sendable terms.
     send_term_protection_sets: Vec<Option<Arc<Mutex<ProtectionSet<ATermIndex>>>>>,
-    /// A separate protection set for sendable containers, see [crate::GlobalProtected].
+    /// A separate protection set for sendable containers.
     send_container_protection_sets: Vec<Option<SendContainerProtectionSet>>,
     /// Term roots adopted from thread-local protection sets when their owning thread exits while
     /// the terms are still reachable. Deduplicated so repeatedly leaking the same shared term
@@ -254,7 +254,7 @@ impl GlobalTermPool {
     /// Deregisters a thread pool.
     ///
     /// The `send_term_protection_sets` and `send_container_protection_sets` slots are
-    /// deliberately left in place: a still-live `ATermSend` or `GlobalProtected` created on this
+    /// deliberately left in place: a still-live `ATermSend` or `ProtectedSend` created on this
     /// thread may outlive it and must keep being marked.
     pub(crate) fn deregister_thread_pool(&mut self, index: usize) {
         debug!("Removed thread_local protection set(s) {index}");
@@ -381,7 +381,7 @@ impl GlobalTermPool {
             }
         }
 
-        // As for the per-thread `container_protection_set` above, marking a `GlobalProtected`
+        // As for the per-thread `container_protection_set` above, marking a `ProtectedSend`
         // container goes through `GcMutex::lock`, which takes a `read_recursive` on the same
         // lock we already hold for writing here.
         for pool in self.send_container_protection_sets.iter().flatten() {
@@ -419,7 +419,7 @@ impl GlobalTermPool {
             }
         }
 
-        // Same, for send-container protection sets with no outstanding GlobalProtected.
+        // Same, for send-container protection sets with no outstanding ProtectedSend.
         for slot in self.send_container_protection_sets.iter_mut() {
             if slot.as_ref().is_some_and(|set| Arc::strong_count(set) == 1) {
                 *slot = None;
