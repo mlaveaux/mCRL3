@@ -717,7 +717,9 @@ fn handle_solve_symbolic(
     let (winner, solution) = timing.measure("solve", || solve_symbolic_zielonka(&epg, !args.verify_solution))?;
 
     if args.verify_solution {
-        timing.measure("verify", || verify_symbolic_strategy(&epg.game, &epg.initial_vertex, &solution))?;
+        timing.measure("verify", || {
+            verify_symbolic_strategy(&epg.game, &epg.initial_vertex, &solution)
+        })?;
     }
 
     println!("{}", winner.solution());
