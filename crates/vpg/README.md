@@ -15,7 +15,8 @@ for (variability) parity games. Various helpers are introduced for working with
 `strong` types for priorities, explicitly representing the even and odd players
 etc. This crate uses [OxiDD](https://oxidd.net/) for the binary decision
 diagrams, which are used to represent feature configurations in variability
-parity games.
+parity games, and for the state and edge sets of `SymbolicParityGame`, a
+purely symbolic (LDD-based) game representation and solver.
 
 ## Usage
 
@@ -37,6 +38,40 @@ let (_solution, _strategy) = solve_zielonka(&parity_game, false);
 ```
 
 ## Changelog
+
+### 3.0
+
+Added a symbolic (LDD-based) parity game representation and solver, alongside
+the existing explicit one: `SymbolicParityGame`, built from any
+`merc_symbolic::TransitionGroup`, and `solve_symbolic_zielonka`, a port of
+mCRL2's `symbolic_pbessolve_algorithm` used by `merc-pbes`'s `solve-symbolic`
+command. Includes:
+
+- Winning-strategy computation (`compute_strategy` on the game), and
+  `check_strategy`, a native LDD-level certificate checker (mCRL2's
+  `--check-strategy`) that restricts the game to a player's own strategy via
+  `SymbolicParityGame::apply_strategy` and re-solves, without decoding to an
+  explicit game — the same way the rest of symbolic solving scales.
+  `verify_symbolic_solution` offers a second, decode-to-explicit
+  cross-check for testing, reusing the explicit `verify_solution` checker.
+- Partial-solving accelerators ported from `symbolic_pbessolve.h`
+  (`partial_solve`, `detect_solitair_cycles`, `detect_forced_cycles`,
+  `detect_fatal_attractors`, each with a `_within_safe_vertices` counterpart),
+  which take an "incomplete vertices" set the way mCRL2's do — sound today
+  (exercised with an empty incomplete set, since merc has no
+  partial-exploration front end yet to produce a real one), and ready for one
+  once it exists. Ported from:
+
+  > Maurice Laveaux, Wieger Wesselink, Tim A.C. Willemse, *On-The-Fly Solving
+  > for Symbolic Parity Games*, TACAS 2022, LNCS 13244, pp. 137-155.
+  > https://doi.org/10.1007/978-3-030-99527-0_8
+- `convert_symbolic_parity_game`/`encode_parity_game` as a symbolic/explicit
+  round-trip oracle, cross-checking every solver above against the explicit
+  `solve_zielonka` on random games.
+
+See `docs/symbolic-parity-game-plan.md` in the repository root for the design
+rationale, in particular the priority-direction inversion needed because merc
+uses max-parity while mCRL2's symbolic solver uses min-parity.
 
 ### 2.0
 
