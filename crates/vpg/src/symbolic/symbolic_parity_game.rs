@@ -22,48 +22,43 @@ use crate::Priority;
 /// the attractor set built so far.
 pub type AttractorProgress = TimeProgress<(usize, usize)>;
 
-/// A transition relation of a symbolic parity game, flattened from a
-/// [`TransitionGroup`].
-///
-/// `read_indices`/`write_indices` are only needed by [`SymbolicParityGame::apply_strategy`]: they
-/// let a strategy over the doubled, interleaved global vector `[from_0, to_0, from_1, to_1, …]`
-/// be projected down onto exactly the positions `relation` itself reads and writes. A game is a
-/// graph, not a labelled transition system, so it has no use for
-/// [`TransitionGroup::action_label_index`]'s trailing action position either — [`Self::new`]
-/// projects it away once, up front, precisely so nothing past that point (in particular
-/// `apply_strategy`, which would otherwise have to route a strategy, which has no notion of
-/// actions, around a dimension it doesn't have) has to know it ever existed.
-struct SymbolicRelation {
-    relation: LDDFunction,
-    meta: LDDFunction,
-    read_indices: Vec<Value>,
-    write_indices: Vec<Value>,
-}
-
-/// A symbolic parity game: a max-parity game over sets of vertices represented
-/// as LDDs, rather than as an explicit vertex/edge list.
+/// A max-parity game over sets of vertices represented as LDDs.
 pub struct SymbolicParityGame {
     manager: LDDManagerRef,
 
-    /// Vertices owned by each player.
+    /// Vertices owned by each player, their union is the total vertex set.
     vertices: [LDDFunction; 2],
 
-    /// Vertices per priority. A [`BTreeMap`] so it can be walked highest-first (see
-    /// [`Self::max_priority`]).
+    /// Vertices per priority, their order is important.
     priorities: BTreeMap<Priority, LDDFunction>,
 
     relations: Vec<SymbolicRelation>,
 
-    /// Whether [`Self::attractor`] and friends also compute a winning strategy, needed for
-    /// [`Self::apply_strategy`]/`check_strategy`. Off by default since it roughly doubles the
-    /// work of every attractor step (an extra [`merge`] per iteration).
+    /// Whether the operations on this parity game compute a strategy. This is
+    /// set here for the whole instance because it should be done consistently.
     compute_strategy: bool,
 }
 
+/// A transition relation of a symbolic parity game, flattened from a
+/// [`TransitionGroup`].
+///
+/// # Details
+///
+/// The indices are interleaved global vector `[from_0, to_0, from_1, to_1, …]`
+/// be projected down onto exactly the positions `relation` itself reads and
+/// writes.
+struct SymbolicRelation {
+    relation: LDDFunction,
+    meta: LDDFunction,
+
+    /// The indices of the positions in the global vector that this relation reads from. Only needed for the
+    /// apply strategy operation.
+    read_indices: Vec<Value>,
+    write_indices: Vec<Value>,
+}
+
 impl SymbolicParityGame {
-    /// Constructs a symbolic parity game from an explicit owner/priority partition, given as
-    /// `vertices[Player::Even.to_index()]`/`vertices[Player::Odd.to_index()]` (mCRL2's second,
-    /// `Veven`-based constructor).
+    /// Constructs a symbolic parity game from an explicit owner/priority partition.
     pub fn new<G: TransitionGroup>(
         manager: &LDDManagerRef,
         groups: &[G],
@@ -74,23 +69,19 @@ impl SymbolicParityGame {
         let relations = groups
             .iter()
             .map(|group| {
-                // `group.relation()`'s own short vector carries one further trailing position
-                // beyond its read+write prefix when `action_label_index()` is `Some` (always at
-                // `read_indices.len() + write_indices.len()`, per that method's contract) — drop
-                // it here, once, so no other method on this type ever has to know it existed.
-                // `group.meta()` already only covers the read+write prefix (never the action
-                // position), so it needs no corresponding adjustment.
-                let relation = match group.action_label_index() {
-                    Some(action_index) => {
-                        let keep: Vec<Value> = (0..action_index as Value).collect();
-                        let projection = manager.with_manager_shared(|m| LDDFunction::projection_meta(m, &keep))?;
-                        group.relation().project(&projection)?
-                    }
-                    None => group.relation().clone(),
-                };
+                // A game is a graph, not a labelled transition system: its exploration groups must
+                // not carry a trailing action-label dimension in the first place (the PBES/LPS
+                // generator feeding `merc_symbolic`'s exploration sets `LPS::HAS_LABELS = false` for
+                // that), rather than have this type project it away, since every other method here
+                // (in particular `apply_strategy`, whose strategy has no notion of actions) assumes
+                // `group.relation()` covers exactly `read_indices` and `write_indices`.
+                assert!(
+                    group.action_label_index().is_none(),
+                    "action labels are not supported in parity games"
+                );
 
                 Ok(SymbolicRelation {
-                    relation,
+                    relation: group.relation().clone(),
                     meta: group.meta().clone(),
                     read_indices: group.read_indices().to_vec(),
                     write_indices: group.write_indices().to_vec(),
@@ -117,6 +108,10 @@ impl SymbolicParityGame {
     ///
     /// Takes `level` because a permuted state vector does not necessarily put
     /// the discriminating value at level 0; see [`fix_element`].
+    ///
+    /// `blocks` is a list of `(value, owner, priority)` triples, one for each
+    /// value that occurs at `level` in the state vectors of the vertices of the
+    /// game.
     pub fn from_block_index<G: TransitionGroup>(
         manager: &LDDManagerRef,
         groups: &[G],
@@ -151,12 +146,6 @@ impl SymbolicParityGame {
     }
 
     /// Checks that the owner and priority maps are actually a partition of `all_vertices`.
-    ///
-    /// mCRL2's constructors silently produce a partial partition if `equation_info` misses a
-    /// value; this is the one invariant worth paying for even in debug builds only.
-    ///
-    /// The union of `vertices` (the owner partition) is recomputed here as the reference "all
-    /// vertices" set, since the game does not otherwise keep one around.
     #[cfg(debug_assertions)]
     fn assert_consistent(&self) -> Result<(), MercError> {
         let all_vertices = self.all_vertices()?;
@@ -192,7 +181,7 @@ impl SymbolicParityGame {
     }
 
     /// Returns the union of both owner partitions, i.e. every vertex the game was constructed
-    /// over (see [`Self::assert_consistent`] and [`Self::apply_strategy`]).
+    /// over.
     fn all_vertices(&self) -> Result<LDDFunction, MercError> {
         Ok(self.vertices[0].union(&self.vertices[1])?)
     }
@@ -201,8 +190,8 @@ impl SymbolicParityGame {
         Ok(self.manager.with_manager_shared(LDDFunction::empty_set)?)
     }
 
-    /// Returns `{ intersect(v, Even vertices), intersect(v, Odd vertices) }`, indexed by
-    /// [`Player::to_index`].
+    /// Returns the partition of players for the given vertex set, indexed by
+    /// player.
     pub fn players(&self, v: &LDDFunction) -> Result<[LDDFunction; 2], MercError> {
         Ok([
             intersect(v, &self.vertices[Player::Even.to_index()])?,
@@ -211,14 +200,10 @@ impl SymbolicParityGame {
     }
 
     /// Returns the highest priority occurring in `v`, and the vertices of `v` at that priority.
-    ///
-    /// This is mCRL2's `get_min_rank`, ported under the priority-direction inversion described
-    /// in the module documentation: mCRL2 scans its rank map ascending and stops at the first
-    /// non-empty intersection (the *outermost*, i.e. numerically smallest, block present); the
-    /// equivalent under merc's max-parity encoding is to scan the `BTreeMap` **descending**.
     pub fn max_priority(&self, v: &LDDFunction) -> Result<Option<(Priority, LDDFunction)>, MercError> {
         for (&priority, block) in self.priorities.iter().rev() {
             let restricted = intersect(v, block)?;
+
             if !restricted.is_empty() {
                 return Ok(Some((priority, restricted)));
             }
@@ -228,8 +213,6 @@ impl SymbolicParityGame {
 
     /// Returns `{ u ∈ u | ∃ v_elem ∈ v : u -> v_elem }`, the vertices of `u` with an edge into
     /// `v`.
-    ///
-    /// Groups are visited in reverse (as mCRL2 does), keeping large groups first.
     pub fn predecessors(&self, u: &LDDFunction, v: &LDDFunction) -> Result<LDDFunction, MercError> {
         let mut result = self.empty()?;
         for relation in self.relations.iter().rev() {
@@ -249,10 +232,6 @@ impl SymbolicParityGame {
     }
 
     /// Returns `{ w | ∃ elem ∈ u : elem -> w }`, the one-step successors of `u`.
-    ///
-    /// The dual of [`Self::predecessors`]; not needed by the solver itself (which only ever
-    /// walks edges backwards), but used by [`crate::convert_symbolic_parity_game`] to
-    /// decode a symbolic game into an explicit one for testing and debugging.
     pub fn successors(&self, u: &LDDFunction) -> Result<LDDFunction, MercError> {
         let mut result = self.empty()?;
         for relation in &self.relations {
@@ -267,37 +246,40 @@ impl SymbolicParityGame {
         Ok(u.minus(&self.predecessors(u, v)?)?)
     }
 
-    /// One attractor step: the vertices of `search_space` that are pulled in by the vertices most
-    /// recently added to the attractor (`u`), for player `alpha`, together with the strategy
-    /// edges this step contributes (when [`Self::compute_strategy`] is set).
+    /// One attractor step: the vertices of `search_space` that are pulled in by
+    /// the vertices most recently added to the attractor (`u`), for player
+    /// `alpha`, together with the strategy edges this step contributes (when
+    /// [`Self::compute_strategy`] is set).
     ///
-    /// Port of `safe_control_predecessors_impl`, dropping its `W` parameter (restricting
-    /// chaining), which is unused unless chaining is enabled — this port does not yet implement
-    /// that, so it is dropped rather than threaded through unused. `incomplete` is mCRL2's `I` —
-    /// the vertices whose outgoing edges are not (yet) fully known, from a partial exploration;
-    /// pass `None` when solving a fully-known game (every caller except the partial solvers in
-    /// `partial_solve.rs` does).
+    /// Incomplete vertices whose outgoing edges are not (yet) fully known, from
+    /// a partial exploration; pass `None` when solving a fully-known game
+    /// (every caller except the partial solvers in `partial_solve.rs` does).
     ///
-    /// [`Self::attractor`] always passes the same set for `search_space` and `outside` (its
-    /// `Zoutside`, the vertices not yet in the attractor); [`Self::monotone_attractor`] is the
-    /// one caller that needs them to differ (it searches all of `V` for predecessors, but only
-    /// checks the *forced* condition against `Zoutside \ U`), which is why both are threaded
-    /// through separately rather than the single set the plan's original sketch assumed.
+    /// [`Self::attractor`] always passes the same set for `search_space` and
+    /// `outside` (its `Zoutside`, the vertices not yet in the attractor);
+    /// [`Self::monotone_attractor`] is the one caller that needs them to differ
+    /// (it searches all of `V` for predecessors, but only checks the *forced*
+    /// condition against `Zoutside \ U`), which is why both are threaded
+    /// through separately rather than the single set the plan's original sketch
+    /// assumed.
     ///
-    /// `alpha`-owned vertices in `search_space` with *any* edge into `u` are pulled in outright;
-    /// `¬alpha`-owned vertices are pulled in only once *every* group-edge leaving them lands
-    /// inside the attractor, checked by removing (for each group) whichever candidates still
-    /// have an edge into `outside` — except `incomplete` vertices, which can never be pulled in
-    /// this way: an incomplete vertex might have an edge that hasn't been learned yet, so it can
-    /// never be *proven* forced into the attractor.
+    /// `alpha`-owned vertices in `search_space` with *any* edge into `u` are
+    /// pulled in outright; `¬alpha`-owned vertices are pulled in only once
+    /// *every* group-edge leaving them lands inside the attractor, checked by
+    /// removing (for each group) whichever candidates still have an edge into
+    /// `outside` — except `incomplete` vertices, which can never be pulled in
+    /// this way: an incomplete vertex might have an edge that hasn't been
+    /// learned yet, so it can never be *proven* forced into the attractor.
     ///
-    /// The strategy contribution is `merge(pulled_in \ u, u)`: the interleaved cartesian product
-    /// of the newly pulled-in `alpha`-owned vertices with the whole target set `u`, *not* the
-    /// exact edges each one uses. This is deliberately an overapproximation — mCRL2's own
-    /// `safe_control_predecessors_impl` does the same — because [`Self::apply_strategy`]
-    /// intersects it back with each group's real relation, which recovers exactly the real edges
-    /// (possibly several per vertex, which is still a sound strategy: every one of them stays
-    /// inside `u`, the region this step is attracting into).
+    /// The strategy contribution is `merge(pulled_in \ u, u)`: the interleaved
+    /// cartesian product of the newly pulled-in `alpha`-owned vertices with the
+    /// whole target set `u`, *not* the exact edges each one uses. This is
+    /// deliberately an overapproximation — mCRL2's own
+    /// `safe_control_predecessors_impl` does the same — because
+    /// [`Self::apply_strategy`] intersects it back with each group's real
+    /// relation, which recovers exactly the real edges (possibly several per
+    /// vertex, which is still a sound strategy: every one of them stays inside
+    /// `u`, the region this step is attracting into).
     fn control_predecessors(
         &self,
         alpha: Player,
@@ -330,18 +312,19 @@ impl SymbolicParityGame {
         Ok((pulled_in.union(&forced)?, strategy))
     }
 
-    /// Computes the attractor set of `u` for player `alpha` within `v`, i.e. the vertices from
-    /// which `alpha` can force play into `u`, together with a winning strategy for the vertices
-    /// pulled in along the way (when [`Self::compute_strategy`] is set).
+    /// Computes the attractor set of `u` for player `alpha` within `v`, i.e.
+    /// the vertices from which `alpha` can force play into `u`, together with a
+    /// winning strategy for the vertices pulled in along the way.
     ///
-    /// `vplayer` is `self.players(v)`, taken as a parameter (as mCRL2 does) since callers that
-    /// invoke this repeatedly (`zielonka`, `compute_total_graph`) already have it. `incomplete`
-    /// is mCRL2's `I` (see [`Self::control_predecessors`]); pass `None` when solving a
-    /// fully-known game. When `target` is given, the computation stops as soon as any vertex of
-    /// `target` has entered the attractor — used by `solve` to terminate as soon as the initial
-    /// vertex is won. `progress` is reported at most once per its configured interval (see
-    /// [`merc_io::TimeProgress`]) rather than every iteration, since a single game can need many
-    /// thousands of small steps.
+    /// `vplayer` is `self.players(v)`, taken as a parameter since callers that
+    /// invoke this repeatedly (`zielonka`, `compute_total_graph`) already have
+    /// it. `incomplete` is mCRL2's `I` (see [`Self::control_predecessors`]);
+    /// pass `None` when solving a fully-known game.
+    ///
+    /// When `target` is given, the computation stops as soon as any vertex of
+    /// `target` has entered the attractor. Carries a progress reporter that
+    /// prints the iteration number and the size of the attractor set built so
+    /// far.
     #[allow(clippy::too_many_arguments)]
     pub fn attractor(
         &self,
@@ -406,18 +389,6 @@ impl SymbolicParityGame {
     /// the mCRL2 behaviour, and it deliberately does *not* match `ParityGame::from_edges`'s
     /// `make_total`, which resolves a deadlock with a self-loop (won by the parity of the sink's
     /// own priority) instead; see the plan's §9.3 for the explicit-path implication.
-    ///
-    /// `incomplete` is mCRL2's `I` (see [`Self::control_predecessors`]); pass `None` when solving
-    /// a fully-known game. When `incomplete` is `Some`, `sinks ∩ incomplete` is *not* treated as a
-    /// deadlock: an incomplete vertex with no discovered successors merely hasn't been explored
-    /// yet, and a future extension (Definition 3's `⊑`) may still add outgoing edges to it, so
-    /// declaring its owner's opponent the winner here would be unsound — this mirrors the paper's
-    /// Corollary 3 (`SAttr_α(⅁, sinks_ᾱ(⅁) \ I)`: only *complete* sinks can be safely attracted
-    /// to). Callers today always pass `sinks` and `incomplete` disjoint already (every caller
-    /// computes `sinks` structurally over a fully-explored game, with `incomplete = None`/`∅`),
-    /// so this exclusion is presently a no-op — kept precise regardless, ahead of a
-    /// partial-exploration front end where `sinks ∩ incomplete` could be genuinely non-empty (a
-    /// BFS frontier vertex not yet explored looks exactly like a deadlock until it is).
     pub fn compute_total_graph(
         &self,
         v: &LDDFunction,
