@@ -11,7 +11,7 @@
 //!   [`merc_lts::LtsBuilder`].
 //! - [`explore_lps_symbolic`] performs LDD-based symbolic reachability.
 //! - [`CfgLinearProcessSpecification`] wraps an LPS with a control flow analysis
-//!   ([`mcrl2::ControlFlowAnalysis`], shared with `merc_pbes`'s SRF explorer)
+//!   ([`mcrl2::ControlFlowGraph`], shared with `merc_pbes`'s SRF explorer)
 //!   that prunes summands whose control flow guard cannot hold in the current
 //!   state.
 //!

@@ -3,7 +3,7 @@ use std::fmt;
 use mcrl2::ATerm;
 use mcrl2::ATermList;
 use mcrl2::CfgSummand;
-use mcrl2::ControlFlowAnalysis;
+use mcrl2::ControlFlowGraph;
 use mcrl2::DataExpression;
 use mcrl2::SrfPbes;
 use merc_explore::LPS;
@@ -15,7 +15,7 @@ use crate::explore_srf::PbesSrfContext;
 use crate::explore_srf::PbesSrfLps;
 use crate::explore_srf::PbesSrfSummand;
 
-/// Lets [`ControlFlowAnalysis`] read an SRF summand's condition and (non-identity)
+/// Lets [`ControlFlowGraph`] read an SRF summand's condition and (non-identity)
 /// write assignments without depending on `merc_pbes` directly.
 ///
 /// This is the same analysis `merc_lps` layers over LPS summands: an SRF
@@ -33,7 +33,7 @@ impl CfgSummand for PbesSrfSummand {
 }
 
 /// A PBES-in-SRF view that selectively enables summands based on a
-/// [`ControlFlowAnalysis`], on top of the equation-index pruning that
+/// [`ControlFlowGraph`], on top of the equation-index pruning that
 /// [`PbesSrfLps::prepare`] always applies.
 ///
 /// The [`LPS::prepare`] implementation drops summands whose source-value
@@ -47,13 +47,15 @@ pub struct CfgPbesSrfLps {
     /// The underlying SRF view that performs the actual enumeration.
     inner: PbesSrfLps,
 
-    /// The control flow graph analysis driving the summand selection.
-    analysis: ControlFlowAnalysis,
+    /// The control flow graph driving the summand selection. Locations are
+    /// interned as indices into `inner`'s value mapping, so an edge's
+    /// source/target can be compared directly against a state's entries.
+    graph: ControlFlowGraph<usize>,
 
-    /// Per-summand selection counters, indexed identically to the analysis'
-    /// `source_constraints`. Only updated when the `metrics` feature is enabled;
-    /// otherwise they stay at zero. Updated through `&self` so the view can be
-    /// shared across worker threads during parallel exploration.
+    /// Per-summand selection counters, indexed identically to `graph`'s edges.
+    /// Only updated when the `metrics` feature is enabled; otherwise they stay
+    /// at zero. Updated through `&self` so the view can be shared across
+    /// worker threads during parallel exploration.
     summand_metrics: Vec<SummandCfgCounters>,
 }
 
@@ -75,11 +77,10 @@ impl CfgPbesSrfLps {
 
         let context = inner.analysis_context();
         let parameters = inner.parameters();
-        // A summand belonging to an equation unreachable from the initial
-        // equation (notably mCRL2's boilerplate `true`/`false` SRF sinks, which
-        // reset every unified parameter unconditionally) must not be allowed to
-        // disqualify a genuine control flow parameter merely by existing.
-        let analysis = ControlFlowAnalysis::new(
+        // A summand belonging to an equation that is itself unreachable from
+        // the initial equation must not be allowed to disqualify a genuine
+        // control flow parameter merely by existing in the unified PBES.
+        let graph = ControlFlowGraph::new(
             &parameters,
             inner.summands(),
             |summand| inner.is_equation_reachable(summand.equation_index()),
@@ -87,20 +88,20 @@ impl CfgPbesSrfLps {
             |value| inner.intern_normal_form(&context, value),
         );
 
-        let summand_metrics = (0..analysis.source_constraints.len())
+        let summand_metrics = (0..inner.summands().len())
             .map(|_| SummandCfgCounters::default())
             .collect();
         Ok(Self {
             inner,
-            analysis,
+            graph,
             summand_metrics,
         })
     }
 
     /// Returns the data parameter indices identified as control flow
-    /// parameters (see [`ControlFlowAnalysis`]).
+    /// parameters (see [`ControlFlowGraph`]).
     pub fn control_flow_parameters(&self) -> &[usize] {
-        &self.analysis.control_flow_parameters
+        self.graph.control_flow_parameters()
     }
 
     /// Collects per-summand control flow pruning metrics.
@@ -242,18 +243,23 @@ impl LPS for CfgPbesSrfLps {
     ) -> impl Iterator<Item = usize> + 'a {
         // The inner SRF view already restricts candidates to the current
         // equation's summands (state[0]); further filter those by the
-        // source-value constraints on the control flow parameters.
+        // source-location constraints on the control flow parameters.
         let candidates = self.inner.prepare(context, state);
 
-        let control_flow_parameters = &self.analysis.control_flow_parameters;
-        let source_constraints = &self.analysis.source_constraints;
+        let control_flow_parameters = self.graph.control_flow_parameters();
         #[cfg(feature = "metrics")]
         let summand_metrics = &self.summand_metrics;
 
         candidates.filter(move |&index| {
-            let selected = source_constraints[index]
-                .iter()
-                .all(|&(position, value)| state[1 + control_flow_parameters[position]] == value);
+            // A summand can fire only if the current state's value at every
+            // control flow parameter it constrains matches that edge's source
+            // location; an edge with no source location (`None`) departs from
+            // every location and never disqualifies the summand. State layout is
+            // `[equation_index, params...]`, hence the `1 +` offset.
+            let selected = self.graph.edges(index).iter().all(|edge| {
+                edge.source
+                    .is_none_or(|source| state[1 + control_flow_parameters[edge.position]] == source)
+            });
 
             #[cfg(feature = "metrics")]
             {

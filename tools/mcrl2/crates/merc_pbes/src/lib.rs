@@ -11,7 +11,7 @@
 //!   and [`explore_srf_pbes_parallel`] first convert it to standard recursive
 //!   form. [`explore_pbes_symbolic`] performs LDD-based symbolic reachability.
 //! - [`CfgPbesSrfLps`] wraps a PBES in SRF form with a control flow analysis
-//!   ([`mcrl2::ControlFlowAnalysis`], shared with `merc_lps`'s explicit explorer)
+//!   ([`mcrl2::ControlFlowGraph`], shared with `merc_lps`'s explicit explorer)
 //!   that prunes summands whose source-value condition cannot hold in the
 //!   current state, on top of the equation-index pruning [`PbesSrfLps`] always
 //!   applies.

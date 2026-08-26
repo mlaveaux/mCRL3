@@ -1,5 +1,5 @@
 //! Regression tests for the control flow graph analysis
-//! ([`mcrl2::ControlFlowAnalysis`]) as layered onto SRF exploration by
+//! ([`mcrl2::ControlFlowGraph`]) as layered onto SRF exploration by
 //! [`CfgPbesSrfLps`], complementing the end-to-end checks in
 //! `cfg_srf_test.rs`.
 //!
@@ -12,6 +12,7 @@
 //! positive one.
 
 use mcrl2::Pbes;
+use mcrl2::SrfPbes;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_utilities::Timing;
@@ -44,8 +45,7 @@ fn cfg_srf(text: &str) -> CfgPbesSrfLps {
 /// have equal vertex/edge counts and agree on the winner of the initial
 /// vertex. Pruning summands whose source-value condition cannot hold must
 /// never change the explored parity game — the decisive safety property that
-/// a `control_flow_parameters()`/`source_constraints` assertion alone cannot
-/// establish.
+/// a `control_flow_parameters()`/edge assertion alone cannot establish.
 fn assert_cfg_matches_srf_text(text: &str) {
     let mut pbes = Pbes::from_text(text).expect("Failed to parse PBES");
     pbes.normalize();
@@ -93,7 +93,7 @@ fn assert_cfg_matches_srf_text(text: &str) {
 /// its source value does not disqualify that parameter, as long as the write
 /// is still to a closed value: pruning only ever uses a *reader* summand's own
 /// `d == c` guard against the live current state, so an unconditional reset
-/// elsewhere cannot make that unsound (see [`mcrl2::ControlFlowAnalysis`]'s
+/// elsewhere cannot make that unsound (see [`mcrl2::ControlFlowGraph`]'s
 /// doc comment). Here `X`'s summand sets `s := 1` unconditionally (no guard on
 /// `s`), yet `s` is still recognised as a CFP because `Y`'s summand guards it.
 ///
@@ -176,7 +176,7 @@ fn control_flow_parameter_survives_a_reachable_sink_without_reset() {
 
 /// A parameter that is written to constants everywhere but never appears in
 /// any guard has no pruning opportunity to offer, so it must not be a CFP:
-/// [`mcrl2::ControlFlowAnalysis`] still requires at least one live summand to
+/// [`mcrl2::ControlFlowGraph`] still requires at least one live summand to
 /// actually constrain it (`constrained_somewhere`) — the write/read relaxation
 /// above only drops the requirement that the *same* summand do both.
 #[test]
@@ -217,7 +217,7 @@ fn parameter_changed_to_a_non_constant_value_is_not_a_control_flow_parameter() {
 }
 
 /// A disjunctive guard `s == 0 || s == 1` does not register as a source
-/// constraint on `s`: [`mcrl2::ControlFlowAnalysis`] only ever flattens `&&`,
+/// constraint on `s`: [`mcrl2::ControlFlowGraph`] only ever flattens `&&`,
 /// so `X`'s summand below contributes no source constraint of its own. That no
 /// longer disqualifies `s` from being a CFP (writers need not also be readers,
 /// see `parameter_changed_without_a_source_guard_is_still_a_control_flow_parameter`)

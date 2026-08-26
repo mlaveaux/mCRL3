@@ -37,8 +37,9 @@ pub use atermpp::merc_aterm_to_mcrl2;
 
 pub use mcrl2_sys::atermpp::ffi::_aterm;
 
+pub use control_flow::CfgEdge;
 pub use control_flow::CfgSummand;
-pub use control_flow::ControlFlowAnalysis;
+pub use control_flow::ControlFlowGraph;
 
 pub use data::DataSpecification;
 
@@ -89,8 +90,8 @@ pub use lps::read_lps;
 pub use lps::read_lps_text;
 pub use lps::tau_multi_action;
 
-pub use pbes::ControlFlowGraph;
-pub use pbes::ControlFlowGraphVertex;
+pub use pbes::Mcrl2ControlFlowGraph;
+pub use pbes::Mcrl2ControlFlowGraphVertex;
 pub use pbes::Pbes;
 pub use pbes::PbesEquation;
 pub use pbes::PbesEquations;

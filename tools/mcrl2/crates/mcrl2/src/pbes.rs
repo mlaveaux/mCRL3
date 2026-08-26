@@ -379,7 +379,7 @@ impl fmt::Debug for PbesEquation {
 
 /// mcrl2::pbes_system::stategraph_algorithm
 pub struct PbesStategraph {
-    control_flow_graphs: Vec<ControlFlowGraph>,
+    control_flow_graphs: Vec<Mcrl2ControlFlowGraph>,
     equations: Vec<StategraphEquation>,
 
     _algorithm: Rc<UniquePtr<stategraph_algorithm>>,
@@ -392,7 +392,7 @@ impl PbesStategraph {
 
         // Obtain a copy of the control flow graphs.
         let control_flow_graphs = (0..mcrl2_stategraph_local_algorithm_cfgs(&algorithm))
-            .map(|index| ControlFlowGraph::new(algorithm.clone(), index))
+            .map(|index| Mcrl2ControlFlowGraph::new(algorithm.clone(), index))
             .collect::<Vec<_>>();
 
         let equations = (0..mcrl2_stategraph_local_algorithm_equations(&algorithm))
@@ -412,24 +412,24 @@ impl PbesStategraph {
     }
 
     /// Returns the control flow graphs identified by the algorithm.
-    pub fn control_flow_graphs(&self) -> &[ControlFlowGraph] {
+    pub fn control_flow_graphs(&self) -> &[Mcrl2ControlFlowGraph] {
         &self.control_flow_graphs
     }
 }
 
 /// mcrl2::pbes_system::detail::local_control_flow_graph
-pub struct ControlFlowGraph {
-    vertices: Vec<ControlFlowGraphVertex>,
+pub struct Mcrl2ControlFlowGraph {
+    vertices: Vec<Mcrl2ControlFlowGraphVertex>,
 }
 
-impl ControlFlowGraph {
+impl Mcrl2ControlFlowGraph {
     /// Returns the vertices of the control flow graph.
-    pub fn vertices(&self) -> &[ControlFlowGraphVertex] {
+    pub fn vertices(&self) -> &[Mcrl2ControlFlowGraphVertex] {
         &self.vertices
     }
 
     /// Finds a vertex by its pointer.
-    pub fn find_by_ptr(&self, ptr: *const local_control_flow_graph_vertex) -> &ControlFlowGraphVertex {
+    pub fn find_by_ptr(&self, ptr: *const local_control_flow_graph_vertex) -> &Mcrl2ControlFlowGraphVertex {
         self.vertices
             .iter()
             .find(|v| v.get() == ptr)
@@ -440,15 +440,15 @@ impl ControlFlowGraph {
         // Only ever called with an index from `0..mcrl2_stategraph_local_algorithm_cfgs`.
         let cfg = mcrl2_stategraph_local_algorithm_cfg(&algorithm, index).expect("cfg index is in range");
         let vertices = (0..mcrl2_local_control_flow_graph_vertices(cfg))
-            .map(|vertex_index| ControlFlowGraphVertex::new(algorithm.clone(), index, vertex_index))
+            .map(|vertex_index| Mcrl2ControlFlowGraphVertex::new(algorithm.clone(), index, vertex_index))
             .collect::<Vec<_>>();
 
-        ControlFlowGraph { vertices }
+        Mcrl2ControlFlowGraph { vertices }
     }
 }
 
 /// mcrl2::pbes_system::detail::control_flow_graph_vertex
-pub struct ControlFlowGraphVertex {
+pub struct Mcrl2ControlFlowGraphVertex {
     vertex: *const local_control_flow_graph_vertex,
 
     outgoing_edges: Vec<(*const local_control_flow_graph_vertex, Vec<usize>)>,
@@ -458,7 +458,7 @@ pub struct ControlFlowGraphVertex {
     _algorithm: Rc<UniquePtr<stategraph_algorithm>>,
 }
 
-impl ControlFlowGraphVertex {
+impl Mcrl2ControlFlowGraphVertex {
     pub fn get(&self) -> *const local_control_flow_graph_vertex {
         self.vertex
     }
@@ -497,7 +497,7 @@ impl ControlFlowGraphVertex {
             .map(|pair| (pair.vertex, pair.edges.iter().copied().collect()))
             .collect();
 
-        ControlFlowGraphVertex {
+        Mcrl2ControlFlowGraphVertex {
             vertex,
             outgoing_edges,
             _algorithm: algorithm,
@@ -511,7 +511,7 @@ impl ControlFlowGraphVertex {
     }
 }
 
-impl fmt::Debug for ControlFlowGraphVertex {
+impl fmt::Debug for Mcrl2ControlFlowGraphVertex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}({})", self.name(), self.value().pretty_print())
     }

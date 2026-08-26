@@ -59,7 +59,7 @@ which = "8.0"
 # The workspace libraries.
 mcrl2 = { path = "crates/mcrl2" }
 mcrl2-macros = { path = "crates/mcrl2-macros" }
-mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "7beea8071fdc87365aaf3289e86d8f3b913d7dbf" }
+mcrl2-sys = { git = "https://github.com/MERCorg/mCRL2-sys", rev = "e31ef4dbb5a9309370a09974fe4711e51a344940" }
 merc_aterm = { path = "../../crates/aterm" }
 merc_collections = { path = "../../crates/collections" }
 merc_data = { path = "../../crates/data" }

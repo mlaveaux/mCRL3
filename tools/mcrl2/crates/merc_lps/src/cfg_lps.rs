@@ -3,7 +3,7 @@ use std::fmt;
 use mcrl2::ATerm;
 use mcrl2::ATermList;
 use mcrl2::CfgSummand;
-use mcrl2::ControlFlowAnalysis;
+use mcrl2::ControlFlowGraph;
 use mcrl2::DataExpression;
 use mcrl2::LearnSuccessorsContext;
 use mcrl2::LinearProcessSpecification;
@@ -17,7 +17,7 @@ use crate::explore_explicit::ExplicitLinearProcessSpecification;
 use crate::explore_explicit::ExplicitSummand;
 use crate::explore_explicit::Mcrl2MultiActionLabel;
 
-/// Lets [`ControlFlowAnalysis`] read an LPS summand's guard and (non-identity)
+/// Lets [`ControlFlowGraph`] read an LPS summand's guard and (non-identity)
 /// write assignments without depending on `merc_lps` directly.
 impl CfgSummand for ExplicitSummand {
     fn condition(&self) -> &DataExpression {
@@ -30,7 +30,7 @@ impl CfgSummand for ExplicitSummand {
 }
 
 /// An explicit-state LPS view that selectively enables summands based on a
-/// [`ControlFlowAnalysis`].
+/// [`ControlFlowGraph`].
 ///
 /// The [`LPS::prepare`] implementation drops summands whose control flow guard
 /// cannot hold in the current state, mirroring how a PBES in SRF form only
@@ -43,13 +43,15 @@ pub struct CfgLinearProcessSpecification {
     /// The underlying explicit LPS that performs the actual enumeration.
     inner: ExplicitLinearProcessSpecification,
 
-    /// The control flow graph analysis driving the summand selection.
-    analysis: ControlFlowAnalysis,
+    /// The control flow graph driving the summand selection. Locations are
+    /// interned as indices into `inner`'s value mapping, so an edge's
+    /// source/target can be compared directly against a state's entries.
+    graph: ControlFlowGraph<usize>,
 
-    /// Per-summand selection counters, indexed identically to the analysis'
-    /// `source_constraints`. Only updated when the `metrics` feature is enabled;
-    /// otherwise they stay at zero. Updated through `&self` so the view can be
-    /// shared across worker threads during parallel exploration.
+    /// Per-summand selection counters, indexed identically to `graph`'s edges.
+    /// Only updated when the `metrics` feature is enabled; otherwise they stay
+    /// at zero. Updated through `&self` so the view can be shared across
+    /// worker threads during parallel exploration.
     summand_metrics: Vec<SummandCfgCounters>,
 }
 
@@ -77,19 +79,19 @@ impl CfgLinearProcessSpecification {
         // Every summand of an explicit LPS is a candidate from every state (see
         // `ExplicitLinearProcessSpecification::prepare`), so none of them is dead
         // code the analysis should discount.
-        let analysis = ControlFlowAnalysis::new(
+        let graph = ControlFlowGraph::new(
             &parameters,
             inner.summands(),
             |_| true,
             &context,
             |value| inner.intern_normal_form(&context, value),
         );
-        let summand_metrics = (0..analysis.source_constraints.len())
+        let summand_metrics = (0..inner.summands().len())
             .map(|_| SummandCfgCounters::default())
             .collect();
         Ok(Self {
             inner,
-            analysis,
+            graph,
             summand_metrics,
         })
     }
@@ -97,7 +99,7 @@ impl CfgLinearProcessSpecification {
     /// Returns the process parameter indices identified as control flow
     /// parameters.
     pub fn control_flow_parameters(&self) -> &[usize] {
-        &self.analysis.control_flow_parameters
+        self.graph.control_flow_parameters()
     }
 
     /// Collects per-summand control flow pruning metrics.
@@ -244,15 +246,19 @@ impl LPS for CfgLinearProcessSpecification {
 
         // The returned iterator borrows `state` directly and reads the control
         // flow values on demand, avoiding a per-state allocation.
-        let control_flow_parameters = &self.analysis.control_flow_parameters;
-        let source_constraints = &self.analysis.source_constraints;
+        let control_flow_parameters = self.graph.control_flow_parameters();
         #[cfg(feature = "metrics")]
         let summand_metrics = &self.summand_metrics;
 
-        (0..source_constraints.len()).filter(move |&index| {
-            let selected = source_constraints[index]
-                .iter()
-                .all(|&(position, value)| state[control_flow_parameters[position]] == value);
+        (0..self.inner.summands().len()).filter(move |&index| {
+            // A summand can fire only if the current state's value at every
+            // control flow parameter it constrains matches that edge's source
+            // location; an edge with no source location (`None`) departs from
+            // every location and never disqualifies the summand.
+            let selected = self.graph.edges(index).iter().all(|edge| {
+                edge.source
+                    .is_none_or(|source| state[control_flow_parameters[edge.position]] == source)
+            });
 
             #[cfg(feature = "metrics")]
             {

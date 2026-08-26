@@ -1,14 +1,3 @@
-//! A generic control flow graph analysis over "positional" summand-like
-//! structures.
-//!
-//! The analysis only needs a shared parameter vector and, per summand, a guard
-//! (condition) and the list of parameters it assigns a new value (its
-//! non-identity write assignments) — see [`CfgSummand`]. Both an LPS summand
-//! (`merc_lps::ExplicitSummand`, which assigns the process parameters directly)
-//! and a PBES-in-SRF summand (`merc_pbes::PbesSrfSummand`, which assigns the
-//! unified parameter vector of its target equation) fit this shape, so both
-//! crates share this implementation instead of each re-deriving it.
-
 use std::collections::HashMap;
 
 use crate::ATerm;
@@ -21,7 +10,7 @@ use crate::free_variables_data_expression;
 use crate::is_application;
 use crate::is_variable;
 
-/// A summand-like structure that [`ControlFlowAnalysis`] can analyse.
+/// A summand-like structure that can be analysed.
 pub trait CfgSummand {
     /// The summand's guard.
     fn condition(&self) -> &DataExpression;
@@ -29,11 +18,36 @@ pub trait CfgSummand {
     /// The parameter assignments performed by the summand, as a list of
     /// `data::assignment` terms (`lhs := rhs`, read with `.arg(0)` /
     /// `.arg(1)`). A parameter absent here is left unchanged by the summand.
-    ///
-    /// Implementors are encouraged, but not required, to omit identity
-    /// assignments (`x := x`): [`ControlFlowAnalysis`] re-derives that check
-    /// itself rather than relying on it.
     fn write_assignments(&self) -> &ATermList<ATerm>;
+}
+
+/// A control flow parameter's domain is a finite set of *locations* — the
+/// closed values it can take. A summand that constrains and/or changes a
+/// control flow parameter contributes one *edge* to that parameter's control
+/// flow graph:
+///
+/// - the edge's **source** is the location the parameter must currently be in
+///   for the summand to fire (the closed value `c` of a guard conjunct
+///   `d == c`), or every location when the guard does not constrain `d`, and
+/// - the edge's **target** is the location the parameter moves to once the
+///   summand fires (the closed value it is assigned), or the same location as
+///   `source` (a self-loop) when the summand leaves `d` unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CfgEdge<V> {
+    /// Position into [`ControlFlowGraph::control_flow_parameters`] identifying
+    /// which control flow parameter this edge belongs to.
+    pub position: usize,
+
+    /// The location this edge departs from, i.e. the value the control flow
+    /// parameter is required to have for the summand to fire. `None` when the
+    /// summand's guard does not constrain it, so the edge departs from every
+    /// location.
+    pub source: Option<V>,
+
+    /// The location this edge arrives at, i.e. the value the control flow
+    /// parameter has once the summand fires. `None` when the summand does not
+    /// change it, so the edge arrives back at `source` (a self-loop).
+    pub target: Option<V>,
 }
 
 /// The outcome of a control flow graph analysis.
@@ -44,77 +58,80 @@ pub trait CfgSummand {
 /// - whenever a summand changes `d`, it assigns it a closed (constant) value
 ///   (whether or not that same summand also constrains `d`'s source value), and
 /// - whenever a summand reads `d` to decide its guard, it does so through a
-///   conjunct `d == c` with `c` a closed value (its *source value*), and
+///   conjunct `d == c` with `c` a closed value (its *source* location), and
 /// - a summand that does not constrain `d` leaves it unchanged.
 ///
 /// Under these conditions the value of a CFP in any reachable state is one of a
-/// statically known set of constants, so a summand whose guard requires
-/// `d == c` can only fire from states where `d` already equals `c`.
-pub struct ControlFlowAnalysis {
+/// statically known set of locations, and every summand's effect on it is
+/// exactly one edge (see [`CfgEdge`]) between two such locations: the graph
+/// `(locations, edges)` is the control flow graph of `d`.
+/// 
+/// The generic `V` is the representation of the values of the parameters.
+pub struct ControlFlowGraph<V> {
     /// The indices into `parameters` identified as control flow parameters.
-    pub control_flow_parameters: Vec<usize>,
+    control_flow_parameters: Vec<usize>,
 
-    /// For each summand, the source-value constraints on the control flow
-    /// parameters: each `(position, value)` requires the state's value at
-    /// `control_flow_parameters[position]` (offset by however the caller lays
-    /// its state vectors out) to equal `value`.
-    pub source_constraints: Vec<Vec<(usize, usize)>>,
+    /// `edges[summand]` are the edges that summand contributes.
+    edges: Vec<Vec<CfgEdge<V>>>,
 }
 
-impl ControlFlowAnalysis {
+impl<V> ControlFlowGraph<V> {
     /// Runs the control flow graph analysis over `summands`, whose guards and
     /// assignments are expressed in terms of `parameters`.
     ///
     /// `live` marks which summands actually participate in the reachable
-    /// automaton: only a live summand's write behaviour can disqualify a
-    /// parameter from being a control flow parameter (see
-    /// `is_control_flow_parameter`), so that a summand belonging to dead code
-    /// cannot spuriously defeat the analysis merely by existing. A caller with no
-    /// such notion (every summand is live) can pass `|_| true`.
+    /// automaton: only a live summand can disqualify a parameter from being a
+    /// control flow parameter (see `is_control_flow_parameter`), so that a
+    /// summand belonging to an equation no summand ever transitions into cannot
+    /// spuriously defeat the analysis merely by existing. A caller with no
+    /// notion of dead code (every summand is live) can pass `|_| true`.
     ///
-    /// `context` rewrites a term to normal form (and, for callers that seed it
-    /// with a substitution, resolves that too) before it is tested for
-    /// closedness. `intern` interns a normalised source value into the caller's
-    /// own value mapping, returning the index that its state vectors use for
-    /// it, so [`ControlFlowAnalysis::source_constraints`] can be compared
-    /// directly against explored states.
+    /// `context` rewrites a term to normal form before it is tested for
+    /// closedness. `intern` interns a normalised location into the caller's own
+    /// representation `V`, so an edge's `source`/`target` can be compared
+    /// directly in that representation.
     pub fn new<S: CfgSummand>(
         parameters: &[DataVariable],
         summands: &[S],
         live: impl Fn(&S) -> bool,
         context: &LearnSuccessorsContext,
-        mut intern: impl FnMut(&DataExpressionRef) -> usize,
+        mut intern: impl FnMut(&DataExpressionRef) -> V,
     ) -> Self {
-        // Analyse every summand once: which parameters it constrains to a source
-        // value and which parameters it changes (and whether to a constant).
+        // Analyse every summand once, extracting the source and target values.
         let analyses: Vec<SummandAnalysis> = summands
             .iter()
             .map(|summand| analyse_summand(summand, parameters, context))
             .collect();
-        let liveness: Vec<bool> = summands.iter().map(&live).collect();
 
         // A parameter is a control flow parameter iff every live summand treats
         // it as such, and at least one live summand actually constrains it.
         let control_flow_parameters: Vec<usize> = (0..parameters.len())
-            .filter(|&j| is_control_flow_parameter(j, &analyses, &liveness))
+            .filter(|&j| is_control_flow_parameter(j, &analyses, summands, &live))
             .collect();
 
-        // Intern the source values into the caller's value mapping so they can be
-        // compared directly against the entries of explored state vectors.
-        let source_constraints: Vec<Vec<(usize, usize)>> = analyses
-            .iter()
-            .map(|analysis| {
-                control_flow_parameters
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(position, &j)| {
-                        let term = analysis.source.get(&j)?;
-                        let value: DataExpressionRef<'_> = term.copy().into();
-                        Some((position, intern(&value)))
-                    })
-                    .collect()
-            })
-            .collect();
+        // Build every summand's edges, interning their source/target locations
+        // into the caller's own representation `V`.
+        let mut edges: Vec<Vec<CfgEdge<V>>> = Vec::with_capacity(analyses.len());
+        for analysis in &analyses {
+            let mut summand_edges = Vec::new();
+            for (position, &j) in control_flow_parameters.iter().enumerate() {
+                let source = analysis.source.get(&j).map(|term| intern_term(&mut intern, term));
+                let target = analysis
+                    .target
+                    .get(&j)
+                    .and_then(|value| value.as_ref())
+                    .map(|term| intern_term(&mut intern, term));
+
+                if source.is_some() || target.is_some() {
+                    summand_edges.push(CfgEdge {
+                        position,
+                        source,
+                        target,
+                    });
+                }
+            }
+            edges.push(summand_edges);
+        }
 
         log::debug!(
             "Control flow parameters: {:?}",
@@ -125,61 +142,105 @@ impl ControlFlowAnalysis {
         );
 
         // Describe the identified control flow graph: per parameter the distinct
-        // source values (the locations it can be in), and per summand the source
-        // values it requires (the edges between those locations).
+        // source and target locations (the locations it can be in), and per
+        // summand the source/target locations of the edge it contributes.
         if log::log_enabled!(log::Level::Debug) {
             for &j in &control_flow_parameters {
-                let mut values: Vec<String> = analyses
+                let mut sources: Vec<String> = analyses
                     .iter()
                     .filter_map(|analysis| analysis.source.get(&j))
                     .map(|value| value.to_string())
                     .collect();
-                values.sort();
-                values.dedup();
+                sources.sort();
+                sources.dedup();
+
+                let mut targets: Vec<String> = analyses
+                    .iter()
+                    .filter_map(|analysis| analysis.target.get(&j).and_then(|value| value.as_ref()))
+                    .map(|value| value.to_string())
+                    .collect();
+                targets.sort();
+                targets.dedup();
+
                 log::debug!(
-                    "Control flow graph for {}: locations {:?}",
+                    "Control flow graph for {}: source locations {:?}, target locations {:?}",
                     parameters[j].name(),
-                    values
+                    sources,
+                    targets
                 );
             }
 
             for (index, analysis) in analyses.iter().enumerate() {
-                let constraints: Vec<String> = control_flow_parameters
+                let edges: Vec<String> = control_flow_parameters
                     .iter()
                     .filter_map(|&j| {
-                        analysis
-                            .source
+                        let source = analysis.source.get(&j).map(ToString::to_string);
+                        let target = analysis
+                            .target
                             .get(&j)
-                            .map(|value| format!("{} == {}", parameters[j].name(), value))
+                            .and_then(|value| value.as_ref())
+                            .map(ToString::to_string);
+
+                        if source.is_none() && target.is_none() {
+                            return None;
+                        }
+
+                        Some(format!(
+                            "{}: {} -> {}",
+                            parameters[j].name(),
+                            source.as_deref().unwrap_or("*"),
+                            target.as_deref().unwrap_or("*"),
+                        ))
                     })
                     .collect();
-                if !constraints.is_empty() {
-                    log::debug!("Summand {index} requires {constraints:?}");
+                if !edges.is_empty() {
+                    log::debug!("Summand {index} edges {edges:?}");
                 }
             }
         }
 
         Self {
             control_flow_parameters,
-            source_constraints,
+            edges,
         }
     }
+
+    /// The indices into the caller's parameter vector identified as control
+    /// flow parameters.
+    pub fn control_flow_parameters(&self) -> &[usize] {
+        &self.control_flow_parameters
+    }
+
+    /// The edges summand `index` contributes to the control flow graph: one
+    /// per control flow parameter it constrains and/or changes, in the
+    /// representation `V` chosen by [`ControlFlowGraph::new`]'s `intern`.
+    pub fn edges(&self, index: usize) -> &[CfgEdge<V>] {
+        &self.edges[index]
+    }
+}
+
+/// Interns `term`, normalised to a [`DataExpressionRef`], through `intern`.
+fn intern_term<V>(intern: &mut impl FnMut(&DataExpressionRef) -> V, term: &ATerm) -> V {
+    let value: DataExpressionRef<'_> = term.copy().into();
+    intern(&value)
 }
 
 /// The result of analysing a single summand for the control flow graph.
 struct SummandAnalysis {
-    /// Maps a parameter index to its required source value (closed under
+    /// Maps a parameter index to its required source location (closed under
     /// `context`) when the summand's guard contains a conjunct `d == c`.
     source: HashMap<usize, ATerm>,
 
-    /// Maps each parameter index changed by the summand to whether it is
-    /// assigned a constant value (closed under `context`). Parameters absent
-    /// from the map are left unchanged by the summand.
-    changed: HashMap<usize, bool>,
+    /// Maps each parameter index changed by the summand to the target
+    /// location of the edge it contributes for that parameter: `Some(c)` when
+    /// it is assigned a constant value `c` (closed under `context`), `None`
+    /// when it is assigned a non-constant expression. A parameter absent from
+    /// this map is left unchanged by the summand.
+    target: HashMap<usize, Option<ATerm>>,
 }
 
-/// Analyses a single summand, extracting its source values and changed
-/// parameters with respect to `parameters`.
+/// Analyses a single summand, extracting its source locations and target
+/// locations with respect to `parameters`.
 fn analyse_summand<S: CfgSummand>(
     summand: &S,
     parameters: &[DataVariable],
@@ -201,7 +262,7 @@ fn analyse_summand<S: CfgSummand>(
 
     // `write_assignments` contains only non-identity assignments, so every
     // parameter that appears here is genuinely changed by the summand.
-    let mut changed = HashMap::new();
+    let mut target = HashMap::new();
     for assignment in summand.write_assignments().iter() {
         let lhs_arg = assignment.arg(0);
         let rhs_arg = assignment.arg(1);
@@ -212,38 +273,44 @@ fn analyse_summand<S: CfgSummand>(
         let lhs = DataVariable::from(lhs_arg.protect());
         if let Some(index) = parameters.iter().position(|param| *param == lhs) {
             let rhs = rhs_arg.protect();
-            changed.insert(index, is_closed(context, &rhs));
+            target.insert(index, closed_value(context, &rhs));
         }
     }
 
-    SummandAnalysis { source, changed }
+    SummandAnalysis { source, target }
 }
 
 /// Returns whether parameter `j` is a control flow parameter across all `live`
 /// `analyses`, i.e. every live summand either leaves it unchanged or changes it
-/// only to a constant, and at least one live summand constrains it to a source
-/// value.
+/// only to a constant target location, and at least one live summand
+/// constrains it to a source location.
 ///
-/// A summand for which `live[index]` is `false` is skipped entirely: its write
-/// behaviour cannot disqualify `j`, and its source constraint (if any) does not
-/// count towards `j` being constrained anywhere. This keeps dead code (a summand
-/// belonging to an equation the caller knows to be unreachable) from spuriously
-/// defeating the analysis merely by existing.
-fn is_control_flow_parameter(j: usize, analyses: &[SummandAnalysis], live: &[bool]) -> bool {
+/// A summand skipped by `live` is skipped entirely: its write behaviour cannot
+/// disqualify `j`, and its source constraint (if any) does not count towards
+/// `j` being constrained anywhere. This keeps dead code (a summand belonging
+/// to an equation no summand ever transitions into) from spuriously defeating
+/// the analysis merely by existing.
+fn is_control_flow_parameter<S>(
+    j: usize,
+    analyses: &[SummandAnalysis],
+    summands: &[S],
+    live: impl Fn(&S) -> bool,
+) -> bool {
     let mut constrained_somewhere = false;
 
-    for (analysis, &is_live) in analyses.iter().zip(live) {
-        if !is_live {
+    for (analysis, summand) in analyses.iter().zip(summands) {
+        if !live(summand) {
             continue;
         }
 
         constrained_somewhere |= analysis.source.contains_key(&j);
 
         // The summand changes the parameter. For it to remain a control flow
-        // parameter the new value must be a constant, regardless of whether
-        // this summand also pins down the source value it transitions from.
-        if let Some(&changed_to_constant) = analysis.changed.get(&j)
-            && !changed_to_constant
+        // parameter the target location must be a constant, regardless of
+        // whether this summand also pins down the source location it
+        // transitions from.
+        if let Some(target) = analysis.target.get(&j)
+            && target.is_none()
         {
             return false;
         }
@@ -264,8 +331,9 @@ fn collect_conjuncts(expr: &DataExpression, out: &mut Vec<DataExpression>) {
 }
 
 /// If `expr` is an equality `d == c` (in either order) between a parameter `d`
-/// and a closed data expression `c`, returns the parameter index and the term
-/// `c`. Closedness of `c` is tested under `context` (see [`is_closed`]).
+/// and a closed data expression `c`, returns the parameter index and the
+/// source location `c` (rewritten to normal form under `context`, see
+/// [`closed_value`]).
 fn as_parameter_equality(
     expr: &DataExpression,
     parameters: &[DataVariable],
@@ -284,9 +352,8 @@ fn as_parameter_equality(
         .or_else(|| match_parameter_constant(&arguments[1], &arguments[0], parameters, context))
 }
 
-/// Returns the parameter index and constant term when `variable` is a
-/// parameter and `constant` is closed under `context` (resolves to a
-/// variable-free value).
+/// Returns the parameter index and source location when `variable` is a
+/// parameter and `constant` is closed under `context` (see [`closed_value`]).
 fn match_parameter_constant(
     variable: &ATerm,
     constant: &ATerm,
@@ -300,24 +367,29 @@ fn match_parameter_constant(
     let variable = DataVariable::from(variable.clone());
     let index = parameters.iter().position(|param| *param == variable)?;
 
-    if is_closed(context, constant) {
-        Some((index, constant.clone()))
-    } else {
-        None
-    }
+    closed_value(context, constant).map(|value| (index, value))
 }
 
-/// Returns whether `term`, rewritten under `context`'s substitution, is a
-/// closed (variable-free) data expression.
+/// Rewrites `term` under `context`'s substitution and returns the result when
+/// it is closed (variable-free), i.e. a genuine location rather than an
+/// expression that still depends on other parameters. Returns `None`
+/// otherwise.
 ///
 /// A caller that seeds `context` with a substitution (as `merc_lps` does for
 /// the `@rewr_var` placeholders `replace_constants_by_variables` introduces)
 /// gets those resolved to the constants they stand for; a caller whose context
 /// carries no substitution (as `merc_pbes` does — SRF conversion has no
 /// equivalent preprocessing step) only gets `term` normalised.
-fn is_closed(context: &LearnSuccessorsContext, term: &ATerm) -> bool {
+///
+/// Source and target locations are both obtained through this same function so
+/// that they end up in the same normal form and can be compared directly.
+fn closed_value(context: &LearnSuccessorsContext, term: &ATerm) -> Option<ATerm> {
     let expr: DataExpressionRef<'_> = term.copy().into();
     let rewritten = context.rewrite_under_sigma(&expr);
     let rewritten_ref: DataExpressionRef<'_> = rewritten.copy().into();
-    free_variables_data_expression(&rewritten_ref).is_empty()
+    if free_variables_data_expression(&rewritten_ref).is_empty() {
+        Some(rewritten)
+    } else {
+        None
+    }
 }

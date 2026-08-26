@@ -42,7 +42,7 @@ use crate::explore_common::explore_pbes_parallel_impl;
 /// Builds a parity game by exploring the given PBES in SRF format, using
 /// `builder` to accumulate the result - see [`PGBuilder`].
 ///
-/// When `control_flow` is set, a [`ControlFlowAnalysis`](mcrl2::ControlFlowAnalysis)
+/// When `control_flow` is set, a [`ControlFlowGraph`](mcrl2::ControlFlowGraph)
 /// is layered on top of the SRF view to prune summands whose source-value guard
 /// cannot hold in the current state (see [`CfgPbesSrfLps`]), in addition to the
 /// pruning by equation index ([`PbesSrfLps::prepare`]) that always applies. The
@@ -426,14 +426,7 @@ impl PbesSrfLps {
 
         // Equation-level reachability from the initial equation, ignoring data
         // guards: a coarse, conservative over-approximation of actual state
-        // reachability, used by `mcrl2::ControlFlowAnalysis` (see
-        // `is_equation_reachable`) so an equation that is not actually part of the
-        // reachable automaton cannot spuriously disqualify a genuine control flow
-        // parameter merely by existing in the unified PBES. mCRL2's SRF conversion
-        // always emits boilerplate sink equations for the `true`/`false` PVIs that
-        // reset every parameter unconditionally, which would otherwise defeat the
-        // analysis even when those sinks are never actually entered.
-        let mut equation_reachable = vec![false; srf_pbes.equations().len()];
+        // reachability.        let mut equation_reachable = vec![false; srf_pbes.equations().len()];
         let mut stack = vec![initial_eq_idx];
         equation_reachable[initial_eq_idx] = true;
         while let Some(eq_idx) = stack.pop() {
@@ -472,7 +465,7 @@ impl PbesSrfLps {
 
     /// Creates a fresh [`LearnSuccessorsContext`] for rewriting closed terms to
     /// normal form, independent of the per-thread enumeration contexts created by
-    /// [`LPS::create_context`]. Used by [`mcrl2::ControlFlowAnalysis`].
+    /// [`LPS::create_context`]. Used by [`mcrl2::ControlFlowGraph`].
     pub fn analysis_context(&self) -> LearnSuccessorsContext {
         LearnSuccessorsContext::from_data_spec(&self.data_spec)
     }
@@ -481,12 +474,15 @@ impl PbesSrfLps {
     /// summands' equation-index graph (ignoring data guards — a coarse,
     /// conservative over-approximation of actual state reachability).
     ///
-    /// [`mcrl2::ControlFlowAnalysis`] uses this to keep an unreachable equation
-    /// from spuriously disqualifying a genuine control flow parameter: mCRL2's
-    /// SRF conversion always emits boilerplate sink equations for the
-    /// `true`/`false` PVIs that reset every (unified) parameter unconditionally,
-    /// which would otherwise defeat the analysis even when those sinks are never
-    /// actually entered.
+    /// [`mcrl2::ControlFlowGraph`] uses this to keep a summand whose own
+    /// equation is unreachable from spuriously disqualifying a genuine control
+    /// flow parameter merely by existing. mCRL2's boilerplate `true`/`false`
+    /// SRF sink equations are *not* an instance of this: the summand that
+    /// resets parameters into such a sink belongs to the (ordinarily
+    /// reachable) equation that calls into it, not to the sink itself, so this
+    /// reachability check does not see it — see
+    /// [`mcrl2::ControlFlowGraph`]'s doc comment for what actually protects
+    /// against that case.
     pub fn is_equation_reachable(&self, equation_index: usize) -> bool {
         self.equation_reachable[equation_index]
     }

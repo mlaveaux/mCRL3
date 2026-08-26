@@ -13,10 +13,10 @@ use log::trace;
 use mcrl2::ATerm;
 use mcrl2::ATermInt;
 use mcrl2::ATermString;
-use mcrl2::ControlFlowGraph;
-use mcrl2::ControlFlowGraphVertex;
 use mcrl2::DataExpression;
 use mcrl2::DataVariable;
+use mcrl2::Mcrl2ControlFlowGraph;
+use mcrl2::Mcrl2ControlFlowGraphVertex;
 use mcrl2::Pbes;
 use mcrl2::PbesExpression;
 use mcrl2::PbesStategraph;
@@ -393,7 +393,7 @@ impl SymmetryAlgorithm {
     }
 
     /// Returns true iff the two control flow graphs are compatible.
-    fn compatible(&self, c: &ControlFlowGraph, c1: &ControlFlowGraph) -> Result<(), MercError> {
+    fn compatible(&self, c: &Mcrl2ControlFlowGraph, c1: &Mcrl2ControlFlowGraph) -> Result<(), MercError> {
         // First check whether the vertex sets are compatible.
         if let Err(x) = self.vertex_sets_compatible(c, c1) {
             return Err(format!("Incompatible vertex sets.\n {x}").into());
@@ -423,10 +423,10 @@ impl SymmetryAlgorithm {
     // Find pairs of vertices (s_c, s'_c) and (s_c', s'_c') and checks whether they are compatible according to the definition in the paper.
     fn find_compatible(
         &self,
-        c: &ControlFlowGraph,
-        c1: &ControlFlowGraph,
-        s_c: &ControlFlowGraphVertex,
-        s_c1: &ControlFlowGraphVertex,
+        c: &Mcrl2ControlFlowGraph,
+        c1: &Mcrl2ControlFlowGraph,
+        s_c: &Mcrl2ControlFlowGraphVertex,
+        s_c1: &Mcrl2ControlFlowGraphVertex,
     ) -> Result<(), MercError> {
         // There exist s' such that s'_c and s'_c' match according to the definitions in the paper.
         let mut matched = false;
@@ -461,10 +461,10 @@ impl SymmetryAlgorithm {
     /// Checks whether edges (s_c, s'_c) and (s_c', s'_c') are compatible according to the definition in the paper.
     fn check_compatible(
         &self,
-        s_c: &ControlFlowGraphVertex,
-        s1_c: &ControlFlowGraphVertex,
-        s_c1: &ControlFlowGraphVertex,
-        s1_c1: &ControlFlowGraphVertex,
+        s_c: &Mcrl2ControlFlowGraphVertex,
+        s1_c: &Mcrl2ControlFlowGraphVertex,
+        s_c1: &Mcrl2ControlFlowGraphVertex,
+        s1_c1: &Mcrl2ControlFlowGraphVertex,
     ) -> Result<(), MercError> {
         let edges_c = s_c.outgoing_edges().iter().find(|(vertex, _)| *vertex == s1_c.get());
         let edges_c1 = s_c1.outgoing_edges().iter().find(|(vertex, _)| *vertex == s1_c1.get());
@@ -496,7 +496,11 @@ impl SymmetryAlgorithm {
 
     /// Checks whether two control flow graphs have compatible vertex sets, meaning that the PVI and values of the
     /// vertices match. Returns Ok when the check succeeds, and an Err with a reason otherwise.
-    fn vertex_sets_compatible(&self, c: &ControlFlowGraph, c_prime: &ControlFlowGraph) -> Result<(), MercError> {
+    fn vertex_sets_compatible(
+        &self,
+        c: &Mcrl2ControlFlowGraph,
+        c_prime: &Mcrl2ControlFlowGraph,
+    ) -> Result<(), MercError> {
         if c.vertices().len() != c_prime.vertices().len() {
             return Err(format!(
                 "Different number of vertices ({} != {}).",
@@ -538,7 +542,7 @@ impl SymmetryAlgorithm {
     /// Takes a detail::permutation and a control flow parameter and returns true or
     /// false depending on whether the detail::permutation complies with the control
     /// flow parameter.
-    fn complies_cfg(&self, pi: &Permutation, c: &ControlFlowGraph) -> bool {
+    fn complies_cfg(&self, pi: &Permutation, c: &Mcrl2ControlFlowGraph) -> bool {
         let c1 = self
             .state_graph
             .control_flow_graphs()
@@ -641,7 +645,11 @@ impl SymmetryAlgorithm {
     /// Computes the sizes(c, s, s')
     ///
     /// TODO: used is used_for and used_in in the theory (and should be split eventually)
-    fn sizes(&self, s: &mcrl2::ControlFlowGraphVertex, s1: &mcrl2::ControlFlowGraphVertex) -> Vec<(usize, usize)> {
+    fn sizes(
+        &self,
+        s: &mcrl2::Mcrl2ControlFlowGraphVertex,
+        s1: &mcrl2::Mcrl2ControlFlowGraphVertex,
+    ) -> Vec<(usize, usize)> {
         if let Some((_, edges)) = s.outgoing_edges().iter().find(|(vertex, _)| *vertex == s1.get()) {
             let mut result = Vec::new();
 
@@ -765,7 +773,7 @@ fn replace_variables_by_omega(expression: &DataExpression) -> DataExpression {
 const UNDEFINED_VERTEX: usize = usize::MAX;
 
 /// Returns the index of the variable that the control flow graph represents.
-pub fn variable_index(cfg: &ControlFlowGraph) -> usize {
+pub fn variable_index(cfg: &Mcrl2ControlFlowGraph) -> usize {
     // Find the first defined index
     let defined_index = cfg
         .vertices()
