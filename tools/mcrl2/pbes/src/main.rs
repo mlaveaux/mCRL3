@@ -56,6 +56,7 @@ use merc_explore::CacheLPS;
 use merc_explore::CachingStrategy;
 use merc_explore::ExplorationStrategy;
 use merc_explore::Summand;
+use merc_vpg::ExtendedParityGame;
 use merc_vpg::PG;
 use merc_vpg::PGBuilder;
 use merc_vpg::ParityGame;
@@ -63,6 +64,7 @@ use merc_vpg::ParityGameBuilder;
 use merc_vpg::Player;
 use merc_vpg::Solver;
 use merc_vpg::VertexIndex;
+use merc_vpg::check_strategy;
 use merc_vpg::convert_symbolic_parity_game;
 use merc_vpg::solve_priority_promotion;
 use merc_vpg::solve_symbolic_zielonka;
@@ -398,10 +400,13 @@ struct SolveSymbolicArgs {
     symbolic: SymbolicExploreArgs,
 
     /// Write the explicit decoding of the symbolic parity game to this file in the PGSolver `.pg`
-    /// format, for debugging. Not an mCRL2 feature; reuses `merc_vpg::convert_symbolic_parity_game`
-    /// and `write_pg`. Can be expensive for a large game — every reachable vertex is enumerated.
+    /// format, for debugging.
     #[arg(long, short('o'), value_name = "FILE")]
     output: Option<PathBuf>,
+
+    /// Whether to verify the solution after computing it.
+    #[arg(long, default_value_t = false)]
+    verify_solution: bool,
 }
 
 /// Parses the `--groups` argument, since [`MercError`] is not a [`std::error::Error`] that clap accepts.
@@ -476,11 +481,7 @@ impl InputArgs {
     /// Reads the PBES in the explicitly chosen format, or the binary PBES format
     /// when no format is given.
     ///
-    /// Unless `preprocess` is false, the PBES is put through the same preprocessing
-    /// that mCRL2 applies before instantiating one. Doing it here rather than inside
-    /// a single explorer keeps every consumer of this PBES — the explorers, the
-    /// symmetry detection and the parameter basis the generators index into —
-    /// looking at the same equations.
+    /// If `preprocess` is false, the PBES is not preprocessed.
     fn read(&self, timing: &Timing, preprocess: bool) -> Result<Pbes, MercError> {
         let mut pbes = timing.measure("load PBES", || match self.format.unwrap_or(PbesFormat::Pbes) {
             PbesFormat::Pbes => Pbes::from_file(&self.filename),
@@ -692,7 +693,14 @@ fn handle_solve_symbolic(
     let srf_pbes = args.symbolic.build_srf(&pbes)?;
 
     let symbolic = timing.measure("instantiation", || {
-        explore_pbes_symbolic_game(&storage, srf_pbes, &encoding, args.symbolic.cached, timing)
+        explore_pbes_symbolic_game(
+            &storage,
+            srf_pbes,
+            &encoding,
+            args.symbolic.cached,
+            args.verify_solution,
+            timing,
+        )
     })?;
 
     if let Some(output) = &args.output {
@@ -702,14 +710,26 @@ fn handle_solve_symbolic(
         info!("Parity game written to '{}'", output.display());
     }
 
-    let (winner, _) = timing.measure("solve", || {
+    // Verifying needs the full winning partition, not just the initial vertex's winner, so it
+    // disables the early termination plain solving relies on for speed.
+    let (winner, solution) = timing.measure("solve", || {
         solve_symbolic_zielonka(
-            &symbolic.game,
-            &symbolic.initial_vertex,
-            &symbolic.vertices,
-            &symbolic.sinks,
+            &ExtendedParityGame {
+                game: &symbolic.game,
+                initial_vertex: &symbolic.initial_vertex,
+                vertices: &symbolic.vertices,
+                sinks: &symbolic.sinks,
+            },
+            !args.verify_solution,
         )
     })?;
+
+    if args.verify_solution {
+        timing.measure("verify", || {
+            check_strategy(&symbolic.game, &symbolic.initial_vertex, &symbolic.vertices, &solution)
+        })?;
+    }
+
     println!("{}", winner.solution());
 
     Ok(())
