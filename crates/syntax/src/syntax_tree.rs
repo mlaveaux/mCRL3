@@ -426,9 +426,10 @@ pub struct DataExprUpdate {
 pub struct Assignment {
     pub identifier: String,
     pub expr: DataExpr,
+    pub span: Span,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ProcExprBinaryOp {
     Sequence,
     Choice,
@@ -441,7 +442,7 @@ pub enum ProcExprBinaryOp {
 /// The kind of a [ProcessExpr] node, without its source span. Every recursive
 /// child is a [ProcessExpr] (a [Spanned] wrapper), so each node carries its own
 /// location.
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ProcessExprKind {
     Id(String, Vec<Assignment>),
     Action(String, Vec<DataExpr>),
@@ -962,7 +963,7 @@ impl From<RegFrmKind> for RegFrm {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Rename {
     pub from: String,
     pub to: String,
