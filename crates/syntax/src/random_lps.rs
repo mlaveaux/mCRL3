@@ -74,6 +74,7 @@ pub fn random_lps<R: Rng>(
                             vec![Assignment {
                                 identifier: "s".to_string(),
                                 expr: DataExprKind::Number(to.to_string()).into(),
+                                span: Span::default(),
                             }],
                         )
                         .into(),
@@ -122,6 +123,7 @@ pub fn random_lps<R: Rng>(
         vec![Assignment {
             identifier: "s".to_string(),
             expr: DataExprKind::Number(init_state.to_string()).into(),
+            span: Span::default(),
         }],
     )
     .into();
@@ -192,6 +194,7 @@ fn random_process_instance<R: Rng>(rng: &mut R, pv: &ProcVar, freevars: &[IdDecl
             Assignment {
                 identifier: p.identifier.clone(),
                 expr,
+                span: Span::default(),
             }
         })
         .collect();
@@ -473,6 +476,7 @@ pub fn make_process_specification<R: Rng>(
                     Assignment {
                         identifier: p.identifier.clone(),
                         expr,
+                        span: Span::default(),
                     }
                 })
                 .collect();

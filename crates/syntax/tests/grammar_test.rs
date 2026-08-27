@@ -233,3 +233,53 @@ fn eqn_spec_span_without_a_var_section_starts_at_eqn() {
     let block = &text[eqn_spec.span.start..eqn_spec.span.end];
     assert_eq!(block, "eqn f = true;");
 }
+
+/// A grouped declaration (`sort A, B, C;`, and its `cons`/`map`/`var`/`glob`/`act` siblings) used
+/// to give every identifier in the group the same span.
+#[test]
+fn grouped_sort_declarations_get_distinct_precise_spans() {
+    let text = "sort A, B, C;";
+    let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
+    let spans: Vec<&str> = spec.sort_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    assert_eq!(spans, ["A", "B", "C"]);
+}
+
+#[test]
+fn grouped_constructor_declarations_get_distinct_precise_spans() {
+    let text = "sort D; cons c1, c2: D;";
+    let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
+    let spans: Vec<&str> =
+        spec.constructor_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    assert_eq!(spans, ["c1", "c2"]);
+}
+
+#[test]
+fn grouped_action_declarations_get_distinct_precise_spans() {
+    let text = "act a, b: Bool;";
+    let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
+    let spans: Vec<&str> = spec.action_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    assert_eq!(spans, ["a", "b"]);
+}
+
+/// `Assignment` (a process instantiation's `x = e`, as in `P(x = 1)`) used to carry no span at
+/// all.
+#[test]
+fn assignment_span_is_precisely_the_identifier() {
+    let text = "proc P(x: Bool) = delta; init P(x = true);";
+    let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
+    let merc_syntax::ProcessExprKind::Id(_, assignments) = &spec.init.expect("the fixture has an init").node else {
+        panic!("expected `init` to be a process instantiation");
+    };
+    let assignment = &assignments[0];
+    assert_eq!(&text[assignment.span.start..assignment.span.end], "x");
+}
+
+/// `ProcDecl`'s span used to cover the whole `P(params) = body;`.
+#[test]
+fn process_declaration_span_is_precisely_the_identifier() {
+    let text = "proc P(x: Bool) = delta;\nproc Q = tau;\ninit P(true);";
+    let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
+    let spans: Vec<&str> =
+        spec.process_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    assert_eq!(spans, ["P", "Q"]);
+}

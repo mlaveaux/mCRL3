@@ -376,13 +376,12 @@ impl Mcrl2Parser {
     }
 
     fn ActDecl(decl: ParseNode) -> ParseResult<Vec<ActDecl>> {
-        let span = decl.as_span();
         match_nodes!(decl.into_children();
             [IdList(identifiers)] => {
-                Ok(identifiers.iter().map(|name| ActDecl { identifier: name.clone(), args: Vec::new(), span: span.into() }).collect())
+                Ok(identifiers.into_iter().map(|(name, span)| ActDecl { identifier: name, args: Vec::new(), span }).collect())
             },
             [IdList(identifiers), SortProduct(args)] => {
-                Ok(identifiers.iter().map(|name| ActDecl { identifier: name.clone(), args: args.clone(), span: span.into() }).collect())
+                Ok(identifiers.into_iter().map(|(name, span)| ActDecl { identifier: name, args: args.clone(), span }).collect())
             },
         )
     }
@@ -537,14 +536,16 @@ impl Mcrl2Parser {
         let span = decl.as_span();
 
         match_nodes!(decl.into_children();
+            // The alias form (`sort A = Bool;`) always names exactly one sort per node.
             [IdAt(identifier), SortExpr(expr)] => {
                 Ok(vec![SortDecl::new(identifier, Some(expr), span.into())])
             },
+            // `sort A, B, C;`: each gets its own precise identifier span (see `IdList`).
             [IdList(ids)] => {
-                Ok(ids.iter().map(|identifier| SortDecl::new(identifier.clone(), None, span.into())).collect())
+                Ok(ids.into_iter().map(|(identifier, span)| SortDecl::new(identifier, None, span)).collect())
             },
             [IdsDecl(decl)] => {
-                Ok(decl.iter().map(|element| SortDecl::new(element.identifier.clone(), Some(element.sort.clone()), span.into())).collect())
+                Ok(decl.into_iter().map(|element| SortDecl::new(element.identifier, Some(element.sort), element.span)).collect())
             }
         )
     }
@@ -574,22 +575,26 @@ impl Mcrl2Parser {
     }
 
     fn ProcDecl(decl: ParseNode) -> ParseResult<ProcDecl> {
-        let span = decl.as_span();
+        // The rule starts exactly at `identifier`, so its own span is cheap to
+        // compute directly.
+        let start = decl.as_span().start();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params), ProcExpr(body)] => {
+                let span = Span { start, end: start + identifier.len() };
                 Ok(ProcDecl {
                     identifier,
                     params,
                     body,
-                    span: span.into(),
+                    span,
                 })
             },
             [Id(identifier), ProcExpr(body)] => {
+                let span = Span { start, end: start + identifier.len() };
                 Ok(ProcDecl {
                     identifier,
                     params: Vec::new(),
                     body,
-                    span: span.into(),
+                    span,
                 })
             }
         )
@@ -703,9 +708,13 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn Assignment(assignment: ParseNode) -> ParseResult<Assignment> {
+        // The rule starts exactly at `identifier`, so its own span is cheap to
+        // compute without a dedicated span.
+        let start = assignment.as_span().start();
         match_nodes!(assignment.into_children();
             [IdAt(identifier), DataExpr(expr)] => {
-                Ok(Assignment { identifier, expr })
+                let span = Span { start, end: start + identifier.len() };
+                Ok(Assignment { identifier, expr, span })
             },
         )
     }
@@ -749,11 +758,10 @@ impl Mcrl2Parser {
     fn VarsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
         let mut vars = Vec::new();
 
-        let span = decl.as_span();
         match_nodes!(decl.into_children();
-            [IdList(identifier), SortExpr(sort)] => {
-                for id in identifier {
-                    vars.push(IdDecl::new(id, sort.clone(), span.into()));
+            [IdList(identifiers), SortExpr(sort)] => {
+                for (id, span) in identifiers {
+                    vars.push(IdDecl::new(id, sort.clone(), span));
                 }
             },
         );
@@ -773,24 +781,16 @@ impl Mcrl2Parser {
         Ok(identifier.as_str().to_string())
     }
 
-    pub(crate) fn IdList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
-        match_nodes!(identifiers.into_children();
-            [IdAt(ids)..] => {
-                Ok(ids.collect())
-            },
-        )
+    pub(crate) fn IdList(identifiers: ParseNode) -> ParseResult<Vec<(String, Span)>> {
+        Ok(identifiers.into_children().map(|node| (node.as_str().to_string(), node.as_span().into())).collect())
     }
 
     fn IdInfix(identifier: ParseNode) -> ParseResult<String> {
         Ok(identifier.as_str().to_string())
     }
 
-    fn IdInfixList(identifiers: ParseNode) -> ParseResult<Vec<String>> {
-        match_nodes!(identifiers.into_children();
-            [IdInfix(ids)..] => {
-                Ok(ids.collect())
-            },
-        )
+    fn IdInfixList(identifiers: ParseNode) -> ParseResult<Vec<(String, Span)>> {
+        Ok(identifiers.into_children().map(|node| (node.as_str().to_string(), node.as_span().into())).collect())
     }
 
     // Complex sorts
@@ -950,10 +950,11 @@ impl Mcrl2Parser {
     }
 
     fn VarDecl(decl: ParseNode) -> ParseResult<IdDecl> {
-        let span = decl.as_span();
+        let start = decl.as_span().start();
         match_nodes!(decl.into_children();
             [IdAt(identifier), SortExpr(sort)] => {
-                Ok(IdDecl::new(identifier, sort, span.into()))
+                let span = Span { start, end: start + identifier.len() };
+                Ok(IdDecl::new(identifier, sort, span))
             },
         )
     }
@@ -989,7 +990,7 @@ impl Mcrl2Parser {
     pub(crate) fn ActIdSet(actions: ParseNode) -> ParseResult<Vec<String>> {
         match_nodes!(actions.into_children();
             [IdList(list)] => {
-                Ok(list)
+                Ok(list.into_iter().map(|(name, _)| name).collect())
             },
         )
     }
@@ -1439,11 +1440,10 @@ impl Mcrl2Parser {
     }
 
     fn IdsDecl(decl: ParseNode) -> ParseResult<Vec<IdDecl>> {
-        let span = decl.as_span();
         match_nodes!(decl.into_children();
             [IdInfixList(identifiers), SortExpr(sort)] => {
-                let id_decls = identifiers.into_iter().map(|identifier| {
-                    IdDecl::new(identifier, sort.clone(), span.into())
+                let id_decls = identifiers.into_iter().map(|(identifier, span)| {
+                    IdDecl::new(identifier, sort.clone(), span)
                 }).collect();
 
                 Ok(id_decls)
