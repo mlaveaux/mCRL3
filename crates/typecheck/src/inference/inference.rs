@@ -2308,9 +2308,8 @@ mod tests {
                 // `Display` parenthesizes the product sort; the span still
                 // points at the unparenthesized source text.
                 assert_eq!(sort, "(Nat # Nat)");
-                // The span covers the whole binder declaration `x: Nat # Nat`
-                // (with the trailing whitespace up to the `|`).
-                assert_eq!(&text[span.start..span.end], "x: Nat # Nat ");
+                // The span is precisely the binder's own identifier.
+                assert_eq!(&text[span.start..span.end], "x");
             }
             other => panic!("expected InvalidBinderSort, got {other}"),
         }

@@ -4,6 +4,7 @@
 mod check;
 mod error;
 mod process_specification;
+mod reparse;
 
 pub use error::ProcessError;
 pub use process_specification::ProcessSpecification;
