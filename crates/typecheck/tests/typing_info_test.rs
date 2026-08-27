@@ -102,7 +102,7 @@ fn test_constructor_goto_def_points_at_its_declaration() {
         ResolvedName::Constructor { name, declaration, .. } => {
             assert_eq!(name, "c");
             let span = declaration.expect("a plain `cons` declaration has a real span");
-            assert_eq!(&text[span.start..span.end], "c: D");
+            assert_eq!(&text[span.start..span.end], "c", "the declaration span is precisely the identifier, not `c: D`");
         }
         other => panic!("expected a Constructor resolution, got {other:?}"),
     }
@@ -115,7 +115,7 @@ fn test_mapping_goto_def_points_at_its_declaration() {
         ResolvedName::Mapping { name, declaration, .. } => {
             assert_eq!(name, "f");
             let span = declaration.expect("a plain `map` declaration has a real span");
-            assert_eq!(&text[span.start..span.end], "f: Bool");
+            assert_eq!(&text[span.start..span.end], "f", "the declaration span is precisely the identifier, not `f: Bool`");
         }
         other => panic!("expected a Mapping resolution, got {other:?}"),
     }
@@ -145,7 +145,7 @@ fn test_duplicate_declaration_resolves_to_the_first() {
     match resolved_name_at(text, "f =") {
         ResolvedName::Mapping { declaration, .. } => {
             let span = declaration.expect("a plain `map` declaration has a real span");
-            assert_eq!(&text[span.start..span.end], "f: Nat", "should resolve to the first declaration");
+            assert_eq!(&text[span.start..span.end], "f", "should resolve to the first declaration, and be precisely the identifier");
         }
         other => panic!("expected a Mapping resolution, got {other:?}"),
     }

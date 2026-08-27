@@ -21,6 +21,7 @@ use crate::ResolvedSortId;
 
 use super::ProcessError;
 use super::check;
+use super::reparse;
 
 /// A type-checked mCRL2 process specification: the data specification plus its `act`, `proc`,
 /// `glob`, and `init` declarations, all resolved and checked against it.
@@ -28,10 +29,7 @@ use super::check;
 /// See the crate README for what's scoped in and out of this — most notably, communication
 /// sort-compatibility is not checked yet.
 pub struct ProcessSpecification {
-    /// The original specification, *minus* its data specification: `spec.data_specification` is
-    /// always a moved-out `UntypedDataSpecification::default()` (the real one lives in `data`
-    /// below) — never read this field directly, only through the accessor methods below, which
-    /// route around that footgun.
+    /// The original specification, *minus* its data specification.
     spec: UntypedProcessSpecification,
     data: DataSpecification,
 }
@@ -46,6 +44,9 @@ impl ProcessSpecification {
     /// [`DataSpecification::from_untyped_with`] does), then its action declarations' argument
     /// sorts, its global variables, and every `proc` body and `init` against them.
     pub fn from_untyped_with(mut spec: UntypedProcessSpecification, encoding: NumberEncoding) -> Result<Self, ProcessError> {
+        // Semantic-aware reparsing first.
+        reparse::reparse_process_specification(&mut spec);
+
         let data_spec = std::mem::take(&mut spec.data_specification);
         let mut data = DataSpecification::from_untyped_with(data_spec, encoding)?;
 

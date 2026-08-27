@@ -8,11 +8,14 @@
 //! would hand back roots stripped of exactly what checking a root needs — the expected sort and
 //! the variable scope at that point. This module *is* that walk, hand-written once, over
 //! [`ProcessExprKind`] directly.
+//!
+//! By the time this runs, [`super::reparse`] has already fixed up every `Condition` the grammar
+//! misparsed because of mCRL2's `.`/`+` ambiguity (see its module doc comment and the crate
+//! README) — this walk can assume every `Condition` it sees is already correctly shaped, and
+//! needs no error-driven recovery of its own.
 
 use merc_syntax::Assignment;
 use merc_syntax::DataExpr;
-use merc_syntax::DataExprBinaryOp;
-use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
 use merc_syntax::ProcessExpr;
 use merc_syntax::ProcessExprKind;
@@ -102,7 +105,7 @@ fn check_process_expr<'a>(
 
         ProcessExprKind::Condition { condition, then, else_ } => {
             let bool_sort = data.context().sorts.bool_sort();
-            check_condition(data, tables, scope, condition, bool_sort)?;
+            check_expression_against(data, scope, condition, bool_sort)?;
             check_process_expr(data, tables, scope, then)?;
             if let Some(else_) = else_ {
                 check_process_expr(data, tables, scope, else_)?;
@@ -181,67 +184,6 @@ fn check_expression_against(
     let (ctx, spec, system) = data.context_and_specs_mut();
     infer_expression_in_scope(ctx, spec, system, &lowered, &scope.variables, Some(expected))?;
     Ok(())
-}
-
-/// Checks `condition` against `Bool`, recovering from mCRL2's well-known ambiguity between
-/// process sequential composition and the data "at" (function/list indexing) operator, which
-/// share the `.` token (see the crate README): `act(args) . cond -> then <> else` parses its
-/// whole `act(args) . cond` as *one* `DataExprAt` chain, rather than a process step followed by
-/// the real trailing condition, because the (context-free) grammar's `->`-prefix rule always
-/// tries the greedy DataExpr reading first and only semantic information — which name is
-/// declared as what, gathered by [`super::process_specification::DeclarationTables::build`] —
-/// can actually disambiguate the two readings.
-///
-/// If `condition` type checks as `Bool` outright, this is a no-op (the overwhelmingly common
-/// case — no misparse to recover from). Otherwise, flattens `condition`'s left-associative `.`
-/// chain and, if its *last* piece alone type checks as `Bool`, treats every earlier piece as an
-/// action or (positional) process-instantiation step to check and run first. Any failure along
-/// the way — the last piece still doesn't type check alone, or an earlier piece isn't shaped
-/// like a plain action/process call — falls back to reporting the *original* whole-condition
-/// error, which is more informative than one from a speculative reinterpretation that was itself
-/// on the wrong track.
-fn check_condition(
-    data: &mut DataSpecification,
-    tables: &DeclarationTables,
-    scope: &mut Scope<'_>,
-    condition: &DataExpr,
-    bool_sort: ResolvedSortId,
-) -> Result<(), ProcessError> {
-    let Err(original_error) = check_expression_against(data, scope, condition, bool_sort) else {
-        return Ok(());
-    };
-
-    let parts = flatten_at_chain(condition);
-    let (last, prefix) = parts.split_last().expect("flatten_at_chain always returns at least one part");
-    if prefix.is_empty() || check_expression_against(data, scope, last, bool_sort).is_err() {
-        return Err(original_error);
-    }
-
-    for piece in prefix {
-        let DataExprKind::Application { function, arguments } = &piece.node else {
-            return Err(original_error);
-        };
-        let DataExprKind::Id(name) = &function.node else {
-            return Err(original_error);
-        };
-        check_action_or_process(data, tables, scope, name, arguments, &piece.span)?;
-    }
-    Ok(())
-}
-
-/// Flattens a left-associative `Binary { op: At, lhs, rhs }` chain (`a . b . c` parses as
-/// `(a . b) . c`) back into its original left-to-right pieces `[a, b, c]`. A `condition` whose
-/// top-level node isn't `At` at all flattens to the single piece `[condition]`.
-fn flatten_at_chain(expr: &DataExpr) -> Vec<&DataExpr> {
-    let mut parts = Vec::new();
-    let mut current = expr;
-    while let DataExprKind::Binary { op: DataExprBinaryOp::At, lhs, rhs } = &current.node {
-        parts.push(rhs.as_ref());
-        current = lhs;
-    }
-    parts.push(current);
-    parts.reverse();
-    parts
 }
 
 /// Resolves `name(args)` (an action instance or a positional process instantiation — the grammar
@@ -328,7 +270,7 @@ fn check_instantiation(
     let mut successes = 0usize;
     let mut first_error = None;
     for &index in indices {
-        match check_one_instantiation(data, scope, &tables.process_params[index], assignments, name, span) {
+        match check_one_instantiation(data, scope, &tables.process_params[index], assignments, name) {
             Ok(()) => successes += 1,
             Err(error) => drop(first_error.get_or_insert(error)),
         }
@@ -347,16 +289,13 @@ fn check_one_instantiation(
     params: &[(String, ResolvedSortId)],
     assignments: &[Assignment],
     process: &str,
-    // `Assignment` carries no span of its own (see the crate README); an error about one is
-    // located at the enclosing instantiation instead.
-    span: &Span,
 ) -> Result<(), ProcessError> {
     for assignment in assignments {
         let Some(&(_, sort)) = params.iter().find(|(param, _)| *param == assignment.identifier) else {
             return Err(ProcessError::UnknownProcessParameter {
                 process: process.to_string(),
                 name: assignment.identifier.clone(),
-                span: span.clone(),
+                span: assignment.span.clone(),
             });
         };
         check_expression_against(data, scope, &assignment.expr, sort)?;
