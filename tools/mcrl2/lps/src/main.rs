@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::fmt;
 
 use clap::Parser;
 use clap::Subcommand;
@@ -101,6 +102,54 @@ enum Commands {
     ExploreExplicit(ExploreExplicitArgs),
 }
 
+/// The order in which process parameters are considered for reordering.
+#[derive(Debug, Clone)]
+enum Order {
+    /// Do not reorder the process parameters, the default.
+    None,
+
+    /// The MINCE algorithm for reordering process parameters, requires the
+    /// 'kahypar' tool.
+    Mince,
+
+    /// An explicit order given as a whitespace separated string of numbers.
+    Explicit(Vec<usize>),
+}
+
+impl fmt::Display for Order {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Mince => write!(f, "mince"),
+            Self::Explicit(order) => {
+                for (i, index) in order.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{index}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+fn parse_order(s: &str) -> Result<Order, String> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(Order::None),
+        "mince" => Ok(Order::Mince),
+        _ => {
+            // Parse the permutation
+            let permutation = s
+                .split_whitespace()
+                .map(|s| s.parse::<usize>())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| format!("Failed to parse explicit order: {}", error.to_string()))?;
+            Ok(Order::Explicit(permutation))
+        }
+    }
+}
+
 /// The input LPS shared by every subcommand.
 #[derive(clap::Args, Debug)]
 struct InputArgs {
@@ -148,10 +197,9 @@ struct ExploreArgs {
     #[arg(long, default_value_t = SummandGrouping::default(), value_parser = parse_grouping)]
     groups: SummandGrouping,
 
-    /// Reorder the process parameters with the MINCE algorithm before exploring, which requires the
-    /// KaHyPar tool. The reachable states are unaffected, only the size of the decision diagrams.
-    #[arg(long)]
-    reorder: bool,
+    /// Reorder the process parameters with the MINCE algorithm before exploring
+    #[arg(long, default_value_t = Order::None, value_parser = parse_order)]
+    reorder: Order,
 
     #[command(flatten)]
     kahypar: KaHyParArgs,
@@ -174,15 +222,19 @@ struct ExploreArgs {
 impl ExploreArgs {
     /// Returns the variable order to explore with, resolving the KaHyPar tool when `--reorder` is set.
     fn variable_order(&self) -> Result<VariableOrder, MercError> {
-        if !self.reorder {
-            return Ok(VariableOrder::None);
+        match &self.reorder {
+            Order::None => return Ok(VariableOrder::None),
+            Order::Mince => {
+                let (kahypar_path, kahypar_ini_path) = self.kahypar.resolve()?;
+                return Ok(VariableOrder::Mince {
+                    kahypar_path,
+                    kahypar_ini_path,
+                });
+            }
+            Order::Explicit(order) => {
+                return Ok(VariableOrder::Explicit(order.clone()));
+            },
         }
-
-        let (kahypar_path, kahypar_ini_path) = self.kahypar.resolve()?;
-        Ok(VariableOrder::Mince {
-            kahypar_path,
-            kahypar_ini_path,
-        })
     }
 }
 

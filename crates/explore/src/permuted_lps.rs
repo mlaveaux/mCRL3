@@ -151,8 +151,9 @@ impl<P: LPS> LPS for PermutedLps<P> {
     type Value = P::Value;
     type Label = P::Label;
     type StateInfo = P::StateInfo;
-    const HAS_LABELS: bool = P::HAS_LABELS;
     type Summand = PermutedSummand<P>;
+
+    const HAS_LABELS: bool = P::HAS_LABELS;
 
     fn initial_state(&self) -> Vec<Self::Value> {
         let initial = self.inner.initial_state();

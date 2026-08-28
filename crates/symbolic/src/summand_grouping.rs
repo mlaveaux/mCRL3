@@ -354,7 +354,10 @@ pub fn print_transition_groups(groups: &[Vec<usize>], group_patterns: &[ReadWrit
 
 /// Groups the indices of `patterns` by the given key, keeping the groups in the order in which their
 /// key was first encountered.
-fn group_by_key<K: PartialEq>(patterns: &[ReadWritePattern], key: impl Fn(&ReadWritePattern) -> K) -> Vec<Vec<usize>> {
+fn group_by_key<K: PartialEq, F>(patterns: &[ReadWritePattern], key: F) -> Vec<Vec<usize>>
+where
+    F: Fn(&ReadWritePattern) -> K,
+{
     let mut keys: Vec<K> = Vec::new();
     let mut groups: Vec<Vec<usize>> = Vec::new();
 
