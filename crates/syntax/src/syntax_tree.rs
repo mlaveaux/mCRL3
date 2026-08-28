@@ -46,7 +46,7 @@ pub struct EqnVarTag;
 pub type EqnVarId = TagIndex<usize, EqnVarTag>;
 
 /// A complete mCRL2 process specification.
-#[derive(Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedProcessSpecification {
     pub data_specification: UntypedDataSpecification,
     pub global_variables: Vec<IdDecl>,
@@ -297,7 +297,7 @@ pub struct EqnDecl {
 }
 
 /// Action declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ActDecl {
     pub identifier: String,
     pub args: Vec<SortExpression>,
@@ -305,7 +305,7 @@ pub struct ActDecl {
 }
 
 /// Process declaration
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ProcDecl {
     pub identifier: String,
     pub params: Vec<IdDecl>,
