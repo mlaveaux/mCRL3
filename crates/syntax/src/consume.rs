@@ -533,20 +533,20 @@ impl Mcrl2Parser {
     }
 
     fn SortDecl(decl: ParseNode) -> ParseResult<Vec<SortDecl>> {
-        let span = decl.as_span();
+        // The rule starts exactly at `identifier`, so the alias form's own span
+        // is cheap to compute directly.
+        let start = decl.as_span().start();
 
         match_nodes!(decl.into_children();
             // The alias form (`sort A = Bool;`) always names exactly one sort per node.
             [IdAt(identifier), SortExpr(expr)] => {
-                Ok(vec![SortDecl::new(identifier, Some(expr), span.into())])
+                let span = Span { start, end: start + identifier.len() };
+                Ok(vec![SortDecl::new(identifier, Some(expr), span)])
             },
             // `sort A, B, C;`: each gets its own precise identifier span (see `IdList`).
             [IdList(ids)] => {
                 Ok(ids.into_iter().map(|(identifier, span)| SortDecl::new(identifier, None, span)).collect())
             },
-            [IdsDecl(decl)] => {
-                Ok(decl.into_iter().map(|element| SortDecl::new(element.identifier, Some(element.sort), element.span)).collect())
-            }
         )
     }
 

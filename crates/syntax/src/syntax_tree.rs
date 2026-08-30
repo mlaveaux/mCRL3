@@ -278,7 +278,7 @@ pub struct EqnSpec {
     pub variables: Vec<IdDecl<EqnVarId>>,
     pub equations: Vec<EqnDecl>,
     /// The span of the whole `var ... eqn ...` block, from `var`/`eqn` (whichever comes first) to
-    /// the final `;`.
+    /// at least the final `;`
     pub span: Span,
     /// Unique ID assigned to this block during declaration-id resolution.
     pub id: Option<EqnSpecId>,
@@ -422,11 +422,40 @@ pub struct DataExprUpdate {
     pub update: DataExpr,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Clone, Debug)]
 pub struct Assignment {
     pub identifier: String,
     pub expr: DataExpr,
     pub span: Span,
+}
+
+impl PartialEq for Assignment {
+    fn eq(&self, other: &Self) -> bool {
+        self.identifier == other.identifier && self.expr == other.expr
+    }
+}
+
+// Plain `Eq` resolves to this file's own `enum Eq` (a PBES equality-operator, unrelated), so this
+// needs the fully-qualified path.
+impl std::cmp::Eq for Assignment {}
+
+impl PartialOrd for Assignment {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Assignment {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (&self.identifier, &self.expr).cmp(&(&other.identifier, &other.expr))
+    }
+}
+
+impl Hash for Assignment {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.identifier.hash(state);
+        self.expr.hash(state);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
