@@ -206,7 +206,7 @@ impl SymbolicParityGame {
     /// `v`.
     pub fn predecessors(&self, u: &LDDFunction, v: &LDDFunction) -> Result<LDDFunction, MercError> {
         let mut result = self.empty()?;
-        for relation in self.relations.iter().rev() {
+        for relation in &self.relations {
             result = result.union(&self.predecessors_group(relation, u, v)?)?;
         }
         Ok(result)
