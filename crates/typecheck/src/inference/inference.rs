@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use log::debug;
 use log::trace;
@@ -185,7 +185,7 @@ pub(crate) fn query_equation_typing(
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
     key: (EqnSpecId, EquationId),
-) -> Result<Rc<EquationTyping>, InferenceError> {
+) -> Result<Arc<EquationTyping>, InferenceError> {
     let (eqn_spec_id, equation_id) = key;
 
     // Checked before the cache lock: an out-of-range key would panic inside
@@ -201,7 +201,7 @@ pub(crate) fn query_equation_typing(
     ctx.get_or_compute(
         |ctx| &mut ctx.equation_typing,
         key,
-        |ctx| infer_equation(ctx, spec, system, EquationRole::User, eqn_spec_id, equation_id).map(Rc::new),
+        |ctx| infer_equation(ctx, spec, system, EquationRole::User, eqn_spec_id, equation_id).map(Arc::new),
     )
     .expect("equation typing does not depend on other equations")
 }
@@ -234,7 +234,7 @@ pub(crate) fn query_system_equation_typing(
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
     key: (EqnSpecId, EquationId),
-) -> Result<Rc<EquationTyping>, InferenceError> {
+) -> Result<Arc<EquationTyping>, InferenceError> {
     let (eqn_spec_id, equation_id) = key;
 
     debug_assert!(
@@ -248,7 +248,7 @@ pub(crate) fn query_system_equation_typing(
     ctx.get_or_compute(
         |ctx| &mut ctx.system_equation_typing,
         key,
-        |ctx| infer_equation(ctx, spec, system, EquationRole::System, eqn_spec_id, equation_id).map(Rc::new),
+        |ctx| infer_equation(ctx, spec, system, EquationRole::System, eqn_spec_id, equation_id).map(Arc::new),
     )
     .expect("equation typing does not depend on other equations")
 }
@@ -292,7 +292,7 @@ fn resolve_equation_variable_sort(
             query_sort_of_equation_var(ctx, spec, eqn_spec_id, var_id)
         }
         EquationRole::System => {
-            let sort_ids = Rc::clone(
+            let sort_ids = Arc::clone(
                 ctx.system_sort_ids
                     .as_ref()
                     .expect("resolve_system_signature_full ran before inference"),
@@ -463,17 +463,17 @@ fn infer<'a>(
         variables.insert(name, node);
     }
 
-    // The signatures are cloned out of the context (cheaply, behind `Rc`)
+    // The signatures are cloned out of the context (cheaply, behind `Arc`)
     // because the generator needs the context mutably: resolving a
     // comprehension's binder sort interns sorts and fills the sort-of-def
     // cache mid-walk.
-    let (signature, polymorphic): (Rc<Signature>, &'static PolymorphicSignature) = match role {
+    let (signature, polymorphic): (Arc<Signature>, &'static PolymorphicSignature) = match role {
         EquationRole::User => (
-            Rc::clone(ctx.signature.as_ref().expect("build_signature ran before inference")),
+            Arc::clone(ctx.signature.as_ref().expect("build_signature ran before inference")),
             &POLYMORPHIC_SIGNATURE,
         ),
         EquationRole::System => (
-            Rc::clone(
+            Arc::clone(
                 ctx.system_equation_signature_by_group
                     .get(*eqn_spec_id)
                     .expect("resolve_system_signature_full ran before inference"),
@@ -481,14 +481,14 @@ fn infer<'a>(
             &BUILTIN_SCHEME_SIGNATURE,
         ),
     };
-    let system_signature = Rc::clone(
+    let system_signature = Arc::clone(
         ctx.system_signature
             .as_ref()
             .expect("resolve_system_signature ran before inference"),
     );
     let sort_ids = match role {
         EquationRole::User => None,
-        EquationRole::System => Some(Rc::clone(
+        EquationRole::System => Some(Arc::clone(
             ctx.system_sort_ids
                 .as_ref()
                 .expect("resolve_system_signature_full ran before inference"),
@@ -848,16 +848,16 @@ enum GenFailure {
 /// eagerly, so their failure is a direct error rather than a solver miss.
 struct ConstraintGenerator<'a> {
     /// Mutable so a comprehension's binder sort can be resolved (interned)
-    /// mid-walk; the signatures below are `Rc` clones out of this same context.
+    /// mid-walk; the signatures below are `Arc` clones out of this same context.
     ctx: &'a mut TypeCheckContext,
     /// Always the true user spec, regardless of `role`.
     spec: &'a UntypedDataSpecification,
     role: EquationRole,
     /// The system-internal sort name table, present only for the `System` role.
-    sort_ids: Option<Rc<HashMap<String, ResolvedSortId>>>,
-    signature: Rc<Signature>,
+    sort_ids: Option<Arc<HashMap<String, ResolvedSortId>>>,
+    signature: Arc<Signature>,
     /// Always the basic-sort system signature, regardless of `role`.
-    system_signature: Rc<Signature>,
+    system_signature: Arc<Signature>,
     polymorphic: &'static PolymorphicSignature,
     variables: HashMap<&'a str, InferSortId>,
     unifier: &'a mut Unifier,
@@ -1201,7 +1201,7 @@ impl<'a> ConstraintGenerator<'a> {
         Ok(match self.role {
             EquationRole::User => resolve_sort(self.ctx, self.spec, sort),
             EquationRole::System => {
-                let sort_ids = Rc::clone(self.sort_ids.as_ref().expect("the System role always carries sort_ids"));
+                let sort_ids = Arc::clone(self.sort_ids.as_ref().expect("the System role always carries sort_ids"));
                 resolve_system_sort(self.ctx, self.spec, &sort_ids, sort)
                     .expect("resolve_system_signature_full already proved every system-equation sort resolves")
             }

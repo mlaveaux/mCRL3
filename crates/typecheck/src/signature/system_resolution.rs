@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::LazyLock;
 
 use merc_syntax::DataExpr;
@@ -57,7 +57,7 @@ pub(crate) fn resolve_system_signature(
         push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
     }
 
-    ctx.system_signature = Some(Rc::new(signature));
+    ctx.system_signature = Some(Arc::new(signature));
     Ok(())
 }
 
@@ -96,12 +96,12 @@ pub(crate) fn resolve_system_signature_full(
         .system_signature
         .as_deref()
         .expect("resolve_system_signature ran earlier");
-    let ambient = Rc::new(Signature {
+    let ambient = Arc::new(Signature {
         constructors: basics.constructors.clone(),
         mappings: basics.mappings.clone(),
     });
 
-    let mut by_group = vec![Rc::clone(&ambient); system.equation_declarations.len()];
+    let mut by_group = vec![Arc::clone(&ambient); system.equation_declarations.len()];
     for group in groups {
         let mut signature = Signature {
             constructors: HashMap::new(),
@@ -115,14 +115,14 @@ pub(crate) fn resolve_system_signature_full(
             let id = resolve_system_sort(ctx, user_spec, &sort_ids, &decl.sort)?;
             push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
         }
-        let group_signature = Rc::new(merge_signatures(&signature, &ambient));
+        let group_signature = Arc::new(merge_signatures(&signature, &ambient));
         for slot in &mut by_group[group.equation_range.clone()] {
-            *slot = Rc::clone(&group_signature);
+            *slot = Arc::clone(&group_signature);
         }
     }
 
     ctx.system_equation_signature_by_group = by_group;
-    ctx.system_sort_ids = Some(Rc::new(sort_ids));
+    ctx.system_sort_ids = Some(Arc::new(sort_ids));
     Ok(())
 }
 

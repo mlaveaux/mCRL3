@@ -144,16 +144,12 @@ impl DeclarationTables {
         // A name declared as both an action and a process would make `Action(name, args)`
         // (which the grammar hands out for both an action instance and a positional process
         // instantiation, see the crate README) permanently ambiguous between the two tables.
-        for name in actions_by_name.keys() {
-            if processes_by_name.contains_key(name) {
-                let span = spec
-                    .action_declarations
-                    .iter()
-                    .find(|decl| &decl.identifier == name)
-                    .expect("actions_by_name only ever names a declared action")
-                    .span
-                    .clone();
-                return Err(ProcessError::ActionAndProcessConflict { name: name.clone(), span });
+        // Iterates `action_declarations` itself (source-order, deterministic) rather than
+        // `actions_by_name`'s keys (a `HashMap`, iteration order unspecified) — with more than one
+        // conflicting name, which one gets reported would otherwise vary from run to run.
+        for decl in &spec.action_declarations {
+            if processes_by_name.contains_key(&decl.identifier) {
+                return Err(ProcessError::ActionAndProcessConflict { name: decl.identifier.clone(), span: decl.span.clone() });
             }
         }
 

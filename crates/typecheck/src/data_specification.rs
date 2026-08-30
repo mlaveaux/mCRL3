@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::ops::Range;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use log::debug;
 
@@ -249,7 +249,7 @@ impl DataSpecification {
                 constructor_names,
                 mapping_names,
             );
-            let signature = Rc::new(merge_signatures(
+            let signature = Arc::new(merge_signatures(
                 &struct_signature,
                 context
                     .system_signature
@@ -257,7 +257,7 @@ impl DataSpecification {
                     .expect("resolve_system_signature ran earlier"),
             ));
             for slot in &mut context.system_equation_signature_by_group[range.clone()] {
-                *slot = Rc::clone(&signature);
+                *slot = Arc::clone(&signature);
             }
         }
         debug!("typecheck: resolved the system-equation signatures");
@@ -564,7 +564,7 @@ fn flatten_function_domain_rec(sort: &SortExpression, domain: &mut Vec<SortExpre
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     use merc_syntax::EqnSpecId;
     use merc_syntax::EquationId;
@@ -582,8 +582,8 @@ mod tests {
         let key = (EqnSpecId::new(0), EquationId::new(0));
 
         // `from_untyped` already inferred and cached this equation; querying
-        // again must return the very same `Rc`, not recompute.
-        let first = Rc::clone(
+        // again must return the very same `Arc`, not recompute.
+        let first = Arc::clone(
             checked
                 .context
                 .equation_typing
@@ -593,7 +593,7 @@ mod tests {
                 .expect("the equation is well-typed"),
         );
         let again = query_equation_typing(&mut checked.context, &checked.spec, &checked.system, key).unwrap();
-        assert!(Rc::ptr_eq(&first, &again));
+        assert!(Arc::ptr_eq(&first, &again));
     }
 
     #[test]
