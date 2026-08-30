@@ -190,13 +190,13 @@ impl fmt::Debug for ReadWritePattern {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum SummandGrouping {
     /// Every summand gets its own transition group.
-    #[default]
     None,
 
     /// Joins the summands that use (read or write) exactly the same parameters.
     Used,
 
     /// Joins the summands with exactly the same read/write pattern.
+    #[default]
     Simple,
 
     /// A user defined partition of the summand indices, e.g. `0; 1 3 4; 2 5`.
