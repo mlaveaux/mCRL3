@@ -558,48 +558,52 @@ impl SymbolicParityGame {
         Ok(self.control_predecessors(alpha, u, v, &outside, vplayer, incomplete)?.0)
     }
 
-    /// Returns a copy of this game where every transition group owned by `alpha` has been
-    /// restricted to `strategy`.
+    /// Returns a copy of this game where every `alpha`-owned source vertex has
+    /// had its outgoing edges restricted to `strategy`.
     ///
-    /// `strategy` is expected over the doubled, interleaved global vector `[from_0, to_0, from_1,
-    /// to_1, …]`. A group is considered owned by `alpha` when *any* vertex it can fire from
-    /// belongs to `alpha` (checked once here via [`Self::predecessors_group`] against
-    /// [`Self::vertices`], since a group's ownership never actually straddles both players in
-    /// practice). A group with no strategy at all (the strategy is only ever partial for vertices
-    /// *outside* the winning region requested) is dropped to the empty relation, which is what
-    /// turns an unresolved vertex into a fresh sink for the caller
-    /// ([`verify_symbolic_strategy`][crate::symbolic::verify_symbolic::verify_symbolic_strategy]) to route through
-    /// [`Self::compute_total_graph`] again.
+    /// `strategy` is expected over the doubled, interleaved global vector
+    /// `[from_0, to_0, from_1, to_1, …]`. Restriction is per *source vertex*,
+    /// not per transition group. A group's `alpha`-owned rows are restricted to
+    /// `strategy`; every other row (including any non-`alpha`-owned rows the
+    /// same group happens to also carry) passes through unchanged. A
+    /// `alpha`-owned source with no strategy at all (the strategy is only ever
+    /// partial for vertices *outside* the winning region requested) loses its
+    /// outgoing edges entirely, which is what turns an unresolved vertex into a
+    /// fresh sink for the caller
+    /// ([`verify_symbolic_strategy`][crate::symbolic::verify_symbolic::verify_symbolic_strategy])
+    /// to route through [`Self::compute_total_graph`] again.
     pub fn apply_strategy(&self, alpha: Player, strategy: &LDDFunction) -> Result<Self, MercError> {
         let all_vertices = self.vertices();
         let strategy_is_empty = strategy.is_empty();
+        let alpha_vertices = &self.owned[alpha.to_index()];
 
         let mut relations = Vec::with_capacity(self.relations.len());
         for relation in &self.relations {
-            let domain = self.predecessors_group(relation, all_vertices, all_vertices)?;
-            let owner = if intersect(&domain, &self.owned[Player::Even.to_index()])?.is_empty() {
-                Player::Odd
-            } else {
-                Player::Even
-            };
+            let keep: Vec<Value> = relation
+                .read_indices
+                .iter()
+                .map(|&r| 2 * r)
+                .chain(relation.write_indices.iter().map(|&w| 2 * w + 1))
+                .collect();
+            let projection_meta = self
+                .manager
+                .with_manager_shared(|m| LDDFunction::projection_meta(m, &keep))?;
 
-            let new_relation = if owner != alpha {
-                relation.relation.clone()
-            } else if strategy_is_empty {
+            // The rows of this group whose source is `alpha`-owned, in the group's own
+            // read/write shape, found the same way `predecessors_group`'s callers restrict a
+            // global vertex set to a relation's shape (via `merge` + `project`).
+            let alpha_rows = merge(&self.manager, alpha_vertices, all_vertices)?.project(&projection_meta)?;
+            let alpha_part = intersect(&relation.relation, &alpha_rows)?;
+            let other_part = relation.relation.minus(&alpha_part)?;
+
+            let restricted_alpha_part = if strategy_is_empty {
                 self.empty()?
             } else {
-                let keep: Vec<Value> = relation
-                    .read_indices
-                    .iter()
-                    .map(|&r| 2 * r)
-                    .chain(relation.write_indices.iter().map(|&w| 2 * w + 1))
-                    .collect();
-                let projection_meta = self
-                    .manager
-                    .with_manager_shared(|m| LDDFunction::projection_meta(m, &keep))?;
                 let projected_strategy = strategy.project(&projection_meta)?;
-                intersect(&relation.relation, &projected_strategy)?
+                intersect(&alpha_part, &projected_strategy)?
             };
+
+            let new_relation = other_part.union(&restricted_alpha_part)?;
 
             relations.push(SymbolicRelation {
                 relation: new_relation,
