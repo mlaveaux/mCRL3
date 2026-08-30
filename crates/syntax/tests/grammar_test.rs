@@ -244,6 +244,16 @@ fn grouped_sort_declarations_get_distinct_precise_spans() {
     assert_eq!(spans, ["A", "B", "C"]);
 }
 
+/// The `sort A = Bool;` alias form is never grouped (it only ever names one sort), but its span
+/// used to be missed by the fix above anyway, still covering the whole `A = Bool;`.
+#[test]
+fn sort_alias_declaration_span_is_precisely_the_identifier() {
+    let text = "sort L = List(Nat);";
+    let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
+    let decl = &spec.sort_declarations[0];
+    assert_eq!(&text[decl.span.start..decl.span.end], "L");
+}
+
 #[test]
 fn grouped_constructor_declarations_get_distinct_precise_spans() {
     let text = "sort D; cons c1, c2: D;";

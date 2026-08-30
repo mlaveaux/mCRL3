@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
@@ -40,7 +40,7 @@ pub(crate) fn build_signature<'a>(
 ) -> Result<&'a Signature, WellTypedError> {
     if ctx.signature.is_none() {
         let signature = compute_signature(ctx, spec)?;
-        ctx.signature = Some(Rc::new(signature));
+        ctx.signature = Some(Arc::new(signature));
     }
 
     Ok(ctx.signature.as_deref().expect("the signature was just computed"))
