@@ -109,17 +109,18 @@ fn fix_swallow(names: &Names, node: &ProcessExpr) -> Option<ProcessExpr> {
     let ProcessExprKind::Condition { condition, then, else_ } = &node.node else {
         return None;
     };
-    Some(fix_condition(names, condition.clone(), (**then).clone(), else_.clone(), node.span.clone()))
+    Some(fix_condition(names, condition.clone(), (**then).clone(), else_.clone()))
 }
 
-/// Fixes one `Condition` node. `then`/`else_` are not yet reparsed — this function recurses into
-/// them itself, since the `+` swallow (see the module doc comment) needs to see them in their
-/// raw, as-parsed shape to recognize it. It can appear in *either* slot depending on which
-/// grammar rule produced this node: a bare `cond -> then` (no `<>`) leaves `then` unrestricted, so
-/// a further `+ cond2 -> ...` swallows into *it*; `cond -> then <> else` restricts `then` to
-/// `ProcExprNoIf` (no nested `if` at all — this grammar rule was seemingly written with exactly
-/// this ambiguity in mind), so the same swallow can only happen in `else_` instead. Either way,
-/// the fix is the same shape: pull the swallowed clause out into its own [`Choice`] branch.
+/// Fixes one `Condition` node. `then` is not yet reparsed — this function recurses into it
+/// itself, since the `+` swallow (see the module doc comment) needs to see it in its raw,
+/// as-parsed shape to recognize it: a bare `cond -> then` (no `<>`) leaves `then` unrestricted, so
+/// a further `+ cond2 -> ...` can swallow straight into it (`take_swallow`'s job). `else_`, when
+/// present, is reparsed normally and re-attached to whichever clause `condition`/`then` end up
+/// belonging to — it is *not* itself a place this swallow can start (an explicit `<>` always
+/// closes the construct it belongs to), but it must never be dropped, including when `then` did
+/// hide a swallow: a nested `if` inside `then` can have its own, unrelated swallow regardless of
+/// whether the outer construct has an `else_` of its own.
 ///
 /// A leading `.`-prefix peeled off `condition` (see [`peel_dot_prefix`]) sequences *before* the
 /// whole (possibly `+`-split) construct, not inside its `then`: `a(1) . cond -> P` means
@@ -127,44 +128,33 @@ fn fix_swallow(names: &Names, node: &ProcessExpr) -> Option<ProcessExpr> {
 /// -> (a(1) . P)`.
 ///
 /// [`Choice`]: ProcExprBinaryOp::Choice
-fn fix_condition(names: &Names, condition: DataExpr, then: ProcessExpr, else_: Option<Box<ProcessExpr>>, span: Span) -> ProcessExpr {
+fn fix_condition(names: &Names, condition: DataExpr, then: ProcessExpr, else_: Option<Box<ProcessExpr>>) -> ProcessExpr {
     // Peel `condition` itself: any leading, fully-unconditional `+`-branches first (a whole run
     // with no `->` of its own at all, up to the *one* `->` this construct actually has — see
     // `peel_condition`), then a leading `.`-prefix off whatever's left (the plain `.` case).
     let (branches, prefix, condition) = peel_condition(names, condition);
+    let else_ = else_.map(|boxed| Box::new(reparse(names, *boxed)));
 
     let result = match take_swallow(names, then) {
         Ok((this_then, rest)) => {
-            // `then` hid a further `+`-separated clause — either shape [`take_swallow`]
-            // recognizes. `else_` is always `None` here (see the doc comment above: only a bare
-            // `cond -> then`, with no `<>`, leaves `then` unrestricted enough for this to happen).
+            // `then` hid a further `+`-separated clause (see `take_swallow`). `else_` belongs to
+            // *this* clause, not `rest` — an explicit `<>` always closes the construct it was
+            // written on, never a clause a swallow only revealed after the fact.
             let this_span = Span { start: condition.span.start, end: this_then.span.end };
             let this_clause =
-                ProcessExprKind::Condition { condition, then: Box::new(this_then), else_: None }.spanned(this_span.clone());
+                ProcessExprKind::Condition { condition, then: Box::new(this_then), else_ }.spanned(this_span.clone());
             let choice_span = Span { start: this_span.start, end: rest.span.end };
             ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: Box::new(this_clause), rhs: Box::new(rest) }.spanned(choice_span)
         }
-        Err(then) => match else_.map(|boxed| take_swallow(names, *boxed)) {
-            Some(Ok((this_else, rest))) => {
-                // Same shape, but swallowed into `else_` instead (a `cond -> then <> ...`
-                // construct).
-                let this_then = reparse(names, *then);
-                let this_span = Span { start: condition.span.start, end: this_then.span.end.max(this_else.span.end) };
-                let this_clause = ProcessExprKind::Condition { condition, then: Box::new(this_then), else_: Some(Box::new(this_else)) }
-                    .spanned(this_span.clone());
-                let choice_span = Span { start: this_span.start, end: rest.span.end };
-                ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: Box::new(this_clause), rhs: Box::new(rest) }.spanned(choice_span)
-            }
-            Some(Err(else_)) => {
-                let this_then = reparse(names, *then);
-                let else_ = Some(Box::new(reparse(names, *else_)));
-                ProcessExprKind::Condition { condition, then: Box::new(this_then), else_ }.spanned(span)
-            }
-            None => {
-                let this_then = reparse(names, *then);
-                ProcessExprKind::Condition { condition, then: Box::new(this_then), else_: None }.spanned(span)
-            }
-        },
+        Err(then) => {
+            let this_then = reparse(names, *then);
+            let this_span = Span { start: condition.span.start, end: this_then.span.end };
+            let this_span = match &else_ {
+                Some(else_) => Span { end: else_.span.end, ..this_span },
+                None => this_span,
+            };
+            ProcessExprKind::Condition { condition, then: Box::new(this_then), else_ }.spanned(this_span)
+        }
     };
 
     let result = prepend_seq(prefix, result);
@@ -203,21 +193,21 @@ fn peel_condition(names: &Names, condition: DataExpr) -> (Vec<ProcessExpr>, Vec<
     (branches, prefix, remaining)
 }
 
-/// If `node` hides a swallowed `+`-separated clause, fixes and extracts it as
-/// `Ok((this_clause_content, rest))` — `rest` fully reparsed and ready to use as-is. Otherwise
-/// hands `node` straight back, boxed, as `Err` (boxed only to keep this `Result` from ballooning
-/// to `ProcessExprKind`'s own size — clippy's `result_large_err`). Two distinct shapes both
-/// count, both arising from the same underlying pest/PEG quirk: a `cond -> then` prefix's `then`
-/// continuation doesn't stop where it should, at the next lower-precedence infix operator
-/// (`+`/`Choice` is the only one this crate's corpus has been observed to need):
+/// If `node` is `Condition { condition: Binary { op: Add, lhs, rhs }, then: inner_then, else_:
+/// inner_else }` with `lhs` pure declared process content (see [`is_fully_process_content`]),
+/// fixes and extracts it as `Ok((this_clause_content, rest))` — `rest` fully reparsed and ready to
+/// use as-is. Otherwise hands `node` straight back, boxed, as `Err` (boxed only to keep this
+/// `Result` from ballooning to `ProcessExprKind`'s own size — clippy's `result_large_err`).
 ///
-/// - `node` is `Condition { condition: Binary { op: Add, lhs, rhs }, then: inner_then, else_:
-///   inner_else }`, where `lhs` is pure declared process content (see
-///   [`is_fully_process_content`]): the swallow happened *inside* the shared-token `DataExpr`
-///   grammar (the original, more common case — see the module doc comment).
-/// - `node` is directly `Binary { op: Choice, lhs, rhs }`: `lhs`/`rhs` never needed
-///   reinterpreting as `DataExpr` at all (nothing shared-token about them, e.g. `a|b` uses `|`,
-///   which isn't a data operator) — the *process*-level Pratt parse itself is what over-consumed.
+/// This is the one shape the swallow (see the module doc comment) can actually produce as `then`:
+/// the second `->` in `cond -> lhs + rhs -> inner_then <...>` was swallowed *inside* the
+/// shared-token `DataExpr` grammar, which only ever happens through `condition`. A bare
+/// `Binary { op: Choice, .. }` sitting directly as `then` is deliberately **not** treated as a
+/// swallow here, even though it looks superficially similar: `cond -> a + b` and `cond -> (a + b)`
+/// produce byte-identical trees (`ProcExprBrackets` adds no node of its own), so nothing here can
+/// tell a user's own, already-correct `a + b` apart from one that supposedly needs splitting —
+/// treating every such `Choice` as swallowed silently discarded a trailing `<>` branch and
+/// rewrote deliberately parenthesized choices into a different program.
 fn take_swallow(names: &Names, node: ProcessExpr) -> Result<(ProcessExpr, ProcessExpr), Box<ProcessExpr>> {
     let is_add_swallow = if let ProcessExprKind::Condition { condition, .. } = &node.node
         && let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, .. } = &condition.node
@@ -226,27 +216,19 @@ fn take_swallow(names: &Names, node: ProcessExpr) -> Result<(ProcessExpr, Proces
     } else {
         false
     };
-    if is_add_swallow {
-        let ProcessExprKind::Condition { condition, then: inner_then, else_: inner_else } = node.node else {
-            unreachable!("just matched this shape above");
-        };
-        let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, rhs } = condition.node else {
-            unreachable!("just matched this shape above");
-        };
-        let this = reinterpret_as_process(*lhs);
-        let rest_span = Span { start: rhs.span.start, end: inner_then.span.end };
-        let rest = fix_condition(names, *rhs, *inner_then, inner_else, rest_span);
-        return Ok((this, rest));
+    if !is_add_swallow {
+        return Err(Box::new(node));
     }
 
-    if matches!(&node.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, .. }) {
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs, rhs } = node.node else {
-            unreachable!("just matched this shape above");
-        };
-        return Ok((reparse(names, *lhs), reparse(names, *rhs)));
-    }
-
-    Err(Box::new(node))
+    let ProcessExprKind::Condition { condition, then: inner_then, else_: inner_else } = node.node else {
+        unreachable!("just matched this shape above");
+    };
+    let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, rhs } = condition.node else {
+        unreachable!("just matched this shape above");
+    };
+    let this = reinterpret_as_process(*lhs);
+    let rest = fix_condition(names, *rhs, *inner_then, inner_else);
+    Ok((this, rest))
 }
 
 /// Peels a leading run of declared-action/process steps off `condition`'s left-associative `.`
@@ -453,31 +435,71 @@ mod tests {
         assert!(matches!(&third_then.node, ProcessExprKind::Action(name, _) if name == "c"));
     }
 
-    /// A `+`-separated chain swallowed into `else_` rather than `then` — the shape produced by
-    /// `cond -> then <> else` (an explicit `<>`), whose `then` is grammar-restricted to
-    /// `ProcExprNoIf` so only `else_` can hide a further clause. Mirrors `knights.mcrl2`'s
-    /// `(...) -> jump . X(...) <> delta + (f==finalBoard) -> ready . delta <> delta` (`delta`
-    /// itself is one of the two nullary process constants, not a declared name — exercises
-    /// [`is_process_constant`] too).
+    /// A `+`-separated chain in `else_` position — `cond -> then <> a + cond2 -> then2 <> else2`,
+    /// mirroring `knights.mcrl2`'s `(...) -> jump . X(...) <> delta + (f==finalBoard) -> ready .
+    /// delta <> delta`. This module used to (incorrectly) split constructs shaped like this: a
+    /// bare `Binary { op: Choice, .. }` sitting directly in `then`/`else_` position looks the same
+    /// whether it is a genuine, deliberate `a + b` the user wrote (`ProcExprBrackets` adds no node
+    /// of its own, so `cond -> (a + b)` and `cond -> a + b` parse identically) or a swallowed
+    /// clause — nothing in the tree distinguishes the two, so "splitting" a deliberate `a + b`
+    /// silently rewrote it into a different program and dropped a trailing `<>` branch entirely.
+    /// This case is now deliberately left alone — see [`take_swallow`]'s doc comment.
     #[test]
-    fn choice_swallowed_into_else_is_recovered() {
+    fn choice_directly_in_else_position_is_left_alone() {
         let body = reparsed_proc_body(
             "act jump, ready; proc X(f: Bool) = (f) -> jump . X(f) <> delta + (!f) -> ready . delta <> delta; init X(true);",
         );
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs, rhs } = &body.node else {
+        let ProcessExprKind::Condition { then, else_, .. } = &body.node else {
+            panic!("expected a Condition, got {body:?}");
+        };
+        assert!(matches!(&then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
+        let Some(else_) = else_ else {
+            panic!("expected an else_ branch, got None");
+        };
+        assert!(matches!(&else_.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, .. }));
+    }
+
+    /// Minimal form of the same bug: `then` hiding an unrelated (`Add`-shaped) swallow must never
+    /// cost the current clause its own `<>`. `(ps==1) -> a(1) + (ps==2) -> a(2) <> b(9)` puts the
+    /// swallow (`a(1) + (ps==2) -> ...`) one level down from the outermost condition, and the
+    /// grammar attaches `<>`'s `b(9)` to the *innermost* reached `->` (`(ps==2)`, not `(ps==1)`) —
+    /// empirically confirmed, not derived from the grammar file, since this corner of it is easy
+    /// to get wrong by inspection alone (see the module's git history). `else_` still must not be
+    /// dropped by `take_swallow`'s `Ok` arm, wherever the grammar actually attaches it.
+    #[test]
+    fn else_branch_survives_a_swallow_one_level_down() {
+        let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);");
+        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: first, rhs: second } = &body.node else {
             panic!("expected a Choice, got {body:?}");
         };
-        let ProcessExprKind::Condition { then: first_then, else_: first_else, .. } = &lhs.node else {
-            panic!("expected a Condition, got {lhs:?}");
+        let ProcessExprKind::Condition { else_: first_else, .. } = &first.node else {
+            panic!("expected a Condition, got {first:?}");
         };
-        assert!(matches!(&first_then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
-        assert!(matches!(&first_else.as_deref().map(|e| &e.node), Some(ProcessExprKind::Delta)));
+        assert!(first_else.is_none(), "the swallow consumes the only `<>` in this input");
+        let ProcessExprKind::Condition { else_: second_else, .. } = &second.node else {
+            panic!("expected a Condition, got {second:?}");
+        };
+        let Some(second_else) = second_else else {
+            panic!("expected `<> b(9)` to survive on the clause the grammar actually attaches it to");
+        };
+        assert!(matches!(&second_else.node, ProcessExprKind::Action(name, _) if name == "b"));
+    }
 
-        let ProcessExprKind::Condition { then: second_then, else_: second_else, .. } = &rhs.node else {
-            panic!("expected a Condition, got {rhs:?}");
+    /// The minimal shape of the same bug class as [`choice_directly_in_else_position_is_left_alone`],
+    /// with `then` (not `else_`) directly `a + b`: `cond -> a + b <> c` must keep `b` unconditional
+    /// (not folded into `cond`'s own guard) *and* keep `c` as the `else_`.
+    #[test]
+    fn choice_directly_in_then_position_keeps_its_own_else() {
+        let body = reparsed_body("act a: Nat; b: Nat; c: Nat; init (true) -> a(1) + b(2) <> c(3);");
+        let ProcessExprKind::Condition { condition, then, else_ } = &body.node else {
+            panic!("expected a Condition, got {body:?}");
         };
-        assert!(matches!(&second_then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
-        assert!(matches!(&second_else.as_deref().map(|e| &e.node), Some(ProcessExprKind::Delta)));
+        assert!(matches!(&condition.node, DataExprKind::Bool(true)));
+        assert!(matches!(&then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, .. }), "a + b must stay intact, got {then:?}");
+        let Some(else_) = else_ else {
+            panic!("expected `<> c(3)` to survive, got None");
+        };
+        assert!(matches!(&else_.node, ProcessExprKind::Action(name, _) if name == "c"));
     }
 
     /// Leading, wholly *unconditional* `+`-branches (no `->` of their own at all) swallowed
