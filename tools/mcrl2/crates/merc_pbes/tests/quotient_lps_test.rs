@@ -1,5 +1,4 @@
-//! Integration tests for [`QuotientLps`], moved out of `src/quotient_lps.rs`
-//! since they only exercise the crate's public API.
+//! Integration tests for [`QuotientLps`], exercising only its public API.
 
 use std::sync::Arc;
 use std::sync::OnceLock;

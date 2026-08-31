@@ -1,4 +1,3 @@
-/// Authors: Menno Bartels and Maurice Laveaux
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::collections::hash_map::Entry;
@@ -840,18 +839,18 @@ mod tests {
         }
     }
 
-    /// Regression test for a real disagreement `random_canonicalize_matches_naive`
-    /// found at `MERC_SEED=11966697021231288197`.
+    /// Checks a case where cosets tie at a base point but disagree on a
+    /// skipped (non-base) index.
     ///
     /// The Schreier–Sims base for these generators is `[0, 2, 3]`, skipping index
     /// `1` because it's fixed by the stabilizer of `0`. At base point `0`, three
     /// cosets tie for the lex-min value (reaching `params` through orbit points
     /// `2`, `4`, and `3`), but they disagree on the skipped index `1` (values
-    /// `1`, `0`, `0`). [`Bsgs::canonicalize`] used to only score base points, so
-    /// it let the `1`-valued candidate go on to win at base point `2` before
-    /// index `1` was ever compared, evicting the true minimizers. See
-    /// [`Bsgs::canonicalize`]'s doc comment for why every position — not just
-    /// the base — has to be pruned on.
+    /// `1`, `0`, `0`). [`Bsgs::canonicalize`] must prune on every position, not
+    /// just the base points, or a candidate that only ties at `0` could go on
+    /// to win at base point `2` before index `1` is ever compared, evicting the
+    /// true minimizers. See [`Bsgs::canonicalize`]'s doc comment for why every
+    /// position — not just the base — has to be pruned on.
     #[test]
     fn canonicalize_matches_naive_regression_ties_at_skipped_base_position() {
         let n = 6;

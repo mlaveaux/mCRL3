@@ -1,5 +1,4 @@
-//! Integration tests for [`SymmetryAlgorithm`], moved out of
-//! `src/symmetry.rs` since they only exercise the crate's public API.
+//! Integration tests for [`SymmetryAlgorithm`], exercising only its public API.
 
 use mcrl2::Pbes;
 use merc_utilities::test_logger;
