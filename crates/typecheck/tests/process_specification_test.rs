@@ -55,25 +55,37 @@ fn test_specification_with_no_init_is_accepted() {
 #[test]
 fn test_undeclared_action_is_rejected() {
     let error = check_err("init a;");
-    assert!(matches!(error, ProcessError::UndeclaredActionOrProcess { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::UndeclaredActionOrProcess { .. }),
+        "got {error:?}"
+    );
 }
 
 #[test]
 fn test_action_with_wrong_argument_arity_is_rejected() {
     let error = check_err("act a: Nat; init a(1, 2);");
-    assert!(matches!(error, ProcessError::UndeclaredActionOrProcess { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::UndeclaredActionOrProcess { .. }),
+        "got {error:?}"
+    );
 }
 
 #[test]
 fn test_action_with_mismatched_argument_sort_is_rejected() {
     let error = check_err("act a: Nat; init a(true);");
-    assert!(matches!(error, ProcessError::NoMatchingOverload { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::NoMatchingOverload { .. }),
+        "got {error:?}"
+    );
 }
 
 #[test]
 fn test_undeclared_process_instantiation_is_rejected() {
     let error = check_err("init P;");
-    assert!(matches!(error, ProcessError::UndeclaredActionOrProcess { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::UndeclaredActionOrProcess { .. }),
+        "got {error:?}"
+    );
 }
 
 // ─── overload resolution ────────────────────────────────────────────────────
@@ -105,7 +117,10 @@ fn test_ambiguous_action_use_is_rejected() {
     // Two overloads of `c` both accept a `Nat` argument (`Nat <= Int` widens either way), so a
     // plain `Nat`-sorted argument doesn't disambiguate between them.
     let error = check_err("act c: Nat; act c: Int; init c(1);");
-    assert!(matches!(error, ProcessError::AmbiguousActionOrProcess { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::AmbiguousActionOrProcess { .. }),
+        "got {error:?}"
+    );
 }
 
 // ─── scoping ─────────────────────────────────────────────────────────────────
@@ -125,7 +140,10 @@ fn test_sum_bound_variable_is_out_of_scope_outside_the_sum() {
         panic!("expected a NoMatchingOverload, got {error:?}");
     };
     assert!(
-        matches!(*cause, ProcessError::Inference(merc_typecheck::InferenceError::UndeclaredName { .. })),
+        matches!(
+            *cause,
+            ProcessError::Inference(merc_typecheck::InferenceError::UndeclaredName { .. })
+        ),
         "got {cause:?}"
     );
 }
@@ -181,7 +199,10 @@ fn test_assignment_form_instantiation_may_omit_parameters() {
 #[test]
 fn test_assignment_to_an_unknown_parameter_is_rejected() {
     let error = check_err("proc P(n: Nat) = delta; init P(m = 1);");
-    assert!(matches!(error, ProcessError::UnknownProcessParameter { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::UnknownProcessParameter { .. }),
+        "got {error:?}"
+    );
 }
 
 // ─── declaration-level errors ───────────────────────────────────────────────
@@ -189,25 +210,37 @@ fn test_assignment_to_an_unknown_parameter_is_rejected() {
 #[test]
 fn test_anonymous_struct_in_action_declaration_is_rejected() {
     let error = check_err("act a: struct x | y; init a(x);");
-    assert!(matches!(error, ProcessError::AnonymousStructInDeclaration { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::AnonymousStructInDeclaration { .. }),
+        "got {error:?}"
+    );
 }
 
 #[test]
 fn test_action_and_process_sharing_a_name_is_rejected() {
     let error = check_err("act P: Nat; proc P = delta; init delta;");
-    assert!(matches!(error, ProcessError::ActionAndProcessConflict { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::ActionAndProcessConflict { .. }),
+        "got {error:?}"
+    );
 }
 
 #[test]
 fn test_duplicate_process_parameter_is_rejected() {
     let error = check_err("proc P(n: Nat, n: Bool) = delta; init P(1, true);");
-    assert!(matches!(error, ProcessError::DuplicateProcessParameter { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::DuplicateProcessParameter { .. }),
+        "got {error:?}"
+    );
 }
 
 #[test]
 fn test_duplicate_global_variable_is_rejected() {
     let error = check_err("glob n: Nat, n: Bool; init delta;");
-    assert!(matches!(error, ProcessError::DuplicateGlobalVariable { .. }), "got {error:?}");
+    assert!(
+        matches!(error, ProcessError::DuplicateGlobalVariable { .. }),
+        "got {error:?}"
+    );
 }
 
 // ─── action-set checks (hide/block/allow/comm/rename) ───────────────────────
