@@ -15,9 +15,11 @@ use mcrl2::Pbes;
 use mcrl2::SrfPbes;
 use mcrl2::set_reporting_level;
 use mcrl2::verbosity_to_log_level;
+use merc_symbolic::Order;
 use merc_symbolic::SummandGrouping;
 use merc_symbolic::SymbolicLpsOptions;
 use merc_symbolic::VariableOrder;
+use merc_symbolic::parse_order;
 use merc_tools::KaHyParArgs;
 use merc_tools::VerbosityFlag;
 use merc_tools::Version;
@@ -313,10 +315,11 @@ struct SymbolicExploreArgs {
     #[arg(long, default_value_t = SummandGrouping::default(), value_parser = parse_grouping)]
     groups: SummandGrouping,
 
-    /// Reorder the parameters with the MINCE algorithm before exploring, which requires the KaHyPar
-    /// tool. The reachable states are unaffected, only the size of the decision diagrams.
-    #[arg(long)]
-    reorder: bool,
+    /// Reorder the parameters before exploring: 'mince' runs the MINCE algorithm, which requires the
+    /// KaHyPar tool, or an explicit order can be given as a whitespace separated string of numbers.
+    /// The reachable states are unaffected, only the size of the decision diagrams.
+    #[arg(long, default_value_t = Order::None, value_parser = parse_order)]
+    reorder: Order,
 
     #[command(flatten)]
     kahypar: KaHyParArgs,
@@ -342,15 +345,7 @@ struct SymbolicExploreArgs {
 impl SymbolicExploreArgs {
     /// Returns the variable order to explore with, resolving the KaHyPar tool when `--reorder` is set.
     fn variable_order(&self) -> Result<VariableOrder, MercError> {
-        if !self.reorder {
-            return Ok(VariableOrder::None);
-        }
-
-        let (kahypar_path, kahypar_ini_path) = self.kahypar.resolve()?;
-        Ok(VariableOrder::Mince {
-            kahypar_path,
-            kahypar_ini_path,
-        })
+        self.reorder.resolve(|| self.kahypar.resolve())
     }
 
     /// Converts `pbes` to SRF form and unifies its parameter lists according to
