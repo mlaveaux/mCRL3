@@ -459,9 +459,7 @@ impl DataSpecification {
     /// action argument, a process parameter, a global variable declaration — against this
     /// already-resolved specification's declared sort names.
     ///
-    /// Requires `sort` to contain no anonymous `struct`: this specification's own desugaring
-    /// ([`crate::hoist_anonymous_structs`]) only ever ran over the data specification, so callers
-    /// outside it (see [`crate::process`]) must reject that themselves before calling this.
+    /// Requires `sort` to contain no anonymous `struct` (see [`crate::process`]).
     pub(crate) fn resolve_declared_sort(&mut self, sort: &SortExpression) -> Result<crate::ResolvedSortId, WellTypedError> {
         check_products_within_domains(sort)?;
         let resolved = resolve_sort_id(sort, &self.sorts)?;
@@ -480,14 +478,11 @@ impl DataSpecification {
     /// Resolves the sort names of every binder (`lambda`/`forall`/`exists`/a comprehension) in
     /// `expr`, in place.
     ///
-    /// An equation's own binder sorts are resolved as part of `from_untyped_with`'s pipeline
-    /// (`resolve_sort_ids`'s `apply_sorts_in_spec` walks into every equation body for exactly
-    /// this reason). An expression from *outside* the data specification — a process-body
+    /// An equation's own binder sorts are already resolved by `from_untyped_with`'s pipeline. Call
+    /// this before checking any expression from *outside* the data specification — a process-body
     /// expression (an action argument, a condition, …), or a caller-supplied expression to
-    /// [`Self::typecheck_expression`] — never goes through that pass, so a binder over a
-    /// user-declared sort name (as opposed to a built-in like `Nat`, which parses straight to a
-    /// primitive sort with no name to resolve) would otherwise still be an unresolved `Reference`
-    /// when inference's `binder_sort` tries to intern it — this is the fix-up step for that.
+    /// [`Self::typecheck_expression`] — so a binder over a user-declared sort name resolves
+    /// correctly.
     pub(crate) fn resolve_expression_binder_sorts(&mut self, expr: &mut DataExpr) -> Result<(), WellTypedError> {
         apply_sorts_in_data_expr(expr, &mut |sort: &SortExpression| -> Result<SortExpression, WellTypedError> {
             let flattened = flatten_function_sorts(sort);

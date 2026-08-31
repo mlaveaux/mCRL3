@@ -210,9 +210,7 @@ fn test_machine_number_spec(spec: &str) {
     }
 }
 
-/// `EqnSpec` (an `eqn`/`var ... eqn` block) used to have no `span` field at all, unlike every
-/// other declaration, which forced callers that need its location (e.g. an LSP building a
-/// document outline) to synthesize one from its children's spans instead.
+/// `EqnSpec`'s span covers the whole `var ... eqn ...` block.
 #[test]
 fn eqn_spec_span_covers_the_whole_block() {
     let text = "sort D;\nvar x: D;\neqn x = x;";
@@ -234,8 +232,8 @@ fn eqn_spec_span_without_a_var_section_starts_at_eqn() {
     assert_eq!(block, "eqn f = true;");
 }
 
-/// A grouped declaration (`sort A, B, C;`, and its `cons`/`map`/`var`/`glob`/`act` siblings) used
-/// to give every identifier in the group the same span.
+/// A grouped declaration (`sort A, B, C;`, and its `cons`/`map`/`var`/`glob`/`act` siblings) gives
+/// each identifier its own precise span.
 #[test]
 fn grouped_sort_declarations_get_distinct_precise_spans() {
     let text = "sort A, B, C;";
@@ -244,8 +242,8 @@ fn grouped_sort_declarations_get_distinct_precise_spans() {
     assert_eq!(spans, ["A", "B", "C"]);
 }
 
-/// The `sort A = Bool;` alias form is never grouped (it only ever names one sort), but its span
-/// used to be missed by the fix above anyway, still covering the whole `A = Bool;`.
+/// The `sort A = Bool;` alias form (never grouped — it only ever names one sort) gets a span
+/// precisely covering the identifier, not the whole `A = Bool;`.
 #[test]
 fn sort_alias_declaration_span_is_precisely_the_identifier() {
     let text = "sort L = List(Nat);";
@@ -271,8 +269,8 @@ fn grouped_action_declarations_get_distinct_precise_spans() {
     assert_eq!(spans, ["a", "b"]);
 }
 
-/// `Assignment` (a process instantiation's `x = e`, as in `P(x = 1)`) used to carry no span at
-/// all.
+/// `Assignment` (a process instantiation's `x = e`, as in `P(x = 1)`) carries a span precisely
+/// covering the identifier.
 #[test]
 fn assignment_span_is_precisely_the_identifier() {
     let text = "proc P(x: Bool) = delta; init P(x = true);";
@@ -284,7 +282,7 @@ fn assignment_span_is_precisely_the_identifier() {
     assert_eq!(&text[assignment.span.start..assignment.span.end], "x");
 }
 
-/// `ProcDecl`'s span used to cover the whole `P(params) = body;`.
+/// `ProcDecl`'s span is precisely the identifier, not the whole `P(params) = body;`.
 #[test]
 fn process_declaration_span_is_precisely_the_identifier() {
     let text = "proc P(x: Bool) = delta;\nproc Q = tau;\ninit P(true);";

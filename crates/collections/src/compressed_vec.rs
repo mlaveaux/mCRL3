@@ -351,13 +351,11 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Grows the vector to `new_len` entries, filling the new ones with an
-    /// all-zero byte pattern, via a single bulk fill rather than `resize_with`'s
-    /// entry-at-a-time `push`. Only meaningful for entry types where an all-zero
+    /// all-zero byte pattern. Only meaningful for entry types where an all-zero
     /// byte pattern decodes to a valid "zero" value.
     ///
-    /// Meant for pre-allocating a vector whose entries are about to be filled in
-    /// out of order via [`Self::set`] (e.g. placing edge targets by offset) -
-    /// without ever materialising a full `T`-per-entry array on the side first.
+    /// Meant for pre-allocating a vector whose entries are filled in out of
+    /// order afterward via [`Self::set`].
     pub fn resize_zeroed(&mut self, new_len: usize, bytes_per_entry: usize) {
         self.resize_entries(bytes_per_entry);
         let target_len = new_len * self.bytes_per_entry;

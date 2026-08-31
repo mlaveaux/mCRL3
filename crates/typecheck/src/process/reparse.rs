@@ -15,22 +15,15 @@
 //! the first's as `Binary { op: Add, lhs: P, rhs: cond2 }` — see this module's tests for the
 //! exact shapes.
 //!
-//! Recovering the intended parse needs to know which identifiers are declared as actions or
-//! processes — genuinely semantic information, but only *name* resolution, not full type
-//! checking: mCRL2 itself resolves this ambiguity the same way, before type checking runs at
-//! all (the same grammar sharing exists in `mCRL2`'s own concrete syntax). So this pass runs
-//! first, using nothing but the declared action/process *names* (arity and sort don't matter —
-//! even an overloaded name is unambiguous as a name, and overload resolution itself still
-//! happens later, during type checking in [`super::check`]), and rewrites every misparsed
-//! `Condition` it finds back into the `ProcessExpr` shape — `Sequence`/`Choice`, `Action` steps —
-//! it should have parsed as in the first place. [`super::check`]'s walk can then assume every
-//! `Condition` it sees is already correctly shaped, and needs no error-driven recovery of its
-//! own.
+//! This pass runs before type checking, using only the declared action/process *names* (arity and
+//! sort don't matter — overload resolution itself still happens later, during type checking in
+//! [`super::check`]), and rewrites every misparsed `Condition` it finds back into the
+//! `ProcessExpr` shape — `Sequence`/`Choice`, `Action` steps — it should have parsed as.
+//! [`super::check`]'s walk can then assume every `Condition` it sees is already correctly shaped.
 //!
 //! [`merc_syntax::Traverse::apply_mut`] drives the walk (see [`reparse_mut`]): only [`Condition`]
 //! is special-cased, in [`fix_swallow`]; every other `ProcessExprKind` variant's own recursion
-//! into its children comes for free from `Traverse`'s generated per-type implementation, rather
-//! than a hand-matched arm per variant here.
+//! into its children comes for free from `Traverse`'s generated per-type implementation.
 //!
 //! [`Condition`]: ProcessExprKind::Condition
 
@@ -80,9 +73,7 @@ pub(super) fn reparse_process_specification(spec: &mut UntypedProcessSpecificati
 /// descent into every non-`Condition` `ProcessExpr` variant's own children (`Sum`/`Dist`'s
 /// `operand`, `Binary`'s `lhs`/`rhs`, …) generically — [`fix_swallow`] only has to know about
 /// `Condition` — top-down, so it always sees a not-yet-rewritten `then`/`else_` in its original,
-/// as-parsed shape, which the swallow it looks for needs (see [`fix_condition`]'s doc comment for
-/// why: this can't be a bottom-up rewrite like [`merc_syntax::Traverse::transform`], since a
-/// child already rewritten in isolation no longer has the raw shape the swallow lives in).
+/// as-parsed shape, which the swallow it looks for needs (see [`fix_condition`]'s doc comment).
 fn reparse_mut(names: &Names, expr: &mut ProcessExpr) {
     match expr.apply_mut::<Infallible, _>(|node| Ok(fix_swallow(names, node))) {
         Ok(()) => {}
@@ -100,11 +91,8 @@ fn reparse(names: &Names, mut expr: ProcessExpr) -> ProcessExpr {
 /// The [`Traverse::apply_mut`] callback [`reparse_mut`] drives: `None` for every `ProcessExpr`
 /// variant other than `Condition`, letting `Traverse`'s own generated recursion continue into
 /// that node's children unchanged. For a `Condition`, always clones and fully re-derives it via
-/// [`fix_condition`] — cheaper to reason about (one path, matching [`fix_condition`]'s logic by
-/// construction) than a hand-rolled "does this actually need fixing" fast path that risks quietly
-/// drifting out of sync with it; a condition is rarely a large subtree, so the clone is cheap in
-/// practice. The replacement is not itself re-descended into by `Traverse` (see its doc comment),
-/// which is correct here: [`fix_condition`] already resolves the whole thing recursively itself.
+/// [`fix_condition`]. The replacement is not itself re-descended into by `Traverse` (see its doc
+/// comment); [`fix_condition`] already resolves the whole thing recursively itself.
 fn fix_swallow(names: &Names, node: &ProcessExpr) -> Option<ProcessExpr> {
     let ProcessExprKind::Condition { condition, then, else_ } = &node.node else {
         return None;
@@ -203,11 +191,8 @@ fn peel_condition(names: &Names, condition: DataExpr) -> (Vec<ProcessExpr>, Vec<
 /// the second `->` in `cond -> lhs + rhs -> inner_then <...>` was swallowed *inside* the
 /// shared-token `DataExpr` grammar, which only ever happens through `condition`. A bare
 /// `Binary { op: Choice, .. }` sitting directly as `then` is deliberately **not** treated as a
-/// swallow here, even though it looks superficially similar: `cond -> a + b` and `cond -> (a + b)`
-/// produce byte-identical trees (`ProcExprBrackets` adds no node of its own), so nothing here can
-/// tell a user's own, already-correct `a + b` apart from one that supposedly needs splitting —
-/// treating every such `Choice` as swallowed silently discarded a trailing `<>` branch and
-/// rewrote deliberately parenthesized choices into a different program.
+/// swallow here: `cond -> a + b` and `cond -> (a + b)` produce byte-identical trees, so nothing
+/// here can distinguish a user's own, already-correct `a + b` from one that needs splitting.
 fn take_swallow(names: &Names, node: ProcessExpr) -> Result<(ProcessExpr, ProcessExpr), Box<ProcessExpr>> {
     let is_add_swallow = if let ProcessExprKind::Condition { condition, .. } = &node.node
         && let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, .. } = &condition.node
@@ -390,7 +375,7 @@ mod tests {
     }
 
     /// A `+`-separated chain of guarded actions, each swallowed into the previous clause's
-    /// condition — the shape [`super::check`]'s old error-driven recovery could not fix.
+    /// condition.
     #[test]
     fn choice_swallowed_guarded_actions_are_recovered() {
         let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);");
@@ -437,13 +422,10 @@ mod tests {
 
     /// A `+`-separated chain in `else_` position — `cond -> then <> a + cond2 -> then2 <> else2`,
     /// mirroring `knights.mcrl2`'s `(...) -> jump . X(...) <> delta + (f==finalBoard) -> ready .
-    /// delta <> delta`. This module used to (incorrectly) split constructs shaped like this: a
-    /// bare `Binary { op: Choice, .. }` sitting directly in `then`/`else_` position looks the same
-    /// whether it is a genuine, deliberate `a + b` the user wrote (`ProcExprBrackets` adds no node
-    /// of its own, so `cond -> (a + b)` and `cond -> a + b` parse identically) or a swallowed
-    /// clause — nothing in the tree distinguishes the two, so "splitting" a deliberate `a + b`
-    /// silently rewrote it into a different program and dropped a trailing `<>` branch entirely.
-    /// This case is now deliberately left alone — see [`take_swallow`]'s doc comment.
+    /// delta <> delta`. A bare `Binary { op: Choice, .. }` sitting directly in `then`/`else_`
+    /// position is indistinguishable from a genuine, deliberate `a + b` the user wrote (`cond ->
+    /// (a + b)` and `cond -> a + b` parse identically), so it is deliberately left alone — see
+    /// [`take_swallow`]'s doc comment.
     #[test]
     fn choice_directly_in_else_position_is_left_alone() {
         let body = reparsed_proc_body(
@@ -462,10 +444,9 @@ mod tests {
     /// Minimal form of the same bug: `then` hiding an unrelated (`Add`-shaped) swallow must never
     /// cost the current clause its own `<>`. `(ps==1) -> a(1) + (ps==2) -> a(2) <> b(9)` puts the
     /// swallow (`a(1) + (ps==2) -> ...`) one level down from the outermost condition, and the
-    /// grammar attaches `<>`'s `b(9)` to the *innermost* reached `->` (`(ps==2)`, not `(ps==1)`) —
-    /// empirically confirmed, not derived from the grammar file, since this corner of it is easy
-    /// to get wrong by inspection alone (see the module's git history). `else_` still must not be
-    /// dropped by `take_swallow`'s `Ok` arm, wherever the grammar actually attaches it.
+    /// grammar attaches `<>`'s `b(9)` to the *innermost* reached `->` (`(ps==2)`, not `(ps==1)`).
+    /// `else_` still must not be dropped by `take_swallow`'s `Ok` arm, wherever the grammar
+    /// actually attaches it.
     #[test]
     fn else_branch_survives_a_swallow_one_level_down() {
         let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);");

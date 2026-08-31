@@ -2,18 +2,15 @@
 //! `crates/syntax/tests/example_test.rs`. Each specification is expected to
 //! type check; the assertions grow stricter as later type-checking phases land.
 //!
-//! This now type checks the whole specification (`ProcessSpecification::from_untyped`), not just
-//! the data specification. `crate::process::reparse` fixes up mCRL2's `.`/`+` grammar ambiguity
-//! (see its module doc comment and the crate README) before type checking runs at all, using
-//! only declared action/process *names* — no whole corpus specification needs excluding for that
-//! reason anymore.
+//! This type checks the whole specification (`ProcessSpecification::from_untyped`), not just the
+//! data specification. `crate::process::reparse` fixes up mCRL2's `.`/`+` grammar ambiguity (see
+//! its module doc comment and the crate README) before type checking runs, using only declared
+//! action/process *names*.
 //!
 //! The `#[test_case]`s still commented out below are excluded for an unrelated, pre-existing
-//! reason: `merc_syntax::UntypedProcessSpecification::parse` itself never returns on them (a
-//! parser-level performance issue — most likely catastrophic backtracking in the shared
-//! `DataExpr`/`ProcExpr` grammar the reparse pass above works around rather than fixes — not a
-//! type-checking one), so running them would hang the test suite. Fixing that is out of scope
-//! here; see the crate README.
+//! reason: `merc_syntax::UntypedProcessSpecification::parse` itself never returns on them — a
+//! parser-level performance issue, not a type-checking one — so running them would hang the test
+//! suite. Fixing that is out of scope here; see the crate README.
 
 use merc_syntax::UntypedProcessSpecification;
 use merc_typecheck::ProcessSpecification;
