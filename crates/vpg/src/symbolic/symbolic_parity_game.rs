@@ -622,6 +622,10 @@ impl SymbolicParityGame {
         let strategy_is_empty = strategy.is_empty();
         let alpha_vertices = &self.owned[alpha.to_index()];
 
+        // The interleaved cartesian product doesn't depend on the group; only its projection onto
+        // each group's own read/write shape (below) does.
+        let alpha_rows_full = merge(&self.manager, alpha_vertices, all_vertices)?;
+
         let mut relations = Vec::with_capacity(self.relations.len());
         for relation in &self.relations {
             let keep: Vec<Value> = relation
@@ -636,7 +640,7 @@ impl SymbolicParityGame {
 
             // The rows of this group whose source is `alpha`-owned, in the group's own
             // read/write shape.
-            let alpha_rows = merge(&self.manager, alpha_vertices, all_vertices)?.project(&projection_meta)?;
+            let alpha_rows = alpha_rows_full.project(&projection_meta)?;
             let alpha_part = intersect(&relation.relation, &alpha_rows)?;
             let other_part = relation.relation.minus(&alpha_part)?;
 

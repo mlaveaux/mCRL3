@@ -7,15 +7,7 @@ use oxidd::ldd::Value;
 use oxidd::util::AllocResult;
 use rustc_hash::FxHashMap;
 
-/// Computes the intersection `a ∩ b`.
-///
-/// # Details
-///
-/// `LDDFunction` has no native `intersect`, so this is implemented as two `minus` traversals
-/// (`a \ (a \ b)`), with no shared apply cache of its own.
-pub fn intersect(a: &LDDFunction, b: &LDDFunction) -> AllocResult<LDDFunction> {
-    a.minus(&a.minus(b)?)
-}
+use crate::height;
 
 /// Computes the interleaved cartesian product `{ a₀b₀a₁b₁… | a ∈ set_a, b ∈ set_b }`.
 ///
@@ -84,7 +76,20 @@ fn merge_rec(
 }
 
 /// Restricts `set` to the vectors whose element at `level` equals `value`.
+///
+/// `level` must be less than the length of every vector in `set` (checked once, up front, in
+/// debug builds); every caller derives it from a valid position in the state vector, so this
+/// should never trip in practice.
 pub fn fix_element(manager: &LDDManagerRef, set: &LDDFunction, level: usize, value: Value) -> AllocResult<LDDFunction> {
+    debug_assert!(
+        set.is_empty() || level < height(manager, set),
+        "fix_element: level {level} is out of range for a set of height {}",
+        height(manager, set)
+    );
+    fix_element_rec(manager, set, level, value)
+}
+
+fn fix_element_rec(manager: &LDDManagerRef, set: &LDDFunction, level: usize, value: Value) -> AllocResult<LDDFunction> {
     if level == 0 {
         let mut current = set.clone();
         loop {
@@ -102,10 +107,12 @@ pub fn fix_element(manager: &LDDManagerRef, set: &LDDFunction, level: usize, val
         }
     } else {
         match set.node() {
-            None => Ok(set.clone()),
+            // `set` ran out of levels before reaching `level` (it is ∅, or `level` was past the
+            // end of its vectors): there is no element at `level` to match, so the result is ∅.
+            None => manager.with_manager_shared(LDDFunction::empty_set),
             Some((v, down, right)) => {
-                let new_down = fix_element(manager, &down, level - 1, value)?;
-                let new_right = fix_element(manager, &right, level, value)?;
+                let new_down = fix_element_rec(manager, &down, level - 1, value)?;
+                let new_right = fix_element_rec(manager, &right, level, value)?;
 
                 if new_down.is_empty() {
                     Ok(new_right)
@@ -140,7 +147,8 @@ where
 mod tests {
     use std::collections::HashSet;
 
-    use oxidd::ldd::RelationProductMeta;
+    use oxidd::ManagerRef;
+    use oxidd::ldd::LDDFunction;
     use oxidd::ldd::Value;
 
     use merc_utilities::random_test;
@@ -240,5 +248,19 @@ mod tests {
                 }
             }
         })
+    }
+
+    /// [`fix_element`] on the empty set must return the empty set regardless of `level`, not the
+    /// terminal it happens to bottom out on.
+    #[test]
+    #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+    fn test_fix_element_empty_set() {
+        let manager = oxidd::ldd::new_manager(2048, 1024, 1);
+        let empty = manager.with_manager_shared(LDDFunction::empty_set).unwrap();
+
+        for level in 0..5 {
+            let result = fix_element(&manager, &empty, level, 0).unwrap();
+            assert!(result.is_empty(), "level {level}: expected the empty set");
+        }
     }
 }

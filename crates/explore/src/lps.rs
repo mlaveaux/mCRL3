@@ -75,8 +75,9 @@ impl<P: LPS> LPS for &P {
     type Value = P::Value;
     type Label = P::Label;
     type StateInfo = P::StateInfo;
-    const HAS_LABELS: bool = P::HAS_LABELS;
     type Summand = P::Summand;
+    
+    const HAS_LABELS: bool = P::HAS_LABELS;
 
     fn initial_state(&self) -> Vec<Self::Value> {
         (**self).initial_state()
