@@ -165,8 +165,8 @@ impl Mcrl2Parser {
         let span = spec.as_span();
         for child in spec.into_children() {
             match child.as_rule() {
-                Rule::DataSpec => {
-                    data_specification = Some(Mcrl2Parser::DataSpec(child)?);
+                Rule::DataSpecBody => {
+                    data_specification = Some(Mcrl2Parser::DataSpecBody(child)?);
                 }
                 Rule::GlobVarSpec => {
                     global_variables = Some(Mcrl2Parser::GlobVarSpec(child)?);
@@ -268,17 +268,20 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn PropVarInst(inst: ParseNode) -> ParseResult<PropVarInst> {
+        let span = inst.as_span();
         match_nodes!(inst.into_children();
             [Id(identifier)] => {
                 Ok(PropVarInst {
                     identifier,
                     arguments: Vec::new(),
+                    span: span.into(),
                 })
             },
             [Id(identifier), DataExprList(arguments)] => {
                 Ok(PropVarInst {
                     identifier,
                     arguments,
+                    span: span.into(),
                 })
             }
         )
@@ -297,8 +300,8 @@ impl Mcrl2Parser {
         let span = spec.as_span();
         for child in spec.into_children() {
             match child.as_rule() {
-                Rule::DataSpec => {
-                    data_specification = Some(Mcrl2Parser::DataSpec(child)?);
+                Rule::DataSpecBody => {
+                    data_specification = Some(Mcrl2Parser::DataSpecBody(child)?);
                 }
                 Rule::GlobVarSpec => {
                     global_variables = Some(Mcrl2Parser::GlobVarSpec(child)?);
@@ -415,6 +418,31 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn DataSpec(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
+        for child in spec.into_children() {
+            match child.as_rule() {
+                Rule::DataSpecBody => {
+                    return Mcrl2Parser::DataSpecBody(child);
+                }
+                Rule::EOI => {
+                    // End of input
+                    break;
+                }
+                _ => {
+                    unimplemented!("Unexpected rule: {:?}", child.as_rule());
+                }
+            }
+        }
+
+        // `DataSpecBody` always matches (its repetition allows zero declarations), so it's always
+        // present as a child above; this is unreachable in practice.
+        Ok(UntypedDataSpecification::default())
+    }
+
+    /// The declarations of a data specification, without its own `SOI`/`EOI` — see
+    /// `DataSpecBody`'s doc comment in the grammar. Shared by [`Mcrl2Parser::DataSpec`] (the
+    /// standalone `.data` entry point) and [`Mcrl2Parser::PbesSpec`]/[`Mcrl2Parser::PresSpec`]
+    /// (their optional leading data specification).
+    pub(crate) fn DataSpecBody(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
         let mut map_declarations = Vec::new();
         let mut equation_declarations = Vec::new();
         let mut constructor_declarations = Vec::new();
@@ -433,10 +461,6 @@ impl Mcrl2Parser {
                 }
                 Rule::SortSpec => {
                     sort_declarations.append(&mut Mcrl2Parser::SortSpec(child)?);
-                }
-                Rule::EOI => {
-                    // End of input
-                    break;
                 }
                 _ => {
                     unimplemented!("Unexpected rule: {:?}", child.as_rule());
@@ -533,8 +557,7 @@ impl Mcrl2Parser {
     }
 
     fn SortDecl(decl: ParseNode) -> ParseResult<Vec<SortDecl>> {
-        // The rule starts exactly at `identifier`, so the alias form's own span
-        // is cheap to compute directly.
+        // The rule starts exactly at `identifier`.
         let start = decl.as_span().start();
 
         match_nodes!(decl.into_children();
@@ -575,8 +598,7 @@ impl Mcrl2Parser {
     }
 
     fn ProcDecl(decl: ParseNode) -> ParseResult<ProcDecl> {
-        // The rule starts exactly at `identifier`, so its own span is cheap to
-        // compute directly.
+        // The rule starts exactly at `identifier`.
         let start = decl.as_span().start();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params), ProcExpr(body)] => {
@@ -708,8 +730,7 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn Assignment(assignment: ParseNode) -> ParseResult<Assignment> {
-        // The rule starts exactly at `identifier`, so its own span is cheap to
-        // compute without a dedicated span.
+        // The rule starts exactly at `identifier`.
         let start = assignment.as_span().start();
         match_nodes!(assignment.into_children();
             [IdAt(identifier), DataExpr(expr)] => {

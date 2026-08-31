@@ -49,7 +49,14 @@ Number = @{ ASCII_DIGIT+ }
 MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Init | MapSpec | SortSpec)* ~ EOI } 
 
 /// Parsing an mCRL2 specification
-DataSpec = { SOI ~ (ConsSpec | EqnSpec | MapSpec | SortSpec)* ~ EOI } 
+DataSpec = { SOI ~ DataSpecBody ~ EOI }
+
+/// The declarations of a data specification, without its own `SOI`/`EOI` (those are absolute to
+/// the whole input in pest, not scoped to the containing rule, so a rule wrapped in them can only
+/// ever be embedded as the very last thing in a file). Used both as `DataSpec`'s body above and,
+/// unwrapped, as the optional leading data specification in `PbesSpec`/`PresSpec`, which have
+/// their own `SOI`/`EOI` and more to parse after it.
+DataSpecBody = { (ConsSpec | EqnSpec | MapSpec | SortSpec)* }
 
 /// Action specification
 ActSpec = { "act" ~ ActDecl+ }
@@ -573,7 +580,7 @@ FixedPointOperator = { FixedPointMu | FixedPointNu }
     FixedPointNu = { "nu" }
 
 /// Parameterised boolean equations systems
-PbesSpec = { SOI ~ DataSpec? ~ GlobVarSpec? ~ PbesEqnSpec ~ PbesInit ~ EOI }
+PbesSpec = { SOI ~ DataSpecBody? ~ GlobVarSpec? ~ PbesEqnSpec ~ PbesInit ~ EOI }
 
 PbesEqnSpec = { "pbes" ~ PbesEqnDecl+ }
 
@@ -617,7 +624,7 @@ PbesExprInfix = _{
     PbesExprDisj = { "||" }
 
 /// Parameterised boolean equations systems
-PresSpec = { SOI ~ DataSpec? ~ GlobVarSpec? ~ PresEqnSpec ~ PbesInit ~ EOI }
+PresSpec = { SOI ~ DataSpecBody? ~ GlobVarSpec? ~ PresEqnSpec ~ PbesInit ~ EOI }
 
 PresEqnSpec = { "pres" ~ PresEqnDecl+ }
 
