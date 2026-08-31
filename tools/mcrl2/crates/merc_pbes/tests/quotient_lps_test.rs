@@ -16,6 +16,7 @@ use merc_vpg::VertexIndex;
 use merc_vpg::solve_zielonka;
 
 use merc_pbes::Bsgs;
+use merc_pbes::Canonicaliser;
 use merc_pbes::GapConfig;
 use merc_pbes::PbesLps;
 use merc_pbes::PbesSrfLps;
@@ -63,7 +64,7 @@ init X(true);"#;
     )?;
 
     let lps2 = PbesSrfLps::new(unified_srf(&pbes))?;
-    let qlps = QuotientLps::new(lps2, bsgs, 1);
+    let qlps = QuotientLps::new(lps2, Arc::new(Canonicaliser::Bsgs(bsgs)), 1);
     let quot_game = explore_pbes_impl(
         &qlps,
         ExplorationStrategy::Bfs,
@@ -90,7 +91,7 @@ init X(true);"#;
     let bsgs = Arc::new(Bsgs::from_generators(&[], n, &gap_config())?);
 
     let cached = CacheLPS::new(lps, CachingStrategy::Local);
-    let qlps = QuotientLps::new(cached, bsgs, 1);
+    let qlps = QuotientLps::new(cached, Arc::new(Canonicaliser::Bsgs(bsgs)), 1);
 
     let timing = Timing::new();
     let game = explore_pbes_impl(
@@ -135,7 +136,7 @@ fn quotient_preserves_winner_and_reduces_the_game() -> Result<(), MercError> {
     let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
     let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &gap_config())?);
     let quotient = explore_pbes_impl(
-        &QuotientLps::new(lps, bsgs, 1),
+        &QuotientLps::new(lps, Arc::new(Canonicaliser::Bsgs(bsgs)), 1),
         ExplorationStrategy::Bfs,
         &timing,
         ParityGameBuilder::new(VertexIndex::new(0)),
@@ -188,7 +189,7 @@ fn quotient_over_srf_preserves_winner_and_reduces_the_game() -> Result<(), MercE
     let generators = vec![Permutation::from_cycle_notation("(0 1)")?];
     let bsgs = Arc::new(Bsgs::from_generators(&generators, lps.num_params(), &gap_config())?);
     let quotient = explore_pbes_impl(
-        &QuotientLps::new(lps, bsgs, 1),
+        &QuotientLps::new(lps, Arc::new(Canonicaliser::Bsgs(bsgs)), 1),
         ExplorationStrategy::Bfs,
         &timing,
         ParityGameBuilder::new(VertexIndex::new(0)),
@@ -225,7 +226,7 @@ fn quotient_over_cache_agrees_with_quotient_alone() -> Result<(), MercError> {
     let lps = PbesLps::new(pbes.clone())?;
     let bsgs = Arc::new(Bsgs::from_generators(&generators, n, &gap_config())?);
     let uncached = explore_pbes_impl(
-        &QuotientLps::new(lps, Arc::clone(&bsgs), 1),
+        &QuotientLps::new(lps, Arc::new(Canonicaliser::Bsgs(Arc::clone(&bsgs))), 1),
         ExplorationStrategy::Bfs,
         &timing,
         ParityGameBuilder::new(VertexIndex::new(0)),
@@ -233,7 +234,7 @@ fn quotient_over_cache_agrees_with_quotient_alone() -> Result<(), MercError> {
 
     let cached = CacheLPS::new(PbesLps::new(pbes)?, CachingStrategy::Local);
     let cached = explore_pbes_impl(
-        &QuotientLps::new(cached, bsgs, 1),
+        &QuotientLps::new(cached, Arc::new(Canonicaliser::Bsgs(bsgs)), 1),
         ExplorationStrategy::Bfs,
         &timing,
         ParityGameBuilder::new(VertexIndex::new(0)),

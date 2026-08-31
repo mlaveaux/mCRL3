@@ -61,5 +61,6 @@ pub use graph_symmetry::Sdg;
 pub use graph_symmetry::graph_symmetries;
 pub use graph_symmetry::write_dot;
 pub use permutation::Permutation;
+pub use quotient_lps::Canonicaliser;
 pub use quotient_lps::QuotientLps;
 pub use symmetry::SymmetryAlgorithm;

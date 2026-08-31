@@ -383,7 +383,7 @@ quit;
 
 /// Render a `Permutation` as a GAP cycle string using 1-based indices.
 /// The identity is rendered as `()`.
-fn permutation_to_gap_cycles(perm: &Permutation, n: usize) -> String {
+pub fn permutation_to_gap_cycles(perm: &Permutation, n: usize) -> String {
     let dense = DensePermutation::from_permutation(perm, n);
     let mut visited = vec![false; n];
     let mut result = String::new();

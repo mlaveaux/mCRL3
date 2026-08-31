@@ -29,6 +29,7 @@ use merc_utilities::MercError;
 use merc_utilities::Timing;
 
 use merc_pbes::Bsgs;
+use merc_pbes::Canonicaliser;
 use merc_pbes::GapConfig;
 use merc_pbes::ParameterLayoutLPS;
 use merc_pbes::PbesLps;
@@ -39,7 +40,6 @@ use merc_pbes::QuotientLps;
 use merc_pbes::SymmetryAlgorithm;
 use merc_pbes::check_parameter_basis;
 use merc_pbes::explore_common::UNIFY_IGNORE_CE_EQUATIONS;
-use merc_pbes::explore_common::UNIFY_RESET_PARAMETERS;
 use merc_pbes::explore_pbes;
 use merc_pbes::explore_pbes_impl;
 use merc_pbes::explore_pbes_parallel;
@@ -89,10 +89,7 @@ struct Cli {
     #[arg(long, global = true)]
     timings: bool,
 
-    /// Skip the preprocessing that mCRL2 applies to a PBES before instantiating
-    /// it (instantiate global variables, simplify, one point rule, order
-    /// quantified variables). `pbessolve` always applies it, so leaving it on is
-    /// what makes the two tools comparable.
+    /// Skip the default preprocessing that is applied to a PBES before instantiating.
     #[arg(long, global = true, default_value_t = false)]
     no_preprocess: bool,
 
@@ -131,9 +128,6 @@ enum Commands {
     GraphSymmetry(GraphSymmetryArgs),
     /// Explore a PBES explicitly into a parity game.
     ExploreExplicit(ExploreExplicitArgs),
-    /// Explore a PBES in standard recursive form (SRF) explicitly into a parity
-    /// game, optionally pruning summands with a control flow graph analysis.
-    ExploreExplicitSrf(ExploreExplicitSrfArgs),
     /// Explore a PBES symbolically using LDD-based reachability.
     ExploreSymbolic(ExploreSymbolicArgs),
     /// Solve a PBES by exploring it into a parity game and solving the game.
@@ -162,10 +156,11 @@ struct ExploreArgs {
     #[arg(long, value_enum, default_value_t = ExplorationStrategy::Bfs)]
     strategy: ExplorationStrategy,
 
-    /// Caching strategy to use during exploration. Only affects `--srf`, whose
-    /// summands have the positional state effect that makes a cache key narrow
-    /// enough to be shared; the direct structure-graph explorer cannot benefit
-    /// (see `PbesLps`) and ignores this.
+    /// Caching strategy to use during exploration. Only valid with `--srf`,
+    /// whose summands have the positional state effect that makes a cache key
+    /// narrow enough to be shared; the direct structure-graph explorer cannot
+    /// benefit (see `PbesLps`), so a value other than `none` without `--srf` is
+    /// rejected.
     #[arg(long, value_enum, default_value_t = CachingStrategy::None)]
     caching: CachingStrategy,
 
@@ -194,9 +189,34 @@ struct ExploreArgs {
     #[arg(long, default_value = "gap")]
     gap_path: String,
 
+    /// Canonicalize next-states in the quotient LPS by asking GAP for the
+    /// lex-min (its `Minimum` over the group elements) instead of walking a
+    /// precomputed stabilizer chain. This also skips building the BSGS, since
+    /// it is not used.
+    #[arg(long, default_value_t = false)]
+    use_gap_canonicalisation: bool,
+
     /// Convert to SRF before exploring (legacy; default is the direct structure-graph algorithm).
     #[arg(long, default_value_t = false)]
     srf: bool,
+
+    /// Use a control flow graph analysis to prune summands whose source-value
+    /// condition cannot hold in the current state, on top of the pruning by
+    /// equation index that SRF exploration always applies. Only meaningful
+    /// together with `--srf`. The explored parity game is unchanged.
+    #[arg(long)]
+    control_flow: bool,
+
+    /// Copy each equation's undeclared parameters through unchanged instead of
+    /// resetting them to their sort's default value when unifying parameter
+    /// lists. Only meaningful together with `--srf`.
+    #[arg(long, default_value_t = false)]
+    no_reset: bool,
+
+    /// Write the unified SRF PBES actually explored to this file. Only
+    /// meaningful together with `--srf`.
+    #[arg(long, value_name = "FILE")]
+    dump_srf: Option<PathBuf>,
 
     /// Write the resulting parity game to this file in the PGSolver `.pg` format.
     #[arg(long, short('o'), value_name = "FILE")]
@@ -272,103 +292,6 @@ struct ExploreExplicitArgs {
 
     #[command(flatten)]
     explore: ExploreArgs,
-}
-
-/// How to explore a PBES in SRF form explicitly into a parity game, with
-/// optional control flow graph pruning. Kept separate from [`ExploreArgs`],
-/// which also covers the direct structure-graph algorithm and symmetry
-/// reduction: `--control-flow` only makes sense for the SRF exploration, whose
-/// summands have the positional structure ([`merc_pbes::PbesSrfLps`]) the
-/// analysis relies on.
-#[derive(clap::Args, Debug)]
-struct ExploreExplicitSrfArgs {
-    #[command(flatten)]
-    input: InputArgs,
-
-    /// Strategy to explore the state space of the PBES. Only used for sequential
-    /// exploration; ignored when `--threads > 1` (the parallel explorer always
-    /// uses a level-synchronised BFS).
-    #[arg(long, value_enum, default_value_t = ExplorationStrategy::Bfs)]
-    strategy: ExplorationStrategy,
-
-    /// Caching strategy to use during exploration. Its keys are the positional
-    /// state effect of each SRF summand (see [`merc_pbes::PbesSrfLps`]).
-    #[arg(long, value_enum, default_value_t = CachingStrategy::None)]
-    caching: CachingStrategy,
-
-    /// Number of worker threads used for exploration.
-    #[arg(long, default_value_t = 1)]
-    threads: usize,
-
-    /// Pin each worker thread round-robin to the available CPU cores.
-    #[arg(long, default_value_t = false)]
-    pinned: bool,
-
-    /// Use a control flow graph analysis to prune summands whose source-value
-    /// condition cannot hold in the current state, on top of the pruning by
-    /// equation index that SRF exploration always applies. The explored parity
-    /// game is unchanged.
-    #[arg(long)]
-    control_flow: bool,
-
-    /// Copy each equation's undeclared parameters through unchanged instead of
-    /// resetting them to their sort's default value when unifying parameter
-    /// lists.
-    #[arg(long, default_value_t = false)]
-    no_reset: bool,
-
-    /// Write the unified SRF PBES actually explored to this file.
-    #[arg(long, value_name = "FILE")]
-    dump_srf: Option<PathBuf>,
-
-    /// Write the resulting parity game to this file in the PGSolver `.pg` format.
-    #[arg(long, short('o'), value_name = "FILE")]
-    output: Option<PathBuf>,
-}
-
-impl ExploreExplicitSrfArgs {
-    /// Converts `pbes` to SRF form and unifies its parameter lists according to
-    /// `--no-reset`, writing the result to `--dump-srf` if requested. This is
-    /// the exact PBES every other option on this subcommand then explores,
-    /// unlike a dump produced by a separate, local unification.
-    fn build_srf(&self, pbes: &Pbes) -> Result<SrfPbes, MercError> {
-        let mut srf = SrfPbes::from(pbes)?;
-        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, !self.no_reset)?;
-        if let Some(path) = &self.dump_srf {
-            write!(File::create(path)?, "{}", srf.to_pbes())?;
-            info!("Unified SRF PBES written to '{}'", path.display());
-        }
-        Ok(srf)
-    }
-
-    /// Explores `pbes` in SRF form into a parity game using `builder`.
-    fn explore<B: PGBuilder>(&self, pbes: Pbes, timing: &Timing, builder: B) -> Result<B::PG, MercError> {
-        let srf = self.build_srf(&pbes)?;
-        if self.threads > 1 {
-            explore_srf_pbes_parallel(
-                srf,
-                self.threads,
-                self.caching,
-                self.control_flow,
-                self.pinned,
-                timing,
-                builder,
-            )
-        } else {
-            explore_srf_pbes(srf, self.strategy, self.caching, self.control_flow, timing, builder)
-        }
-    }
-
-    /// Writes `game` to `--output` in PGSolver format, if requested. A no-op
-    /// when `--output` was not given.
-    fn write_output(&self, game: &ParityGame) -> Result<(), MercError> {
-        if let Some(output) = &self.output {
-            let mut output_file = File::create(output)?;
-            write_pg(&mut output_file, game)?;
-            info!("Parity game written to '{}'", output.display());
-        }
-        Ok(())
-    }
 }
 
 /// The PBES to explore symbolically, and how its equations are grouped and ordered.
@@ -501,7 +424,6 @@ fn handle_command(cli: &Cli, timing: &Timing) -> Result<(), MercError> {
             Commands::Symmetry(args) => handle_symmetry(args, timing, preprocess)?,
             Commands::GraphSymmetry(args) => handle_graph_symmetry(args, timing, preprocess)?,
             Commands::ExploreExplicit(args) => handle_explore_explicit(args, timing, preprocess)?,
-            Commands::ExploreExplicitSrf(args) => handle_explore_explicit_srf(args, timing, preprocess)?,
             Commands::ExploreSymbolic(args) => handle_explore_symbolic(cli, args, timing, preprocess)?,
             Commands::Solve(args) => handle_solve(args, timing, preprocess)?,
         }
@@ -536,6 +458,51 @@ impl InputArgs {
 }
 
 impl ExploreArgs {
+    /// Validates the option combinations that do not make sense together,
+    /// returning an error for each one rather than silently ignoring a flag.
+    fn validate(&self) -> Result<(), MercError> {
+        if self.caching != CachingStrategy::None && !self.srf {
+            return Err(MercError::from(format!(
+                "`--caching {:?}` requires `--srf`: the direct structure-graph explorer cannot benefit \
+                 from a cache (see `PbesLps`), only SRF summands have the narrow positional state \
+                 effect a cache key can exploit",
+                self.caching
+            )));
+        }
+        if self.control_flow && !self.srf {
+            return Err(MercError::from(
+                "`--control-flow` requires `--srf`: the control flow graph analysis prunes SRF summands \
+                 whose source-value condition cannot hold, which only exists for SRF exploration",
+            ));
+        }
+        if self.no_reset && !self.srf {
+            return Err(MercError::from(
+                "`--no-reset` requires `--srf`: it only changes how SRF parameter lists are unified",
+            ));
+        }
+        if self.dump_srf.is_some() && !self.srf {
+            return Err(MercError::from(
+                "`--dump-srf` requires `--srf`: there is no SRF PBES to dump for the direct \
+                 structure-graph explorer",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Converts `pbes` to SRF form and unifies its parameter lists according to
+    /// `--no-reset`, writing the result to `--dump-srf` if requested. This is
+    /// the exact PBES every other option on this subcommand then explores,
+    /// unlike a dump produced by a separate, local unification.
+    fn build_srf(&self, pbes: &Pbes) -> Result<SrfPbes, MercError> {
+        let mut srf = SrfPbes::from(pbes)?;
+        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, !self.no_reset)?;
+        if let Some(path) = &self.dump_srf {
+            write!(File::create(path)?, "{}", srf.to_pbes())?;
+            info!("Unified SRF PBES written to '{}'", path.display());
+        }
+        Ok(srf)
+    }
+
     /// Explores `pbes` into a parity game using `builder`, applying symmetry
     /// reduction when generators are supplied or detected.
     ///
@@ -547,31 +514,44 @@ impl ExploreArgs {
     fn explore<B: PGBuilder>(&self, pbes: Pbes, timing: &Timing, builder: B) -> Result<B::PG, MercError> {
         // Explicit generators take precedence over detection: giving both means
         // the user already knows the group and only detection would be redundant.
-        let bsgs = if !self.quotient.is_empty() {
-            Some(build_bsgs_from_user_generators(
+        let canonicaliser = if !self.quotient.is_empty() {
+            Some(build_canonicaliser_from_user_generators(
                 &pbes,
                 &self.quotient,
                 &self.gap_path,
+                self.use_gap_canonicalisation,
                 timing,
             )?)
         } else if self.symmetry {
-            Some(build_bsgs_for_pbes(&pbes, &self.gap_path, timing)?)
+            Some(build_canonicaliser_for_pbes(
+                &pbes,
+                &self.gap_path,
+                self.use_gap_canonicalisation,
+                timing,
+            )?)
         } else {
             None
         };
 
-        if let Some(bsgs) = bsgs {
-            explore_with_symmetry(&pbes, self, bsgs, timing, builder)
-        } else if self.threads > 1 && self.srf {
-            let mut srf = SrfPbes::from(&pbes)?;
-            srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
-            explore_srf_pbes_parallel(srf, self.threads, self.caching, false, self.pinned, timing, builder)
+        if let Some(canonicaliser) = canonicaliser {
+            explore_with_symmetry(&pbes, self, canonicaliser, timing, builder)
+        } else if self.srf {
+            let srf = self.build_srf(&pbes)?;
+            if self.threads > 1 {
+                explore_srf_pbes_parallel(
+                    srf,
+                    self.threads,
+                    self.caching,
+                    self.control_flow,
+                    self.pinned,
+                    timing,
+                    builder,
+                )
+            } else {
+                explore_srf_pbes(srf, self.strategy, self.caching, self.control_flow, timing, builder)
+            }
         } else if self.threads > 1 {
             explore_pbes_parallel(pbes, self.threads, self.pinned, timing, builder)
-        } else if self.srf {
-            let mut srf = SrfPbes::from(&pbes)?;
-            srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
-            explore_srf_pbes(srf, self.strategy, self.caching, false, timing, builder)
         } else {
             explore_pbes(pbes, self.strategy, timing, builder)
         }
@@ -590,6 +570,7 @@ impl ExploreArgs {
 }
 
 fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
+    args.explore.validate()?;
     let pbes = args.input.read(timing, preprocess)?;
 
     if args.explore.output.is_some() {
@@ -612,36 +593,6 @@ fn handle_explore_explicit(args: &ExploreExplicitArgs, timing: &Timing, preproce
         // No output requested, discard the explored game - the exploration loop
         // itself already logs the vertex/edge counts as it goes.
         args.explore.explore(pbes, timing, ())?;
-    }
-
-    Ok(())
-}
-
-/// Handles the explore-explicit-srf command: explores a PBES in SRF form
-/// explicitly into a parity game, optionally pruning summands with a control
-/// flow graph analysis (see [`ExploreExplicitSrfArgs`]).
-fn handle_explore_explicit_srf(
-    args: &ExploreExplicitSrfArgs,
-    timing: &Timing,
-    preprocess: bool,
-) -> Result<(), MercError> {
-    let pbes = args.input.read(timing, preprocess)?;
-
-    if args.output.is_some() {
-        let game = args.explore(pbes, timing, ParityGameBuilder::new(VertexIndex::new(0)))?;
-        args.write_output(&game)?;
-
-        info!(
-            vertices = game.num_of_vertices(),
-            edges = game.num_of_edges();
-            "Parity game: {} vertices, {} edges",
-            game.num_of_vertices(),
-            game.num_of_edges()
-        );
-    } else {
-        // No output requested, discard the explored game - the exploration loop
-        // itself already logs the vertex/edge counts as it goes.
-        args.explore(pbes, timing, ())?;
     }
 
     Ok(())
@@ -700,18 +651,16 @@ fn parse_generators(strs: &[String]) -> Result<Vec<Permutation>, MercError> {
         })
         .collect()
 }
-
-/// Build a BSGS from user-supplied generator strings without running graph-symmetry detection.
-fn build_bsgs_from_user_generators(
+/// Build a canonicaliser from user-supplied generator strings without running
+/// graph-symmetry detection. When `use_gap_canonicalisation` is set, the BSGS
+/// is skipped entirely and GAP is asked for the lex-min of each state instead.
+fn build_canonicaliser_from_user_generators(
     pbes: &Pbes,
     strs: &[String],
     gap_path: &str,
+    use_gap_canonicalisation: bool,
     timing: &Timing,
-) -> Result<Arc<Bsgs>, MercError> {
-    let config = GapConfig {
-        executable: gap_path.to_string(),
-        dump_script: None,
-    };
+) -> Result<Arc<Canonicaliser>, MercError> {
     let generators = parse_generators(strs)?;
     let n = symmetry_parameter_basis(pbes)?.len();
 
@@ -730,52 +679,91 @@ fn build_bsgs_from_user_generators(
         }
     }
 
-    let bsgs = Arc::new(timing.measure("symmetry: BSGS", || Bsgs::from_generators(&generators, n, &config))?);
-    info!(
-        "User-supplied generators: |G| = {} ({} generator(s))",
-        bsgs.order(),
-        generators.len()
-    );
-    Ok(bsgs)
+    if use_gap_canonicalisation {
+        info!(
+            "Using GAP lex-min canonicalisation: {} generator(s), {n} parameter(s)",
+            generators.len()
+        );
+        Ok(Arc::new(Canonicaliser::GapLexmin {
+            generators,
+            n,
+            config: GapConfig {
+                executable: gap_path.to_string(),
+                dump_script: None,
+            },
+        }))
+    } else {
+        let config = GapConfig {
+            executable: gap_path.to_string(),
+            dump_script: None,
+        };
+        let bsgs = Arc::new(timing.measure("symmetry: BSGS", || Bsgs::from_generators(&generators, n, &config))?);
+        info!(
+            "User-supplied generators: |G| = {} ({} generator(s))",
+            bsgs.order(),
+            generators.len()
+        );
+        Ok(Arc::new(Canonicaliser::Bsgs(bsgs)))
+    }
 }
 
-/// Compute graph symmetries for `pbes` and build a BSGS from them.
-fn build_bsgs_for_pbes(pbes: &Pbes, gap_path: &str, timing: &Timing) -> Result<Arc<Bsgs>, MercError> {
+/// Compute graph symmetries for `pbes` and build a canonicaliser from them.
+/// When `use_gap_canonicalisation` is set, the BSGS is skipped entirely and GAP
+/// is asked for the lex-min of each state instead.
+fn build_canonicaliser_for_pbes(
+    pbes: &Pbes,
+    gap_path: &str,
+    use_gap_canonicalisation: bool,
+    timing: &Timing,
+) -> Result<Arc<Canonicaliser>, MercError> {
     let config = GapConfig {
         executable: gap_path.to_string(),
         dump_script: None,
     };
     let sym_result = timing.measure("symmetry: detection", || graph_symmetries(pbes, &config))?;
     let n = symmetry_parameter_basis(pbes)?.len();
-    let bsgs = Arc::new(timing.measure("symmetry: BSGS", || {
-        Bsgs::from_generators(&sym_result.generators, n, &config)
-    })?);
-    info!("|G| = {} ({} generator(s))", bsgs.order(), sym_result.generators.len());
 
-    // The two orders are computed by entirely separate routes — GAP's
-    // `Size(Stabilizer(...))` on the detection graph versus the product of the
-    // transversal sizes of the stabilizer chain built from the rendered
-    // generators — so a disagreement means a generator was rendered, parsed or
-    // truncated wrongly somewhere in between. The quotient stays sound either
-    // way (canonicalization only ever uses the chain), so warn rather than fail.
-    if bsgs.order() != sym_result.symmetry_group_order {
-        warn!(
-            "symmetry group order mismatch: graph symmetry detection reports |Sym(pbes)| = {}, \
-             but the BSGS built from its generators has order {}; the quotient will reduce by \
-             the smaller group",
-            sym_result.symmetry_group_order,
-            bsgs.order()
+    if use_gap_canonicalisation {
+        info!(
+            "Using GAP lex-min canonicalisation: |Sym(pbes)| = {}, {} parameter(s)",
+            sym_result.symmetry_group_order, n
         );
+        Ok(Arc::new(Canonicaliser::GapLexmin {
+            generators: sym_result.generators,
+            n,
+            config,
+        }))
+    } else {
+        let bsgs = Arc::new(timing.measure("symmetry: BSGS", || {
+            Bsgs::from_generators(&sym_result.generators, n, &config)
+        })?);
+        info!("|G| = {} ({} generator(s))", bsgs.order(), sym_result.generators.len());
+
+        // The two orders are computed by entirely separate routes — GAP's
+        // `Size(Stabilizer(...))` on the detection graph versus the product of the
+        // transversal sizes of the stabilizer chain built from the rendered
+        // generators — so a disagreement means a generator was rendered, parsed or
+        // truncated wrongly somewhere in between. The quotient stays sound either
+        // way (canonicalization only ever uses the chain), so warn rather than fail.
+        if bsgs.order() != sym_result.symmetry_group_order {
+            warn!(
+                "symmetry group order mismatch: graph symmetry detection reports |Sym(pbes)| = {}, \
+                 but the BSGS built from its generators has order {}; the quotient will reduce by \
+                 the smaller group",
+                sym_result.symmetry_group_order,
+                bsgs.order()
+            );
+        }
+        Ok(Arc::new(Canonicaliser::Bsgs(bsgs)))
     }
-    Ok(bsgs)
 }
 
 /// Explore `pbes` into a parity game using `builder`, canonicalizing every
-/// next-state via `bsgs`.
+/// next-state via `canonicaliser`.
 fn explore_with_symmetry<B: PGBuilder>(
     pbes: &Pbes,
     args: &ExploreArgs,
-    bsgs: Arc<Bsgs>,
+    canonicaliser: Arc<Canonicaliser>,
     timing: &Timing,
     builder: B,
 ) -> Result<B::PG, MercError> {
@@ -790,24 +778,24 @@ fn explore_with_symmetry<B: PGBuilder>(
         // Must unify with exactly the flags `symmetry_parameter_basis` used above,
         // or the generators would index into a different vector than this SRF view
         // lays its state out by (see the module-level comment on this function).
-        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, UNIFY_RESET_PARAMETERS)?;
+        srf.unify_parameters(UNIFY_IGNORE_CE_EQUATIONS, !args.no_reset)?;
         let lps = PbesSrfLps::new(srf)?;
         check_parameter_basis(&basis, &lps.parameters(), "SRF")?;
-        quotient_explore(&lps, args, args.caching, bsgs, timing, builder)
+        quotient_explore(&lps, args, args.caching, canonicaliser, timing, builder)
     } else {
         let lps = PbesLps::new(pbes.clone())?;
         check_parameter_basis(&basis, &lps.parameters(), "structure-graph")?;
-        quotient_explore(&lps, args, CachingStrategy::None, bsgs, timing, builder)
+        quotient_explore(&lps, args, CachingStrategy::None, canonicaliser, timing, builder)
     }
 }
 
 /// Explore `lps` into a parity game using `builder`, canonicalizing every
-/// next-state via `bsgs`.
+/// next-state via `canonicaliser`.
 fn quotient_explore<P, B: PGBuilder>(
     lps: &P,
     args: &ExploreArgs,
     caching: CachingStrategy,
-    bsgs: Arc<Bsgs>,
+    canonicaliser: Arc<Canonicaliser>,
     timing: &Timing,
     builder: B,
 ) -> Result<B::PG, MercError>
@@ -817,7 +805,7 @@ where
 {
     match caching {
         CachingStrategy::None => {
-            let qlps = QuotientLps::new(lps, bsgs, 1);
+            let qlps = QuotientLps::new(lps, canonicaliser, 1);
             if args.threads > 1 {
                 explore_pbes_parallel_impl(&qlps, args.threads, args.pinned, timing, builder)
             } else {
@@ -829,7 +817,7 @@ where
             // keys stay the narrow read-position projections of the raw states
             // instead of covering every parameter touched by canonicalization.
             let cached = CacheLPS::new(lps, caching);
-            let qlps = QuotientLps::new(&cached, bsgs, 1);
+            let qlps = QuotientLps::new(&cached, canonicaliser, 1);
             let game = if args.threads > 1 {
                 explore_pbes_parallel_impl(&qlps, args.threads, args.pinned, timing, builder)
             } else {
@@ -844,6 +832,7 @@ where
 /// Handles the solve command, which explores a PBES into a parity game and
 /// solves the game, printing the solution of the initial vertex.
 fn handle_solve(args: &SolveArgs, timing: &Timing, preprocess: bool) -> Result<(), MercError> {
+    args.explore.validate()?;
     // Solving always needs the actual game, unlike plain `explore-explicit`.
     let game = args.explore.explore(
         args.input.read(timing, preprocess)?,
