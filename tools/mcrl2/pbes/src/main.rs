@@ -684,14 +684,11 @@ fn build_canonicaliser_from_user_generators(
             "Using GAP lex-min canonicalisation: {} generator(s), {n} parameter(s)",
             generators.len()
         );
-        Ok(Arc::new(Canonicaliser::GapLexmin {
-            generators,
-            n,
-            config: GapConfig {
-                executable: gap_path.to_string(),
-                dump_script: None,
-            },
-        }))
+        let config = GapConfig {
+            executable: gap_path.to_string(),
+            dump_script: None,
+        };
+        Ok(Arc::new(Canonicaliser::gap_lexmin(generators, n, &config)))
     } else {
         let config = GapConfig {
             executable: gap_path.to_string(),
@@ -728,11 +725,7 @@ fn build_canonicaliser_for_pbes(
             "Using GAP lex-min canonicalisation: |Sym(pbes)| = {}, {} parameter(s)",
             sym_result.symmetry_group_order, n
         );
-        Ok(Arc::new(Canonicaliser::GapLexmin {
-            generators: sym_result.generators,
-            n,
-            config,
-        }))
+        Ok(Arc::new(Canonicaliser::gap_lexmin(sym_result.generators, n, &config)))
     } else {
         let bsgs = Arc::new(timing.measure("symmetry: BSGS", || {
             Bsgs::from_generators(&sym_result.generators, n, &config)
