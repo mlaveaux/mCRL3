@@ -481,7 +481,11 @@ impl InputArgs {
     /// Reads the PBES in the explicitly chosen format, or the binary PBES format
     /// when no format is given.
     ///
-    /// If `preprocess` is false, the PBES is not preprocessed.
+    /// Unless `preprocess` is false, the PBES is put through the same preprocessing
+    /// that mCRL2 applies before instantiating one. Doing it here rather than inside
+    /// a single explorer keeps every consumer of this PBES — the explorers, the
+    /// symmetry detection and the parameter basis the generators index into —
+    /// looking at the same equations.
     fn read(&self, timing: &Timing, preprocess: bool) -> Result<Pbes, MercError> {
         let mut pbes = timing.measure("load PBES", || match self.format.unwrap_or(PbesFormat::Pbes) {
             PbesFormat::Pbes => Pbes::from_file(&self.filename),

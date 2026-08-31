@@ -1,8 +1,8 @@
+use std::fmt;
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::fmt;
 
 use clap::Parser;
 use clap::Subcommand;
@@ -233,7 +233,7 @@ impl ExploreArgs {
             }
             Order::Explicit(order) => {
                 return Ok(VariableOrder::Explicit(order.clone()));
-            },
+            }
         }
     }
 }
