@@ -124,12 +124,17 @@ impl PropVarDecl {
 pub struct PropVarInst {
     pub identifier: String,
     pub arguments: Vec<DataExpr>,
+    pub span: Span,
 }
 
 impl PropVarInst {
     /// Creates a new instance of a propositional variable with the given identifier and arguments.
     pub fn new(identifier: String, arguments: Vec<DataExpr>) -> Self {
-        PropVarInst { identifier, arguments }
+        PropVarInst {
+            identifier,
+            arguments,
+            span: Span::default(),
+        }
     }
 }
 
