@@ -30,6 +30,7 @@ fn lowered_rhs(expr: &str, sort: &str, encoding: NumberEncoding) -> String {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_binary_is_the_default() {
     assert_eq!(NumberEncoding::default(), NumberEncoding::Binary);
     assert!(!NumberEncoding::Binary.is_machine_word());
@@ -41,6 +42,7 @@ fn test_binary_is_the_default() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_encoding_is_recorded() {
     for encoding in [NumberEncoding::Binary, NumberEncoding::MachineWord] {
         assert_eq!(typed("map f: Nat;", encoding).number_encoding(), encoding);
@@ -49,6 +51,7 @@ fn test_encoding_is_recorded() {
 
 /// Every numeric and container sort type checks under both encodings.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_both_encodings_type_check_the_standard_sorts() {
     let specifications = [
         "map f: Pos -> Pos;\nvar p: Pos;\neqn f(p) = p * 2;",
@@ -74,6 +77,7 @@ fn test_both_encodings_type_check_the_standard_sorts() {
 /// The machine-word encoding pulls in `machine_word.mcrl2`, which declares the
 /// `@word` digit sort; the binary encoding has no such sort.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_system_specification_differs_per_encoding() {
     let declares_word = |encoding| {
         typed("map f: Nat;", encoding)
@@ -96,6 +100,7 @@ fn test_system_specification_differs_per_encoding() {
 /// The machine-word system specification is strictly larger: the `*64`
 /// templates define the digit operations on top of the same interface.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_machine_word_specification_has_more_equations() {
     let count = |encoding| {
         typed("map f: Nat;", encoding)
@@ -113,6 +118,7 @@ fn test_machine_word_specification_has_more_equations() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_literals_lower_to_the_selected_representation() {
     // Zero infers as `Nat` directly, so it is lowered without a coercion.
     assert_eq!(lowered_rhs("0", "Nat", NumberEncoding::Binary), "@c0");
@@ -146,6 +152,7 @@ fn test_literals_lower_to_the_selected_representation() {
 /// A `Pos` literal used where a `Nat` is expected is widened with the
 /// constructor of the selected encoding.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_pos_to_nat_coercion_follows_the_encoding() {
     assert_eq!(
         lowered_rhs("1 + 1", "Nat", NumberEncoding::Binary),

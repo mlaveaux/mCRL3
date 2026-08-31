@@ -1,29 +1,3 @@
-//! Phase-3 (equation-level) sort-inference tests, ported from mCRL2's
-//! `libraries/data/test/typecheck_test.cpp` (the complete active suite; the
-//! few cases mCRL2 itself keeps disabled are ported with a comment saying
-//! so). mCRL2's cases are usually phrased as a bare data expression under a
-//! variable context; each is adapted here into a full data specification
-//! (`map .. ; var ..; eqn ..;`), since that is `merc_typecheck`'s only entry
-//! point. A case whose sort is only determined *because* of that adaptation
-//! (mCRL2 accepts the bare expression with a free sort) says so in a comment.
-//!
-//! Where a case checks *which* overload or upcast was picked rather than
-//! plain accept/reject, the equation assigns the result to a `map` declared
-//! with the exact expected sort (`map result: <expected>; eqn result = ..;`):
-//! this only type checks if the right-hand side actually resolves to that
-//! sort (or a sub-sort of it), so a bare `Ok` is sufficient evidence — no
-//! need to reach into the crate's private inference tables.
-//!
-//! Confirmed divergences from mCRL2 come in two kinds, both marked in place:
-//! `#[should_panic]` anchors encode mCRL2's behavior where merc has a *gap*
-//! (they fail the moment the gap is fixed, forcing the flip into a plain
-//! assertion — see the known-gaps section at the bottom), while divergences
-//! in the *permissive* direction — merc's global constraint solver resolves
-//! typings mCRL2's local algorithm rejects as ambiguous — are marked with an
-//! explicit `IMPROVEMENT over mCRL2` comment, assert merc's behavior, and cite
-//! the analogous mCRL2 verdict. The `test_improvement_*` block near the end
-//! collects *new* showcase cases built on top of that mechanism.
-
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification;
 use merc_typecheck::InferenceError;
@@ -49,13 +23,8 @@ fn check_err(text: &str) -> WellTypedError {
     }
 }
 
-// === Overload disjunction corpus (typecheck_test.cpp:1209-1330) ===
-// Unported before this: existing tests only exercise a two-overload
-// disjunction over one argument; this corpus adds 4-way sort disjunctions
-// over two arguments and arity disjunctions (0/1/2 arguments of the same
-// name).
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_picks_unique_zero_arity() {
     // `f` bare can only be the zero-arity overload; the others need arguments.
     // mCRL2: test_ambiguous_function.
@@ -71,6 +40,7 @@ fn test_ambiguous_function_picks_unique_zero_arity() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application_picks_by_arg_sorts() {
     // With x: Pos, y: Nat, only one of the four overloads structurally
     // unifies with each argument pattern (Nat cannot downcast to Pos), so
@@ -109,6 +79,7 @@ fn test_ambiguous_function_application_picks_by_arg_sorts() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application_order_independent() {
     // Same overload set and call as `application1`, but declared in a
     // different order; the solver must pick the same overload (`S`)
@@ -126,6 +97,7 @@ fn test_ambiguous_function_application_order_independent() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_three_way_arity_overload_nested_application() {
     // `f` is overloaded 0/1/2-ary; a 3-way *arity* disjunction, distinct from
     // the 4-way *sort* disjunction above. mCRL2:
@@ -154,6 +126,7 @@ fn test_three_way_arity_overload_nested_application() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_self_application_through_constant_and_function_overload() {
     // `f` overloaded as a constant `S` and as `S -> T`; applying the constant
     // overload to itself resolves to `T`. mCRL2:
@@ -167,9 +140,8 @@ fn test_self_application_through_constant_and_function_overload() {
     );
 }
 
-// === Numeric upcast / list literal join ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_upcast_pos_plus_nat_via_variables() {
     // `+` and `==` over declared *variables* rather than a literal on one
     // side, as the existing literal-focused tests use. `Pos # Nat -> Pos` is
@@ -188,6 +160,7 @@ fn test_upcast_pos_plus_nat_via_variables() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_repeated_arithmetic_stays_tractable() {
     // Before the `Numeric` constraint replaced the `+`/`*` overload
     // disjunction with a direct lookup, an equation with several repeated
@@ -220,6 +193,7 @@ fn test_repeated_arithmetic_stays_tractable() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_list_literal_mixed_nat_pos_joins_to_nat() {
     // mCRL2: test_list_nat_pos, test_list_pos_nat.
     check_ok("map l: List(Nat); eqn l = [0, 1, 2];");
@@ -227,6 +201,7 @@ fn test_list_literal_mixed_nat_pos_joins_to_nat() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_list_concat_variable_upcast() {
     // A declared `List(Nat)`/`List(Pos)` variable concatenated with a
     // literal list stays at the variable's sort. mCRL2:
@@ -236,6 +211,7 @@ fn test_list_concat_variable_upcast() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_list_concat_asymmetric_upcast() {
     // `[0] ++ l` succeeds when `l: List(Nat)` (the literal upcasts), but not
     // when `l: List(Pos)` (the literal `0` cannot downcast). mCRL2:
@@ -249,6 +225,7 @@ fn test_list_concat_asymmetric_upcast() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_list_mismatched_variable_sorts_rejected() {
     // `List` has no sub-sort relation between element sorts (unlike
     // `FSet(S) <= Set(S)`), so `List(Pos)` and `List(Nat)` are simply
@@ -266,9 +243,8 @@ fn test_list_mismatched_variable_sorts_rejected() {
     );
 }
 
-// === Appendix-B boundary cases (book-derived, no direct typecheck_test.cpp line) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_fbag_literal_widens_to_bag_at_use() {
     // The `Bag` analogue of the already-tested `FSet <= Set` widening; `Bag`
     // members are (value, multiplicity) pairs, a different code path.
@@ -276,6 +252,7 @@ fn test_fbag_literal_widens_to_bag_at_use() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_exp_operator_sort() {
     // `exp: Pos # Nat -> Pos` needs one upcast (the exponent); `exp: Nat #
     // Nat -> Nat` would need two, so the ranked solver prefers the former.
@@ -283,17 +260,20 @@ fn test_exp_operator_sort() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_mod_upcasts_positive_dividend_to_nat() {
     // `mod: Nat # Pos -> Nat` is the only overload; a `Pos` dividend upcasts.
     check_ok("map n: Nat; var x: Pos; eqn n = x mod 2;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_div_over_int_stays_int() {
     check_ok("map r: Int; var x: Int; eqn r = x div 2;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_int2pos_conversion_family() {
     // Exercises every downcast conversion name at once, a regression net for
     // the basic-sort system signature. mCRL2: test_proper_use_of_int2pos1.
@@ -309,6 +289,7 @@ fn test_int2pos_conversion_family() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_avoidance_of_possible_types_regression() {
     // Historical mCRL2 regression: a stale "PossibleTypes([Nat,Int,Real])"
     // sort for `#` used to leak past the `==` scheme. mCRL2:
@@ -316,9 +297,8 @@ fn test_avoidance_of_possible_types_regression() {
     check_ok("map result: Bool; eqn result = (#[0, 1] == -1);");
 }
 
-// === whr / function-update regressions ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_eqn_set_where() {
     // Historical mCRL2 bug #787: a `whr` inside a set comprehension. Since
     // the binders commit this is genuinely inferred (`Set(Bool)` through the
@@ -331,6 +311,7 @@ fn test_eqn_set_where() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_function_update_chain_without_lambda() {
     // The declared-mapping variant of mCRL2's test_function_updates (whose
     // lambda-base original is ported below), preserving the chained
@@ -342,6 +323,7 @@ fn test_function_update_chain_without_lambda() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_function_updates() {
     // Function updates on `lambda` bases, incl. a chained update and a
     // mismatched point sort. mCRL2: test_function_updates.
@@ -355,9 +337,8 @@ fn test_function_updates() {
     );
 }
 
-// === Product-domain / multi-parameter matching ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_matching_multi_param_distinct_sorts() {
     // Two-parameter declaration-sort matching over a real product domain,
     // distinct from the single-parameter cases already tested. mCRL2:
@@ -370,6 +351,7 @@ fn test_matching_multi_param_distinct_sorts() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_matching_repeated_variable_non_strict() {
     // The same variable filling two parameter positions of different
     // declared sorts; `x` upcasts into the `Nat` slot. mCRL2:
@@ -382,6 +364,7 @@ fn test_matching_repeated_variable_non_strict() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_aliased_list_of_list_equality() {
     // Alias normalization reaching through two nested container levels
     // feeding the `==` scheme. mCRL2: test_aliases.
@@ -394,6 +377,7 @@ fn test_aliased_list_of_list_equality() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_projection_function_resolves() {
     // mCRL2's own checker rejects this (comment: \"shows an ambiguous
     // projection function that cannot be resolved with the current
@@ -412,9 +396,8 @@ fn test_ambiguous_projection_function_resolves() {
     );
 }
 
-// === Boolean and numeric literal basics (typecheck_test.cpp test_true..test_one_times_two_plus_three) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_boolean_operator_basics() {
     // mCRL2: test_true, test_if, test_not, test_and.
     check_ok("map b: Bool; eqn b = true;");
@@ -424,6 +407,7 @@ fn test_boolean_operator_basics() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_number_literal_operator_sorts() {
     // The declared result sort mirrors the sort mCRL2 infers for the bare
     // expression (`+` takes its heterogeneous overloads: a `Pos` on either
@@ -442,6 +426,7 @@ fn test_number_literal_operator_sorts() {
 // List literals and empty-list typing
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_empty_list_takes_element_sort_from_use() {
     // mCRL2 accepts the bare `[]` with a free element sort, but merc's
     // constraint solver needs a context to resolve the element sort.
@@ -450,6 +435,7 @@ fn test_empty_list_takes_element_sort_from_use() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_empty_list_membership() {
     // The member's sort determines the empty list's element sort through the
     // polymorphic `in` template.
@@ -457,6 +443,7 @@ fn test_empty_list_membership() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_list_literal_sorts() {
     // mCRL2: test_list_true_false, test_list_zero, test_list_one_two,
     // test_list_zero_concat_one_two.
@@ -467,17 +454,15 @@ fn test_list_literal_sorts() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_head_of_list_literal() {
     // mCRL2: test_head_list_zero, test_head_list_zero_one.
     check_ok("map n: Nat; eqn n = head([0]);");
     check_ok("map n: Nat; eqn n = head([0, 1]);");
 }
 
-// === Set/bag operations and comprehensions (typecheck_test.cpp test_emptyset..test_bag_comprehension) ===
-// The bare `{}`/`{:}` literals are covered by the unit tests
-// (test_empty_set_takes_element_sort_from_context and friends).
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_emptyset_complement() {
     // `!` on sets comes from the polymorphic template; the equation context
     // supplies the element sort mCRL2 leaves free. mCRL2: test_emptyset_complement.
@@ -485,6 +470,7 @@ fn test_emptyset_complement() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_set_complement_subset_with_context() {
     // The faithful `!{} <= {}` (either side empty) is the known-gap anchor
     // test_emptyset_complement_subset below; with the element sort supplied by a
@@ -495,6 +481,7 @@ fn test_set_complement_subset_with_context() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_emptybag_complement_rejected() {
     // Bags have no complement. mCRL2: test_emptybag_complement.
     let err = check_err("map b: Bag(Bool); eqn b = !{:};");
@@ -505,6 +492,7 @@ fn test_emptybag_complement_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_set_literal_sorts() {
     // A negative member joins the elements to `Int`. mCRL2:
     // test_set_true_false, test_set_numbers.
@@ -513,12 +501,14 @@ fn test_set_literal_sorts() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_set_comprehension_with_mod_body() {
     // mCRL2: test_set_comprehension.
     check_ok("map s: Set(Nat); eqn s = { x: Nat | x mod 2 == 0 };");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_fset_count_and_pick() {
     // `#` and `pick` through the polymorphic container templates. mCRL2:
     // test_fset_count, test_fset_pick_bool, test_fset_pick_nat.
@@ -528,6 +518,7 @@ fn test_fset_count_and_pick() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bag_literal_sorts() {
     // mCRL2: test_bag_true_false, test_bag_numbers.
     check_ok("map f: FBag(Bool); eqn f = {true: 1, false: 2};");
@@ -535,6 +526,7 @@ fn test_bag_literal_sorts() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_fbag_count_and_pick() {
     // mCRL2: test_fbag_count_numbers, test_fbag_pick_numbers.
     check_ok("map n: Nat; eqn n = #{1: 1, 2: 2, -8: 8};");
@@ -542,12 +534,14 @@ fn test_fbag_count_and_pick() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bag_comprehension_with_lambda_body() {
     // A lambda applied inside the multiplicity body. mCRL2: test_bag_comprehension.
     check_ok("map b: Bag(Nat); eqn b = { x: Nat | (lambda y: Nat. y * y)(x) };");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bag_comprehension_body_sorts() {
     // A `Pos` body (`n + 1`) and a `Nat` literal body read as bags; a `Real`
     // body is rejected. mCRL2: test_bag_with_pos_as_argument,
@@ -563,9 +557,8 @@ fn test_bag_comprehension_body_sorts() {
     );
 }
 
-// === Binders: lambda, forall/exists (typecheck_test.cpp test_inline_struct..test_exists_simple) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_lambda_term_with_wrong_number_of_arguments() {
     // A 2012 mCRL2 core-dump regression: a unary lambda applied to two
     // arguments. mCRL2: test_lambda_term_with_wrong_number_of_arguments.
@@ -577,6 +570,7 @@ fn test_lambda_term_with_wrong_number_of_arguments() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_lambda_aliasing() {
     // The inner `f` shadows the outer for the body, so `f(f)` must apply the
     // function to itself, which cannot unify. mCRL2: test_lambda_aliasing.
@@ -591,6 +585,7 @@ fn test_lambda_aliasing() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_lambda_variable_aliasing() {
     // The lambda's `x: S` shadows the declared `x: S -> T`, so `x(x)`
     // applies a non-function. mCRL2: test_lambda_variable_aliasing.
@@ -610,6 +605,7 @@ fn test_lambda_variable_aliasing() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_forall_nat_vs_int_body() {
     // The body compares a `Nat` variable with a negative literal, joining at
     // `Int`. mCRL2: test_forall_simple_nat_vs_int (test_forall_simple is the
@@ -618,12 +614,14 @@ fn test_forall_nat_vs_int_body() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_exists_simple() {
     // mCRL2: test_exists_simple.
     check_ok("map b: Bool; eqn b = exists n: Nat. n > 481;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_binders_over_anonymous_structs_accepted() {
     // Anonymous `struct` binder sorts are hoisted and fully inferred (not
     // skipped), so these type check like any other equation. The variants
@@ -638,6 +636,7 @@ fn test_binders_over_anonymous_structs_accepted() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_product_binder_sort_is_rejected() {
     // A bare product (`Nat # Bool`) is not a valid variable sort, so a binder
     // over one is rejected rather than left untyped — the former silent skip
@@ -657,6 +656,7 @@ fn test_product_binder_sort_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_anonymous_struct_variable_sorts() {
     // Anonymous structs in a `var` block are hoisted, and structurally
     // identical ones share one hoisted declaration, so equal binder sorts
@@ -675,15 +675,15 @@ fn test_anonymous_struct_variable_sorts() {
     );
 }
 
-// === where clauses (typecheck_test.cpp test_where..test_where_mix_nat_list) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_where_basic() {
     // mCRL2: test_where.
     check_ok("map p: Pos; eqn p = x + y whr x = 3, y = 10 end;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_where_bindings_use_outer_scope_only() {
     // A sibling binding's name is not in scope for a right-hand side, so
     // without an outer declaration the reference is undeclared. mCRL2:
@@ -705,6 +705,7 @@ fn test_where_bindings_use_outer_scope_only() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_where_bindings_resolve_against_declared_variables() {
     // With outer declarations, every right-hand side types against the
     // declared variables (not the sibling bindings). mCRL2:
@@ -717,12 +718,14 @@ fn test_where_bindings_resolve_against_declared_variables() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_where_mix_nat_list() {
     // mCRL2: test_where_mix_nat_list.
     check_ok("map l: List(Nat); var x: Nat; z: Nat; eqn l = x1 ++ y whr x1 = [0, z], y = [x] end;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_where_mix_nat_pos_list_types_globally() {
     // IMPROVEMENT over mCRL2 (permissive direction): mCRL2 types each binding
     // at its minimal sort (x = [0, y]: List(Nat), y = [x]: List(Pos)) and
@@ -732,9 +735,8 @@ fn test_where_mix_nat_pos_list_types_globally() {
     check_ok("map l: List(Nat); var x: Pos; y: Nat; eqn l = x ++ y whr x = [0, y], y = [x] end;");
 }
 
-// === Bare overloaded names and sort-directed applications (typecheck_test.cpp test_duplicate_function_*) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bare_overloaded_name_is_ambiguous() {
     // A bare `f` with several overloads has no unique sort. mCRL2 phrases
     // these as bare expressions with an unknown expected sort; comparing `f`
@@ -759,6 +761,7 @@ fn test_bare_overloaded_name_is_ambiguous() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_zero_arity_overload_resolution() {
     // A bare `f` with exactly one zero-arity overload resolves regardless of
     // declaration order, and `f(f)` threads the constant through the unary
@@ -772,6 +775,7 @@ fn test_zero_arity_overload_resolution() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_arity_overloads_through_lambda_application() {
     // The 0/1/2-ary `f` family threaded through an applied lambda. mCRL2:
     // test_duplicate_function_different_arity_horrible_abs.
@@ -782,6 +786,7 @@ fn test_arity_overloads_through_lambda_application() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_same_arity_overloads_resolved_by_argument() {
     // `f: Pos -> Nat` vs `f: Nat -> Pos`: a `Nat` argument cannot downcast
     // to `Pos`, and for a `Pos` argument the ranked solver prefers the exact
@@ -794,6 +799,7 @@ fn test_same_arity_overloads_resolved_by_argument() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_function_application_argument_upcasts() {
     // `f: Nat -> Bool` accepts `Pos` arguments (upcast) and rejects `Int`
     // ones (no downcast), for literals and variables alike. mCRL2:
@@ -817,6 +823,7 @@ fn test_function_application_argument_upcasts() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_constructor_applications() {
     // A struct constructor `c: Nat -> S` behaves like any mapping under
     // application and upcasting. mCRL2: test_struct_constructor and the five
@@ -839,6 +846,7 @@ fn test_struct_constructor_applications() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_data_expressions_struct() {
     // Constructor application through a nested anonymous struct declaration.
     // mCRL2: test_data_expressions_struct.
@@ -846,20 +854,15 @@ fn test_data_expressions_struct() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_proper_use_of_int2pos() {
     // mCRL2: test_proper_use_of_int2pos (the whole conversion family is
     // test_int2pos_conversion_family above).
     check_ok("map f: Pos -> Bool; b: Bool; eqn b = f(Int2Pos(-1));");
 }
 
-// === Ranked resolution of overloads mCRL2 reports as ambiguous ===
-// All four are IMPROVEMENTs over mCRL2 (permissive direction): mCRL2 collects
-// the possible result sorts of the inner `f` and rejects as ambiguous when
-// more than one candidate remains, without ranking; merc's solver ranks the
-// exact match above the upcast (and filters through the equation's expected
-// sort), leaving a unique best solution.
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application_recursive() {
     // Resolves with f: Pos -> Int (exact into g) over f: Pos -> Nat (one
     // upcast). mCRL2: test_ambiguous_function_application_recursive (rejected).
@@ -867,6 +870,7 @@ fn test_ambiguous_function_application_recursive() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application_recursive2() {
     // The added g: Int -> Int is filtered out by the equation's Bool
     // left-hand side. mCRL2: test_ambiguous_function_application_recursive2 (rejected).
@@ -877,6 +881,7 @@ fn test_ambiguous_function_application_recursive2() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application_recursive3() {
     // Resolves with f: Pos -> Nat (argument exact, result upcast) over
     // f: Int -> Int (argument upcast by two). mCRL2:
@@ -888,6 +893,7 @@ fn test_ambiguous_function_application_recursive3() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application_recursive4() {
     // g: Nat -> Int is filtered by the Bool left-hand side; f resolves as in
     // the first case. mCRL2: test_ambiguous_function_application_recursive4 (rejected).
@@ -897,19 +903,8 @@ fn test_ambiguous_function_application_recursive4() {
     );
 }
 
-// === mCRL2 limitations resolved by merc's constraint solver ===
-//
-// IMPROVEMENT over mCRL2 (permissive direction). Every spec below is rejected
-// by mCRL2's local type checker but accepted by merc. These are *new* showcase
-// cases — not ports of `typecheck_test.cpp` — that exercise the same
-// limitations the ported `test_ambiguous_function_application_recursive*`,
-// `test_where_mix_nat_pos_list` and `test_ambiguous_projection_function` cases
-// pin down, in fresh shapes. mCRL2 collects the candidate result sorts of an
-// inner overloaded call and rejects as ambiguous when more than one survives,
-// without ranking exact matches above numeric upcasts; merc's global ranked
-// solver keeps the unique best assignment.
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_improvement_ranked_overload_through_list_literal() {
     // IMPROVEMENT over mCRL2: `f` reaches the `List(Nat)` element either
     // exactly (`f: Pos -> Nat`) or by upcast (`f: Pos -> Pos`, `Pos <= Nat`).
@@ -921,6 +916,7 @@ fn test_improvement_ranked_overload_through_list_literal() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_improvement_ranked_overload_two_level_nesting() {
     // IMPROVEMENT over mCRL2: two nested overloaded calls. `bot` is unique,
     // but `mid` reaches the `Int` domain of `top` exactly (`mid: Nat -> Int`)
@@ -934,6 +930,7 @@ fn test_improvement_ranked_overload_two_level_nesting() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_improvement_where_global_int_list() {
     // IMPROVEMENT over mCRL2: like test_where_mix_nat_pos_list_types_globally,
     // but the result is `List(Int)` and a negative literal forces `Int`. mCRL2
@@ -944,6 +941,7 @@ fn test_improvement_where_global_int_list() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_improvement_ambiguous_projection_disambiguated_by_use() {
     // IMPROVEMENT over mCRL2: a fresh analogue of test_ambiguous_projection_function.
     // `val` is overloaded across two struct alternatives (`A(val: T)`,
@@ -959,6 +957,7 @@ fn test_improvement_ambiguous_projection_disambiguated_by_use() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_improvement_ranked_overload_through_equation_result() {
     // IMPROVEMENT over mCRL2: the equation's expected sort (`Nat`, from the
     // `result` mapping) propagates into the overloaded inner `f`, selecting
@@ -971,9 +970,8 @@ fn test_improvement_ranked_overload_through_equation_result() {
     );
 }
 
-// === Upstream-disabled cases (typecheck_test.cpp keeps these commented out) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_matching_ambiguous() {
     // Upstream expected accept but keeps the case disabled over
     // pretty-printer reordering (not a typechecking issue): the exact
@@ -987,6 +985,7 @@ fn test_matching_ambiguous() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_matching_ambiguous_rhs() {
     // A constant `f: Int` applied to an argument on an equation left-hand
     // side; the original's second equation (`f(x) = 3;`) is dropped since
@@ -1000,6 +999,7 @@ fn test_matching_ambiguous_rhs() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ambiguous_function_application4_with_expected_sort() {
     // Upstream (disabled) expected `f(x, x)` under an *unknown* expected
     // sort to resolve to `Nat # Nat -> S`, i.e. expand-all-arguments
@@ -1018,15 +1018,8 @@ fn test_ambiguous_function_application4_with_expected_sort() {
     );
 }
 
-// === Known gaps (bug-candidates) ===
-// Each anchor asserts the *correct* (mCRL2-matching) behavior inside a
-// `#[should_panic]` (CI runs with --include-ignored, so `#[ignore]` cannot
-// keep the suite green): today the assertion panics because merc diverges,
-// and the moment the gap is fixed the test fails, forcing the attribute's
-// removal — which turns it into the fix's plain regression test. The
-// `expected` substring pins the panic to the intended assertion.
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // Free element sort is defaulted to Bool, matching mCRL2's
 // acceptance. mCRL2: test_empty_list_size.
 fn test_count_of_empty_list_is_nat() {
@@ -1034,6 +1027,7 @@ fn test_count_of_empty_list_is_nat() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // Free element sort is defaulted to Bool, matching mCRL2's
 // acceptance. mCRL2: test_emptyset_complement_subset.
 fn test_emptyset_complement_subset() {
@@ -1041,31 +1035,29 @@ fn test_emptyset_complement_subset() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // Free element sort is defaulted to Bool, matching mCRL2's
 // acceptance. mCRL2: test_emptyset_complement_subset_reverse.
 fn test_emptyset_complement_subset_reverse() {
     check_ok("map b: Bool; eqn b = {} <= !{};");
 }
 
-// Non-decl hoisting now generates abstract sorts (no constructors) for
-// anonymous structs in map sorts and binder positions. The constructor `t`
-// is therefore never in scope, so `x == t` fails with an undeclared-name
-// error — matching mCRL2's rejection. Anchor flipped from `#[should_panic]`
-// to a plain `check_err`.
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // mCRL2: test_inline_struct.
 fn test_inline_struct_rejected() {
     check_err("map b: (struct t) -> Bool; eqn b = lambda x: struct t. x == t;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // mCRL2: test_inline_struct_recogniser.
 fn test_inline_struct_recogniser_rejected() {
     check_err("map b: (struct t?is_t) -> Bool; eqn b = lambda x: struct t?is_t. x == t;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // `struct t?is_t` and `struct t` each hoist to abstract sorts (different
 // non-decl sorts), so `x: @struct0` and `y: @struct1` have incompatible
 // sorts and `x == y` has no valid typing. mCRL2: test_inline_structs_compare_recogniser.
@@ -1077,6 +1069,7 @@ fn test_inline_structs_compare_recogniser_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // Regression for a former blow-up: the `if` join of a finite-set-literal
 // branch with a set-comprehension branch used to bind the result to `FSet`
 // first and then re-explore the whole comprehension body fruitlessly.

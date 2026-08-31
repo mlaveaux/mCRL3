@@ -71,6 +71,7 @@ mod tests {
     use crate::WellTypedError;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_data_spec() {
         let spec = UntypedDataSpecification::parse(
             "
@@ -88,6 +89,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constant_constructor_is_nonempty() {
         // Regression: a constant constructor `c: S` has no argument sorts and
         // makes `S` non-empty; the non-emptiness check must not treat it as a
@@ -97,6 +99,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_abstract_argument_sort_is_nonempty() {
         // Regression: an abstract sort `D` used as a constructor argument is
         // unconstrained and assumed non-empty, so `E` is non-empty here.

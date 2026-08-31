@@ -1593,6 +1593,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_builtin_polymorphic_container_op() {
         // `in` is a POLYMORPHIC_SIGNATURE op (`NameTarget::Builtin`) whose
         // inferred sort is the concrete instantiation; the lowered term embeds

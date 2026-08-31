@@ -179,6 +179,7 @@ mod tests {
     use crate::WellTypedError;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_identical_duplicate_sort_is_deduplicated() {
         let spec = UntypedDataSpecification::parse(
             "
@@ -192,6 +193,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_conflicting_duplicate_sort_is_rejected() {
         let spec = UntypedDataSpecification::parse(
             "
@@ -208,10 +210,10 @@ mod tests {
         }
     }
 
-    /// Locks the resolution boundary documented on
-    /// `DataSpecification::data_specification`: name resolution covers the
-    /// binder sorts inside equation bodies like any declaration-level sort.
+    /// Name resolution covers binder sorts inside equation bodies (e.g. a
+    /// quantifier variable), not just declaration-level sorts.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_equation_body_binder_sorts_are_resolved() {
         let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse(
@@ -242,6 +244,7 @@ mod tests {
     /// An undeclared sort on a binder inside an equation body is rejected like
     /// an undeclared sort anywhere else.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_undeclared_binder_sort_is_rejected() {
         let spec = UntypedDataSpecification::parse("map s: Set(Nat); eqn s = { n: Undeclared | true };").unwrap();
         match DataSpecification::from_untyped(spec) {
@@ -257,6 +260,7 @@ mod tests {
     /// and the equations within them get an id as well, the latter local to
     /// its enclosing block.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_declarations_get_distinct_ids() {
         let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse(

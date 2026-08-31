@@ -198,12 +198,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_signature_collects_overloads() {
         let spec = typecheck("map f: Nat; f: Bool -> Bool;");
         assert_eq!(spec.signature().mappings["f"].len(), 2);
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_signature_matches_declaration_sorts() {
         // The signature is resolved before normalization and the declaration
         // sorts after; both must agree on the interned ids, also through an
@@ -221,12 +223,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_duplicate_declaration_is_one_symbol() {
         let spec = typecheck("map f: Nat; f: Nat;");
         assert_eq!(spec.signature().mappings["f"].len(), 1);
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_and_mapping_conflict() {
         match typecheck_err("sort D; cons c: D; map c: D;") {
             WellTypedError::ConstructorAndMappingConflict { constructor, map, .. } => {
@@ -238,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_and_mapping_overload_is_allowed() {
         // The name `c` is shared, but the sorts differ, so these are distinct
         // symbols to be disambiguated by overload resolution.
@@ -249,6 +254,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_conflict_through_alias_is_detected() {
         // `A` and `(Nat -> Bool)` denote the same sort, so the constructor and
         // mapping `c` are the same symbol even though their written sorts
@@ -260,6 +266,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_for_alias_of_basic_sort_reports_written_name() {
         // The target of `c` denotes the built-in `Nat` and is rejected, but the
         // error refers to the sort as the user wrote it, not to its expansion.
@@ -273,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_for_function_sort_is_rejected() {
         // The higher-order target is written directly, without alias indirection.
         match typecheck_err("cons c: Bool -> (Nat -> Bool);") {
@@ -285,6 +293,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_for_alias_of_function_sort_reports_written_name() {
         match typecheck_err("sort A = Nat -> Bool; cons c: Bool -> A;") {
             WellTypedError::ConstructorForFunctionSort { constructor, sort, .. } => {
@@ -296,6 +305,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_whose_whole_sort_is_a_function_alias() {
         // `c: A` with `A = Nat -> Bool` makes `c` a constructor for the basic
         // sort `Bool`; the error reports the written sort `A`, the closest the
@@ -310,6 +320,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_whose_function_alias_targets_a_declared_sort() {
         // As above, but the aliased function sort ranges over the declared sort
         // `D`, so `c` is a valid (unary) constructor for `D`.
@@ -318,6 +329,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_build_signature_is_idempotent() {
         let spec = typecheck("sort D; cons c: D; map f: D -> Bool;");
 

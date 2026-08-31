@@ -39,24 +39,26 @@ fn lower_err(spec_text: &str, expr_text: &str) -> InferenceError {
     }
 }
 
-// ─── declared symbols ───────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_user_constant_lowers() {
     assert_eq!(lower("sort D; cons d: D;", "d"), "d");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_user_application_lowers() {
     assert_eq!(lower("sort D; cons d: D; map f: D -> D;", "f(d)"), "f(d)");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_nested_user_application_lowers() {
     assert_eq!(lower("sort D; cons d: D; map f: D -> D;", "f(f(f(d)))"), "f(f(f(d)))");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_constructor_lowers() {
     // The constructors of a structured sort are declared by desugaring, not by
     // the user text, so this exercises resolution against the desugared spec.
@@ -67,13 +69,13 @@ fn test_struct_constructor_lowers() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_projection_lowers() {
     assert_eq!(lower("sort D = struct c(n: Nat) | e;", "n(e)"), "n(e)");
 }
 
-// ─── operators, literals and coercions ──────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_operator_node_is_lowered_to_an_application() {
     // `1 + 1` is a `Binary` node; both inference and lowering require the
     // application form, so `typecheck_expression` must lower it first.
@@ -81,6 +83,7 @@ fn test_operator_node_is_lowered_to_an_application() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_expression_types_at_its_minimal_sort() {
     // Nothing widens a standalone expression, so `1 + 1` is the `Pos` overload
     // of `+` and its literals stay `Pos` (`@c1`, not `@cNat(@c1)`).
@@ -88,6 +91,7 @@ fn test_expression_types_at_its_minimal_sort() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_argument_coercion_is_inserted() {
     // `g`'s parameter is `Nat` but `1` infers to `Pos`, so lowering inserts the
     // `@cNat` widening — the same coercion an equation argument gets.
@@ -95,21 +99,25 @@ fn test_argument_coercion_is_inserted() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_boolean_literal_lowers() {
     assert_eq!(lower("map f: Bool;", "true"), "true");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_list_literal_lowers_to_a_cons_chain() {
     assert_eq!(lower("map f: Bool;", "[1, 2]"), "|>(@c1, |>(@cDub(false, @c1), []))");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_set_literal_lowers() {
     assert_eq!(lower("map f: Bool;", "{1}"), "@fset_insert(@c1, {})");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_machine_word_encoding_is_used_for_literals() {
     // The expression is lowered with the specification's own encoding, so the
     // term it produces is compatible with the rules lowered alongside it.
@@ -119,9 +127,8 @@ fn test_machine_word_encoding_is_used_for_literals() {
     );
 }
 
-// ─── binders ────────────────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bound_variables_are_in_scope() {
     // A standalone expression declares no equation variables, but a binder
     // still introduces its own — `x` here resolves to the lambda's parameter.
@@ -130,20 +137,21 @@ fn test_bound_variables_are_in_scope() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_quantifier_lowers() {
     let term = lower("map f: Bool;", "forall x: Nat. x == x");
     assert!(term.contains("Forall"), "expected a forall binder in: {term}");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_where_clause_lowers() {
     let term = lower("map g: Nat -> Bool;", "g(y) whr y = 1 end");
     assert!(term.contains("Whr"), "expected a where clause in: {term}");
 }
 
-// ─── rejections ─────────────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_free_identifier_is_undeclared() {
     // There is no enclosing `var` block, so a name that is not a declared
     // constructor or mapping cannot be a variable either.
@@ -154,6 +162,7 @@ fn test_free_identifier_is_undeclared() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ill_sorted_application_is_rejected() {
     let err = lower_err("sort D; cons d: D; map g: Nat -> Bool;", "g(d)");
     assert!(
@@ -163,6 +172,7 @@ fn test_ill_sorted_application_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_applying_a_non_function_is_rejected() {
     let err = lower_err("sort D; cons d: D;", "d(d)");
     assert!(
@@ -175,15 +185,15 @@ fn test_applying_a_non_function_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_error_renders_a_source_snippet() {
     let err = lower_err("map f: Bool;", "x");
     let rendered = err.render("x");
     assert!(rendered.contains("-->"), "expected a caret snippet in: {rendered}");
 }
 
-// ─── interaction with the specification ─────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_lowering_the_specification_still_works_afterwards() {
     // Inference interns sorts into the shared context, so type checking an
     // expression must leave the specification itself lowerable.
@@ -199,6 +209,7 @@ fn test_lowering_the_specification_still_works_afterwards() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_the_same_expression_can_be_checked_twice() {
     let untyped = UntypedDataSpecification::parse("map g: Nat -> Bool;").unwrap();
     let mut spec = DataSpecification::from_untyped(untyped).unwrap();

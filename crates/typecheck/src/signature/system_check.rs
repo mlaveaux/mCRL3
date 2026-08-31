@@ -311,6 +311,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_generated_system_specifications_are_well_formed() {
         for text in [
             // The five basic sorts, always included.
@@ -343,6 +344,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_uninstantiated_template_variable_is_rejected() {
         // An unsubstituted template variable is exactly what a broken
         // `standard_sort` instantiation would leave behind.
@@ -351,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_for_function_sort_is_rejected() {
         // A constructor whose target is a function sort is the one signature
         // rule the system spec must still obey; `Bool` and `Nat` parse as basic
@@ -363,6 +366,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_constructor_for_basic_sort_is_allowed() {
         // The dual rule is deliberately not enforced: the system spec declares
         // constructors for basic sorts on purpose (`@c0: Nat`).
@@ -372,30 +376,35 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_undeclared_equation_symbol_is_rejected() {
         let err = check_broken("map f: Bool; eqn f = g;");
         assert!(err.to_string().contains("'g'"), "{err}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_unbound_right_hand_side_variable_is_rejected() {
         let err = check_broken("map f: Nat -> Nat; var n, m: Nat; eqn f(n) = m;");
         assert!(err.to_string().contains("'m'"), "{err}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_unbound_condition_variable_is_rejected() {
         let err = check_broken("map f: Nat -> Nat; var n, m: Nat; eqn m < n -> f(n) = n;");
         assert!(err.to_string().contains("'m'"), "{err}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_duplicate_equation_variable_is_rejected() {
         let err = check_broken("map f: Bool; var b: Bool; b: Nat; eqn f = b;");
         assert!(matches!(err, WellTypedError::DuplicateEquationVariable { .. }), "{err}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_binders_bind_and_shadow() {
         // `n` is bound by the quantifier rather than free, and the lambda's
         // `b` shadows the equation variable, so neither trips the free-variable

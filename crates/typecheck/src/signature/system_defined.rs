@@ -451,6 +451,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_basic_sorts_are_always_present() {
         let spec = system_spec("map f: Bool;");
         for basic in ["Bool", "Pos", "Nat", "Int", "Real"] {
@@ -462,6 +463,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_set_pulls_in_finite_set() {
         // A `Set(S)` is defined in terms of `FSet(S)`, so both must be present.
         let ops = container_ops(&system_spec("map f: Set(Nat);"));
@@ -470,6 +472,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_comprehension_contributes_set_and_bag() {
         // A comprehension may denote a set or a bag; the equations of both are
         // provided for its element sort even though no declaration mentions a
@@ -482,6 +485,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_quantifier_binder_sort_is_collected() {
         // The `List(Nat)` mentioned only on the quantifier binder still gets
         // its Appendix-B equations.
@@ -490,6 +494,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bag_pulls_in_all_related_containers() {
         // A `Bag(S)` transitively needs `FBag(S)`, `FSet(S)` and `Set(S)`.
         let ops = container_ops(&system_spec("map f: Bag(Nat);"));
@@ -499,6 +504,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_nested_container_element_is_included() {
         // `List(Set(Nat))` needs both the list and the (transitive) set defs.
         let ops = container_ops(&system_spec("map f: List(Set(Nat));"));
@@ -519,11 +525,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_single_argument_function_gets_update_operators() {
         assert!(has_function_update("map f: Nat -> Bool;"));
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_multi_argument_function_gets_update_operators() {
         // `Nat # Bool -> Nat` has a product domain; `standard_sort` generalizes
         // the Appendix-B template to it instead of deferring it.
@@ -531,6 +539,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_function_over_containers_terminates() {
         // Regression: re-scanning generated function-update specs for further
         // function sorts diverged, because `@is_not_an_update: (S -> T) -> Bool`
@@ -539,6 +548,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_multi_argument_function_over_containers_terminates() {
         // The same regression as above, but seeded from a multi-argument
         // function so the fixpoint also terminates when it re-scans a

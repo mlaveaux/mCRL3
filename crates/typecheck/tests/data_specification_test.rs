@@ -36,6 +36,7 @@ fn check_err(text: &str) -> WellTypedError {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_with_reused_projection() {
     // A recursive structured sort whose projection `p` is reused across
     // constructors is well-formed.
@@ -43,6 +44,7 @@ fn test_struct_with_reused_projection() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_duplicate_sort_conflicting() {
     check(
         "sort S = struct c;
@@ -52,6 +54,7 @@ fn test_duplicate_sort_conflicting() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_constructor_and_mapping_same_symbol() {
     // The same symbol `f: S` cannot be declared as both a constructor and a
     // mapping.
@@ -64,6 +67,7 @@ fn test_constructor_and_mapping_same_symbol() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_constructor_overloaded_by_signature() {
     // `f` as a constant of `S` and as a function `S -> T` is allowed.
     check(
@@ -76,11 +80,13 @@ fn test_constructor_overloaded_by_signature() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_nested_inline_struct() {
     check("sort S = struct t(struct e(Nat));", true);
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_cyclic_aliases_direct() {
     check(
         "sort S = U;
@@ -90,6 +96,7 @@ fn test_cyclic_aliases_direct() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_cyclic_aliases_indirect() {
     check(
         "sort S = U;
@@ -100,6 +107,7 @@ fn test_cyclic_aliases_indirect() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_function_alias() {
     check(
         "sort Array = Nat -> Nat;
@@ -112,6 +120,7 @@ fn test_function_alias() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_recursive_function_sort() {
     check(
         "sort G;
@@ -121,6 +130,7 @@ fn test_recursive_function_sort() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_recursive_function_sort_reverse() {
     check(
         "sort G;
@@ -129,9 +139,8 @@ fn test_recursive_function_sort_reverse() {
     );
 }
 
-// Alias analysis
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bare_self_alias_rejected() {
     // Row A1 = A1: the shortest possible cycle.
     match check_err("sort A1 = A1;") {
@@ -141,6 +150,7 @@ fn test_bare_self_alias_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bare_fset_fbag_self_alias_rejected() {
     // Plain cycles through structured sorts are allowed.
     match check_err("sort A12 = FSet(A12);") {
@@ -154,6 +164,7 @@ fn test_bare_fset_fbag_self_alias_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bare_set_self_alias_rejected() {
     // A bare struct alias cycle, since Set is a function sort, is rejected as a
     // cycle through a function sort.
@@ -164,6 +175,7 @@ fn test_bare_set_self_alias_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bare_bag_self_alias_rejected() {
     match check_err("sort A4 = Bag(A4);") {
         WellTypedError::RecursiveAliasThroughFunctionSort { sort, .. } if sort == "A4" => {}
@@ -172,6 +184,7 @@ fn test_bare_bag_self_alias_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_alias_loop_via_list_of_struct() {
     // `B`'s only reference to itself goes through both `List` and a struct
     // constructor, so it is accepted.
@@ -179,17 +192,20 @@ fn test_alias_loop_via_list_of_struct() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_alias_loop_via_list_of_struct_with_extra_constant() {
     check("sort B = List(struct f(B) | c); map g: B; eqn g = [];", true);
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_constructor_named_like_containing_alias() {
     // A struct constructor sharing its name with the alias it belongs to.
     check("sort B; A11 = struct A11 | B;", true);
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_wrapping_fset_and_fbag_self_recursive() {
     // Struct-boxed recursion through the *finite* containers `FSet`/`FBag`,
     // distinct from the already-tested `Set`/function-sort cases (those hit
@@ -199,9 +215,8 @@ fn test_struct_wrapping_fset_and_fbag_self_recursive() {
     check("sort A15 = struct f(FSet(A15)) | g(FBag(A15)) | c;", true);
 }
 
-// === Non-emptiness fixpoint (Def. 15.1.7) ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_recursive_struct_without_base_case_is_empty() {
     // A single self-recursive constructor with no base case has no finite
     // element — the fixpoint case Def. 15.1.7 exists for, distinct from the
@@ -213,9 +228,8 @@ fn test_recursive_struct_without_base_case_is_empty() {
     }
 }
 
-// === Remaining spec-level typecheck_test.cpp / normalize_sorts_test.cpp ports ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_sort_name_reused_as_map_and_variable() {
     // `S` is a sort, a mapping and an equation variable at once; the variable
     // shadows the mapping inside the equation, so `S(S)` applies the
@@ -231,6 +245,7 @@ fn test_sort_name_reused_as_map_and_variable() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_recursive_struct_via_function_codomain() {
     // Struct recursion in a function sort's *codomain* (row A8 of the alias
     // table; the domain variant is alias.rs's
@@ -243,6 +258,7 @@ fn test_recursive_struct_via_function_codomain() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_recursive_struct_list_indirect() {
     // Struct recursion through a List alias one level removed. mCRL2:
     // test_recursive_struct_list_indirect.
@@ -254,6 +270,7 @@ fn test_recursive_struct_list_indirect() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_duplicate_variables_in_var_block() {
     // mCRL2 keeps both cases disabled as expected-failures — its checker does
     // not catch the duplicate — but rejection is the intended semantics, and
@@ -278,6 +295,7 @@ fn test_duplicate_variables_in_var_block() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_normalize_sorts_across_equations() {
     // Struct aliases used by mappings and equations together — the merc
     // analogue of normalize_sorts_test.cpp's test_normalize_sorts, with the
@@ -295,9 +313,8 @@ fn test_normalize_sorts_across_equations() {
     );
 }
 
-// === Signature-layer name guards: duplicate/shadowed declaration names ===
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // mCRL2 keys zero-arity constants by name only (add_constant), rejecting any
 // second declaration regardless of sort. mCRL2: test_data_specification_constructor_same_signature.
 fn test_duplicate_constant_different_sort_rejected_cons_cons() {
@@ -305,6 +322,7 @@ fn test_duplicate_constant_different_sort_rejected_cons_cons() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // See test_duplicate_constant_different_sort_rejected_cons_cons; here the
 // second declaration is a `map` instead of a `cons`.
 // mCRL2: test_data_specification_constructor_map_same_signature.
@@ -313,6 +331,7 @@ fn test_duplicate_constant_different_sort_rejected_cons_map() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // Two different structs each declaring a nullary constructor of the same
 // name (`open`, `closed`) are rejected for the same reason as
 // test_duplicate_constant_different_sort_rejected_*.
@@ -326,6 +345,7 @@ fn test_cross_struct_duplicate_constant_name_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 // Any user map/cons whose name collides with a system function is rejected,
 // regardless of sort ("Attempt to redeclare a system function"). No direct
 // upstream case; derived from mCRL2's system-function-redeclaration guard.
@@ -334,6 +354,7 @@ fn test_user_declaration_shadowing_system_conversion_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_many_aliases_to_nat_and_struct() {
     // Ported from normalize_sorts_test.cpp: many aliases collapsing to `Nat`
     // plus a wide structured sort. mCRL2 used this to catch an exponential

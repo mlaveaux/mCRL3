@@ -216,6 +216,7 @@ mod tests {
     use crate::WellTypedError;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_well_typed_spec() {
         let spec = UntypedDataSpecification::parse(
             "
@@ -239,6 +240,7 @@ mod tests {
     /// the swapped order was rejected with a misleading no-typing error.
     /// mCRL2 rejects both ("The variable n occurs multiple times").
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_duplicate_equation_variable_is_rejected() {
         for text in [
             "map f: Nat -> Bool; var n: Bool; n: Nat; eqn f(n) = true;",
@@ -254,6 +256,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_abstract_sort_is_allowed() {
         let spec = UntypedDataSpecification::parse(
             "
@@ -267,6 +270,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_product_sort_outside_function_domain_is_rejected() {
         for text in [
             "map f: Pos -> (Pos # Pos);",
@@ -284,6 +288,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_product_sort_in_function_domain_is_allowed() {
         // Parenthesized products inside a domain are still domain separators,
         // including in a nested higher-order function sort.

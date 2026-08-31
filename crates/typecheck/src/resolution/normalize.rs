@@ -105,6 +105,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_alias_to_basic_sort_is_expanded() {
         // `D` aliases `Nat`, so `f: D` normalizes to the built-in `Nat` sort.
         let sort = map_sort("sort D = Nat; map f: D;", "f");
@@ -112,12 +113,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_alias_chain_is_expanded() {
         let sort = map_sort("sort D = Nat; E = D; map f: E;", "f");
         assert_eq!(sort.node, SortExpressionKind::Simple(Sort::Nat));
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_alias_inside_container_is_expanded() {
         // `f: List(D)` with `D = Nat` normalizes to `List(Nat)`.
         let sort = map_sort("sort D = Nat; map f: List(D);", "f");
@@ -129,6 +132,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_structured_alias_keeps_its_name() {
         // A structured sort is its own representative, so `f: D` stays `D`
         // rather than being replaced by the (recursive) struct body.
@@ -140,6 +144,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_chained_struct_alias_shares_representative() {
         // `A = B` chains to the structured sort `B`, so `f: A` and `g: B`
         // normalize to the same named representative rather than diverging.
@@ -154,6 +159,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_recursive_alias_through_inline_struct_terminates() {
         // `D` recurses into itself through an inline `struct`, which
         // check_aliases permits (it stops at every struct); normalization must

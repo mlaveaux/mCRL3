@@ -512,6 +512,7 @@ mod tests {
     use crate::NumberEncoding;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_multi_argument_function_gets_generalized_update_operators() {
         // `from_untyped` flattens `Nat # Bool -> Nat` before generating the
         // system-defined specification, so `standard_sort` sees a
@@ -556,6 +557,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_multi_argument_function_update_generalizes_to_higher_arities() {
         // The same construction must not be hard-coded to arity two.
         let checked = DataSpecification::from_untyped(
@@ -580,6 +582,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_standard_sort_substitutes_binder_sorts() {
         // The set template's `==` equation quantifies over the element sort
         // (`forall c:S.`); instantiation must substitute binder sorts like any
@@ -615,6 +618,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn structured_sort_equations_generates_a_parseable_specification() {
         let constructors = struct_constructors("sort D = struct c1(pr1: Nat, pr2: Bool)?is_c1 | c2?is_c2 | c3(Nat);");
 
@@ -650,6 +654,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn structured_sort_equations_supports_only_constant_constructors() {
         // A structured sort where no constructor has arguments generates no
         // variables, so the `eqn` block must be emitted without a `var` block.

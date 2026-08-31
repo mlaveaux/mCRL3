@@ -1,4 +1,3 @@
-//! Authors: Maurice Laveaux and Sjef van Loo
 use core::fmt;
 
 use bitvec::order::Lsb0;
@@ -174,6 +173,7 @@ mod tests {
     use super::PlayerVec;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec is incompatible with miri.
     fn test_player_vec_from_elem() {
         let players = PlayerVec::from_elem(Player::Odd, 3);
         assert_eq!(players.len(), 3);
@@ -181,6 +181,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec is incompatible with miri.
     fn test_player_vec_resize_keeps_existing_entries() {
         let mut players = PlayerVec::from_elem(Player::Odd, 2);
         players.resize(4, Player::Even);
@@ -193,6 +194,7 @@ mod tests {
 
     /// Checks the packed representation against a plain `Vec<Player>` reference.
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec is incompatible with miri.
     fn test_random_player_vec() {
         random_test(100, |rng| {
             let expected: Vec<Player> = (0..rng.random_range(1..100))

@@ -1,28 +1,3 @@
-//! Type-checking cases ported from the `nano-crl2` project's compilation
-//! corpus (`res/tests/should_compile` and `res/tests/should_not_compile`,
-//! driven by `tests/compilation/`).
-//!
-//! nano-crl2 drives its checks off whole *modules* (`query_compilation_check`)
-//! and its fixtures are files, whereas `merc_typecheck`'s only entry point is
-//! `DataSpecification::from_untyped` over a data specification. The two check
-//! the same underlying judgements — alias-cycle detection, constructor
-//! well-foundedness ("syntactically non-empty" sorts), overload resolution,
-//! numeric/container upcasting, `whr`/function-update/comprehension typing — so
-//! every fixture whose content is a plain data specification is ported here
-//! verbatim as an inline string.
-//!
-//! Fixtures that exercise features merc deliberately does not have are NOT
-//! ported and are listed in the `divergences` module at the bottom with the
-//! reason:
-//!   * `generic` / `not_well_typed_generic` — nano-crl2 has generic maps
-//!     (`map f<T>: T -> List(T)`); standard mCRL2 and merc do not.
-//!   * `use_names1` / `use_undefined_name` — nano-crl2 has a `use <module>;`
-//!     import system; merc specifications are standalone.
-//!   * `general1` / `names1` / `structs` — these assert name resolution over
-//!     `act`/`proc`/`init`; merc currently type checks only the data
-//!     specification portion of a model, so the process-level intent cannot be
-//!     reproduced. Their data-only content is folded into `test_structs_data`.
-
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification;
 use merc_typecheck::WellTypedError;
@@ -46,11 +21,8 @@ fn check_err(text: &str) -> WellTypedError {
     }
 }
 
-// ===========================================================================
-// should_compile
-// ===========================================================================
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_circular_constructors() {
     // Two independent sort groups. Each has a well-founded "escape": `A` via
     // `y2: Nat -> A`, and `C`/`D` via the alias chain that bottoms out in
@@ -72,6 +44,7 @@ fn test_circular_constructors() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_infinite_recursion() {
     // An equation whose right-hand side recurses forever is still well typed;
     // termination is not a type-checking concern.
@@ -83,6 +56,7 @@ fn test_infinite_recursion() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_ops() {
     check_ok(
         "map f: Int -> Int;
@@ -96,6 +70,7 @@ fn test_ops() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_sets() {
     check_ok(
         "map n1: Nat;
@@ -123,6 +98,7 @@ fn test_sets() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_structs_data() {
     // The data-specification portion of `should_compile/structs`. `Rec` is
     // well-founded through `foo3(List(Rec))` (the empty list is a base case),
@@ -135,6 +111,7 @@ fn test_structs_data() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed1() {
     // Example 15.1.13
     check_ok(
@@ -144,6 +121,7 @@ fn test_well_typed1() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed2() {
     // Example 15.1.15
     check_ok(
@@ -155,6 +133,7 @@ fn test_well_typed2() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed3() {
     // Example 15.1.16
     check_ok(
@@ -165,6 +144,7 @@ fn test_well_typed3() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_arg_order() {
     // Example 15.1.14
     check_ok(
@@ -175,6 +155,7 @@ fn test_well_typed_arg_order() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_function_update() {
     check_ok(
         "map g: (Nat -> Nat) -> Nat -> Nat;
@@ -184,6 +165,7 @@ fn test_well_typed_function_update() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_if() {
     // `y` and `z` have a common sort `Set(Int)` (`FSet(Int) <= Set(Int)`).
     check_ok(
@@ -196,6 +178,7 @@ fn test_well_typed_if() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_literals() {
     check_ok(
         "map f: Pos -> Nat;
@@ -221,6 +204,7 @@ fn test_well_typed_literals() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_rr_not_mono() {
     check_ok(
         "map f: Nat -> Set(Int);
@@ -233,6 +217,7 @@ fn test_well_typed_rr_not_mono() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_whr() {
     // Contrast to `test_not_well_typed_whr`.
     check_ok(
@@ -244,6 +229,7 @@ fn test_well_typed_whr() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_well_typed_whr_num() {
     check_ok(
         "map x: Nat -> Nat;
@@ -268,11 +254,8 @@ fn test_well_typed_whr_num() {
     );
 }
 
-// ===========================================================================
-// should_not_compile
-// ===========================================================================
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_circular_alias() {
     let err = check_err(
         "sort A = B;
@@ -284,6 +267,7 @@ fn test_circular_alias() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_circular_constructors1() {
     // `A` and `B` are mutually recursive with no base case: neither is
     // syntactically non-empty, so both are rejected as empty sorts.
@@ -296,6 +280,7 @@ fn test_circular_constructors1() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_circular_constructors2() {
     // Same as above but the function sorts are hidden behind aliases.
     let err = check_err(
@@ -309,6 +294,7 @@ fn test_circular_constructors2() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_not_well_typed_function_update() {
     // The update key `0` has sort `Nat`, but `f: Pos -> Nat` requires a `Pos`
     // key, and `Nat` does not downcast to `Pos`.
@@ -320,6 +306,7 @@ fn test_not_well_typed_function_update() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_not_well_typed_whr() {
     // Example 15.1.16, second expression. `x` is bound to the ambiguous `f`
     // while simultaneously being applied as `x(0)` and passed to

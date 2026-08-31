@@ -1,4 +1,3 @@
-//! Authors: Maurice Laveaux and Sjef van Loo
 #[cfg(debug_assertions)]
 use std::collections::HashSet;
 use std::fmt;
@@ -402,6 +401,7 @@ mod tests {
     use crate::random_parity_game;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec is incompatible with miri.
     fn test_random_parity_game_make_total() {
         random_test(100, |rng| {
             let game = random_parity_game(rng, true, 50, 10, 5);

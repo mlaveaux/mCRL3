@@ -434,6 +434,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_boolean_operators_are_resolved() {
         let (_, ctx) = resolve("map f: Bool;");
         let signature = ctx.system_signature.as_ref().unwrap();
@@ -450,6 +451,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_overloads_are_collected() {
         // Appendix B declares `max` for Pos # Nat, Nat # Pos and Nat # Nat
         // (and more through Int), all collected as one overloaded name.
@@ -459,6 +461,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_template_instantiation_carries_user_sorts() {
         // `resolve_system_sort`'s handling of `Resolved` nodes, exercised
         // directly: production only ever feeds `resolve_system_signature` the
@@ -484,6 +487,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_system_internal_sort_gets_fresh_def() {
         // `@NatPair` exists only in the system specification; it gets a nominal
         // DefId past the user declarations, and its name is recovered by
@@ -508,6 +512,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_unknown_reference_is_a_clean_error() {
         // A system specification referencing an undeclared sort must error
         // rather than panic; parse one directly to simulate a template mistake.
@@ -527,6 +532,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_full_signature_covers_containers() {
         let spec = resolve_full("map f: Set(Nat);");
         let ctx = spec.context();
@@ -539,6 +545,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_full_signature_validates_equation_binder_sorts() {
         // `Set` pulls in the `forall c:S. ...` extensionality equation, whose
         // binder sort must resolve; `from_untyped` fails otherwise.
@@ -550,6 +557,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_full_signature_rejects_unresolvable_binder_sort() {
         let mut user_spec = UntypedDataSpecification::parse("map f: Bool;").unwrap();
         crate::assign_declaration_ids(&mut user_spec);
@@ -569,6 +577,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_merge_signatures_unions_overloads_by_name() {
         let a = Signature {
             constructors: HashMap::from([("c".to_string(), vec![ResolvedSortId::new(0)])]),
@@ -584,6 +593,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_struct_desugared_symbols_resolve_in_their_own_group_signature() {
         // `c1`/`is_c1` are declared on the user spec by struct desugaring, not
         // on `system`, yet must still resolve in their own group's signature.

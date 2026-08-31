@@ -445,15 +445,8 @@ mod tests {
     use crate::VariabilityParityGameBuilder;
     use crate::VertexIndex;
 
-    // The underlying dedup algorithm (matching a naive `HashSet`-based reference,
-    // and its high-out-degree "hub" hash-map path) is covered once, generically,
-    // by `merc_collections::remove_duplicates`'s own tests. The tests below only
-    // check that `ParityGameBuilder`/`VariabilityParityGameBuilder` wire their own
-    // columns into it correctly - plus, for the variability builder, that
-    // duplicate configurations are actually merged with BDD `or`, which the
-    // generic tests (keyed on plain integers) can't exercise.
-
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec is incompatible with miri.
     fn test_random_remove_duplicates() {
         random_test(100, |rng| {
             let num_of_vertices = rng.random_range(1..20);
@@ -480,6 +473,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // oxidd is incompatible with miri.
     fn test_random_variability_remove_duplicates() {
         random_test(20, |rng| {
             let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
@@ -521,6 +515,7 @@ mod tests {
     /// Deterministic check that duplicate edges are actually *merged* (BDD `or`),
     /// not just deduplicated down to an arbitrary survivor.
     #[test]
+    #[cfg_attr(miri, ignore)] // oxidd is incompatible with miri.
     fn test_variability_remove_duplicates_merges_configurations() {
         let manager_ref = oxidd::bdd::new_manager(2048, 1024, 1);
         let (a, b) = manager_ref.with_manager_exclusive(|manager| {

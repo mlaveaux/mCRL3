@@ -189,12 +189,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_resolve_basic_sort() {
         let spec = typecheck("map f: Nat;");
         assert_eq!(mapping(&spec, 0), spec.context().sorts.primitive(Sort::Nat));
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_resolve_alias_inside_container() {
         // `D = Nat` is inlined by normalization, so `List(D)` resolves to `List(Nat)`.
         let spec = typecheck("sort D = Nat; map f: List(D);");
@@ -207,6 +209,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_resolve_function_sort() {
         let spec = typecheck("map f: Nat # Bool -> Real;");
         let sorts = &spec.context().sorts;
@@ -218,6 +221,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_resolve_higher_order_function_sort() {
         // Flattening does not recurse into the substituted sort, so the inner
         // `Nat -> Bool` is still an un-flattened `Function`; both forms must
@@ -232,6 +236,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_resolve_struct_sort_is_nominal() {
         // A structured sort resolves to the nominal sort of its declaration,
         // and its desugared constructors target that same sort.
@@ -242,12 +247,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_interned_sorts_are_shared() {
         let spec = typecheck("map f: List(Nat); g: List(Nat);");
         assert_eq!(mapping(&spec, 0), mapping(&spec, 1));
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_resolve_equation_variables() {
         let spec = typecheck("map f: Nat -> Bool; var n: Nat; eqn f(n) = true;");
         let eqn_spec_id = spec.data_specification().equation_declarations[0]
@@ -263,6 +270,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_query_sort_of_def_expands_alias_and_memoizes() {
         // A directly-queried alias resolves to its expanded definition; the
         // second query is answered from the cache and yields the same id.

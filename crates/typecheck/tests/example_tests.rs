@@ -191,6 +191,7 @@ use test_case::test_case;
 #[test_case(include_str!("../../../examples/mCRL2/timed/simple/simple.mcrl2") ; "simple.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/visualisation/carpet/carpet.mcrl2") ; "carpet.mcrl2")]
 #[test_case(include_str!("../../../examples/mCRL2/visualisation/cube/cube.mcrl2") ; "cube.mcrl2")]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_typecheck_mcrl2_spec(input: &str) {
     test_logger();
 

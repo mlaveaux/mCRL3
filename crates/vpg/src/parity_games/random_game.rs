@@ -100,6 +100,7 @@ mod tests {
     use crate::random_variability_parity_game;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec does not work with miri
     fn test_random_parity_game() {
         random_test(100, |rng| {
             let pg = random_parity_game(rng, false, 10, 5, 3);
@@ -108,6 +109,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // bitvec does not work with miri
     fn test_random_total_parity_game() {
         random_test(100, |rng| {
             let pg = random_parity_game(rng, true, 10, 5, 3);
