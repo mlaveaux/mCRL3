@@ -59,13 +59,10 @@ pub(crate) fn includes(winning: &LDDFunction, vertex: &LDDFunction) -> Result<bo
 
 /// The problem instance every on-the-fly solving entry point in this module and
 /// [`crate::symbolic::partial_solve`] operates over: the game to solve, its deadlocks to resolve,
-/// and its initial vertex, whose winner every entry point returns as soon as it is known. Bundles
-/// what [`solve_symbolic_zielonka`] and every function in [`crate::symbolic::partial_solve`] take
-/// identically, so they travel together as one named, owned value.
+/// and its initial vertex, whose winner every entry point returns as soon as it is known.
 ///
-/// Deliberately does *not* also carry `incomplete` or `safe_variant`: those vary per call in ways
-/// `game`/`sinks`/`initial_vertex` don't (see [`crate::symbolic::partial_solve`]'s `SafetyMode`
-/// for the `incomplete`/`safe_variant` pair specifically).
+/// Does not carry `incomplete` or a `SafetyMode`; those are per-call arguments of
+/// [`crate::symbolic::partial_solve`]'s functions instead.
 pub struct ExtendedParityGame {
     pub game: SymbolicParityGame,
     pub initial_vertex: LDDFunction,
@@ -87,9 +84,6 @@ impl ExtendedParityGame {
 /// [`SymbolicParityGame::compute_total_graph`] (growing `winning`/`strategy` in place), then
 /// returns early with the accumulated [`SymbolicSolution`] if that alone already resolved
 /// `epg.initial_vertex` — otherwise continues with the resulting total subgraph.
-///
-/// Factored out because every partial-solving accelerator needs exactly this preamble, byte for
-/// byte, before it can even start searching for its own accelerator-specific dominion shape.
 pub(crate) fn total_graph_with_early_exit(
     epg: &ExtendedParityGame,
     incomplete: &LDDFunction,
@@ -230,11 +224,8 @@ pub(crate) fn unpack_strategy_pair(strategy: Option<[LDDFunction; 2]>) -> [Optio
     strategy.map_or([None, None], |[even, odd]| [Some(even), Some(odd)])
 }
 
-/// The recursive Zielonka solver, restricted to the vertex set `v` — entry point that hides the
-/// recursion-depth bookkeeping [`zielonka_rec`] needs from every caller (mirroring
-/// [`crate::solve_zielonka`]'s own `solve_zielonka`/`solve_zielonka_impl::zielonka_rec` split),
-/// so none of [`solve_symbolic_zielonka`] nor [`crate::symbolic::partial_solve`]'s three callers
-/// have to remember to pass `depth: 0`.
+/// The recursive Zielonka solver, restricted to the vertex set `v`. Entry point for
+/// [`zielonka_rec`], which does the actual recursion; starts it at `depth: 0`.
 pub(crate) fn zielonka(
     game: &SymbolicParityGame,
     v: &LDDFunction,
@@ -293,11 +284,8 @@ fn zielonka_rec(
         winning[alpha.to_index()] = a.union(&solution_v_minus_a.winning[alpha.to_index()])?;
 
         let strategy = if game.compute_strategy() {
-            // Vertices pulled into A via a predecessor edge already have a strategy move from
-            // `a_strategy`, but A's own seed set U does not (it was the *target*, not pulled in
-            // by anyone). Since this branch wins the whole of `v` for `alpha`, any successor
-            // that stays inside `v` is a sound move for an `alpha`-owned vertex of U — hence the
-            // cartesian product `merge(U ∩ Vplayer[alpha], v)`, later cut down to real edges by
+            // `a_strategy` has no move for U itself (the attractor's target, not something pulled
+            // in). Seed it with `merge(U ∩ Vplayer[alpha], v)`, later cut down to real edges by
             // `apply_strategy`.
             let u_alpha = intersect(&u, &vplayer[alpha.to_index()])?;
             let extra = merge(game.manager(), &u_alpha, v)?;

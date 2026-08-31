@@ -1,10 +1,7 @@
 //!
-//! Symbolic (LDD-based) parity games and their Zielonka solver.
-//!
-//! Lives inside `merc_vpg` rather than `merc_symbolic` or a new crate — see
-//! `docs/symbolic-parity-game-plan.md` §1 for why: `merc_vpg` already depends on `merc_symbolic`,
-//! so the dependency edge cannot be reversed, and this needs [`crate::Player`]/[`crate::Priority`]
-//! from `merc_vpg` to stay cross-checkable against [`crate::solve_zielonka`].
+//! Symbolic (LDD-based) parity games and their Zielonka solver. See the "Symbolic parity games"
+//! page on the merc-website developer docs for why this lives in `merc_vpg` rather than
+//! `merc_symbolic` or a new crate.
 //!
 
 mod convert_symbolic_game;
