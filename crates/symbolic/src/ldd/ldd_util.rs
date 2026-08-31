@@ -11,13 +11,8 @@ use rustc_hash::FxHashMap;
 ///
 /// # Details
 ///
-/// This is a stopgap: `LDDFunction` has no native `intersect`, so this is
-/// implemented as two `minus` traversals (`a \ (a \ b)`) with no shared apply
-/// cache of its own. It sits on the hot path of a symbolic parity game's
-/// `players()`, `max_priority()` and `safe_control_predecessors`; a native
-/// single-pass `intersect` (next to `apply_minus` in `oxidd-rules-ldd`) is a
-/// worthwhile follow-up in the `oxidd` fork, but is not required for
-/// correctness.
+/// `LDDFunction` has no native `intersect`, so this is implemented as two `minus` traversals
+/// (`a \ (a \ b)`), with no shared apply cache of its own.
 pub fn intersect(a: &LDDFunction, b: &LDDFunction) -> AllocResult<LDDFunction> {
     a.minus(&a.minus(b)?)
 }
@@ -144,6 +139,9 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+
+    use oxidd::ldd::RelationProductMeta;
+    use oxidd::ldd::Value;
 
     use merc_utilities::random_test;
 

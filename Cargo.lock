@@ -191,6 +191,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "benchmarks_symbolic"
+version = "2.0.0"
+dependencies = [
+ "criterion",
+ "merc_symbolic",
+ "merc_utilities",
+ "oxidd",
+]
+
+[[package]]
 name = "benchmarks_unsafety"
 version = "2.0.0"
 dependencies = [
@@ -206,6 +216,17 @@ version = "2.0.0"
 dependencies = [
  "criterion",
  "merc_utilities",
+]
+
+[[package]]
+name = "benchmarks_vpg"
+version = "2.0.0"
+dependencies = [
+ "criterion",
+ "merc_utilities",
+ "merc_vpg",
+ "oxidd",
+ "rand",
 ]
 
 [[package]]
