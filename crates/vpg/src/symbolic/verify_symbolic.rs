@@ -33,7 +33,7 @@ use oxidd::ldd::LDDManagerRef;
 /// vertex's winner's own strategy via [`SymbolicParityGame::apply_strategy`], re-solve the
 /// restricted game from scratch, and require the two solutions to agree.
 ///
-/// Panics with a description of the mismatch if the strategy fails to certify.
+/// Returns an error describing the mismatch if the strategy fails to certify.
 pub fn verify_symbolic_strategy(
     game: &SymbolicParityGame,
     initial_vertex: &LDDFunction,
@@ -54,10 +54,11 @@ pub fn verify_symbolic_strategy(
     let (new_winner, new_solution) = solve_symbolic_zielonka(&epg, false)?;
 
     if new_winner != winner {
-        panic!(
+        return Err(format!(
             "verify_symbolic_strategy: restricting {winner}'s own strategy changed the winner of the initial \
              vertex to {new_winner}"
-        );
+        )
+        .into());
     }
 
     let solved = solution.winning[0].union(&solution.winning[1])?;
@@ -65,19 +66,21 @@ pub fn verify_symbolic_strategy(
         for player in [Player::Even, Player::Odd] {
             let i = player.to_index();
             if solution.winning[i] != new_solution.winning[i] {
-                panic!(
+                return Err(format!(
                     "verify_symbolic_strategy: after restricting {winner}'s strategy, {player}'s winning set \
                      changed even though the original solution covered every vertex"
-                );
+                )
+                .into());
             }
         }
     } else {
         for player in [Player::Even, Player::Odd] {
             let i = player.to_index();
             if !includes(&new_solution.winning[i], &solution.winning[i])? {
-                panic!(
+                return Err(format!(
                     "verify_symbolic_strategy: after restricting {winner}'s strategy, {player}'s winning set shrank"
-                );
+                )
+                .into());
             }
         }
     }

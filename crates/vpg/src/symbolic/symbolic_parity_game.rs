@@ -244,21 +244,15 @@ impl SymbolicParityGame {
     /// `alpha`-owned vertices in `search_space` with *any* edge into `u` are pulled in outright;
     /// `¬alpha`-owned vertices are pulled in only once *every* edge leaving them lands inside the
     /// attractor, checked by removing (for each group) whichever candidates still have an edge
-    /// into `outside` — except `incomplete` vertices, which can never be pulled in this way: an
-    /// incomplete vertex might have an edge that hasn't been learned yet, so it can never be
-    /// *proven* forced into the attractor.
+    /// into `outside`. `incomplete` vertices are never pulled in this second way, since an
+    /// unlearned edge could still leave them.
     ///
-    /// [`Self::attractor`] always passes the same set for `search_space` and `outside` (its
-    /// `Zoutside`, the vertices not yet in the attractor); [`Self::monotone_attractor`] is the one
-    /// caller that needs them to differ (it searches all of `V` for predecessors, but only checks
-    /// the *forced* condition against `Zoutside \ U`).
+    /// `search_space` and `outside` are the same set in every caller except
+    /// [`Self::monotone_attractor`], which searches all of `v` but only checks the forced
+    /// condition against `Zoutside \ U`.
     ///
-    /// The strategy contribution is `merge(pulled_in \ u, u)`: the interleaved cartesian product
-    /// of the newly pulled-in `alpha`-owned vertices with the whole target set `u`, *not* the
-    /// exact edges each one uses — an overapproximation that [`Self::apply_strategy`] intersects
-    /// back with each group's real relation, recovering exactly the real edges (possibly several
-    /// per vertex, which is still a sound strategy: every one of them stays inside `u`, the
-    /// region this step is attracting into).
+    /// The strategy contribution is `merge(pulled_in \ u, u)` — an overapproximation of the real
+    /// edges, cut down to exactly the real ones by [`Self::apply_strategy`].
     fn control_predecessors(
         &self,
         alpha: Player,
@@ -357,6 +351,59 @@ impl SymbolicParityGame {
         }
 
         Ok((z, strategy))
+    }
+
+    /// Computes the same attractor set as [`Self::attractor`], without a `todo` frontier:.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attractor_naive(
+        &self,
+        alpha: Player,
+        u: &LDDFunction,
+        v: &LDDFunction,
+        vplayer: &[LDDFunction; 2],
+        incomplete: Option<&LDDFunction>,
+        target: Option<&LDDFunction>,
+        progress: &AttractorProgress,
+    ) -> Result<(LDDFunction, Option<LDDFunction>), MercError> {
+        let mut z = u.clone();
+        let mut strategy = if self.compute_strategy {
+            Some(self.empty()?)
+        } else {
+            None
+        };
+
+        progress.reset();
+        let mut iteration = 0usize;
+
+        loop {
+            if let Some(target) = target
+                && !intersect(target, &z)?.is_empty()
+            {
+                return Ok((z, strategy));
+            }
+
+            progress.print((iteration, z.len()));
+            trace!("attractor_naive: iteration {iteration}, |Z| = {}", z.len());
+
+            let outside = v.minus(&z)?;
+            let (pred, step_strategy) =
+                self.control_predecessors(alpha, &z, &outside, &outside, vplayer, incomplete)?;
+
+            if pred.is_empty() {
+                return Ok((z, strategy));
+            }
+
+            if let Some(strategy) = &mut strategy {
+                *strategy = strategy.union(
+                    step_strategy
+                        .as_ref()
+                        .expect("control_predecessors returns Some when compute_strategy is set"),
+                )?;
+            }
+
+            z = z.union(&pred)?;
+            iteration += 1;
+        }
     }
 
     /// Removes the winning regions from `v`, growing `winning` (and `strategy`, when
@@ -467,9 +514,9 @@ impl SymbolicParityGame {
 
     /// Computes the monotone attractor set of `u` for player `alpha` at priority `c` within `v`:
     /// like [`Self::attractor`], but every vertex pulled in is additionally required to have
-    /// priority `c` itself (`u`'s own vertices only, since `u` is assumed to already satisfy
-    /// this) — used by fatal-attractor detection to find a set of priority-`c` vertices that
-    /// player `alpha` can always force play to stay within.
+    /// priority at most `c` (via [`Self::vertices_with_priority_at_most`]) — used by
+    /// fatal-attractor detection to find a set of priority-`c` vertices that player `alpha` can
+    /// always force play to stay within.
     ///
     /// Never computes a strategy — [`partial_solve::detect_fatal_attractors`] instead records
     /// `merge(Z, Z)` for the fatal-attractor vertices it accepts, an overapproximate
@@ -515,13 +562,10 @@ impl SymbolicParityGame {
     /// matter how the unknown edges of `incomplete` turn out, `alpha`'s opponent cannot force
     /// play out of this set and into the unresolved region.
     ///
-    /// The seed is `(incomplete ∩ opponent-owned) ∪ sinks(incomplete, v)`, not just the first
-    /// term: an `incomplete` vertex is, by construction, a *structural* sink of `v` until it is
-    /// actually explored (an unexplored vertex has no discovered successors yet, regardless of
-    /// who owns it), so leaving the second term out would let `alpha`-owned incomplete sinks stay
-    /// inside the returned safe set — the extra `sinks(incomplete, v)` term is what keeps the safe
-    /// subgame actually total whenever `incomplete` is non-empty, which callers like
-    /// [`crate::symbolic::partial_solve::partial_solve`] rely on.
+    /// The seed is `(incomplete ∩ opponent-owned) ∪ sinks(incomplete, v)`: every `incomplete`
+    /// vertex is a structural sink of `v` until explored, regardless of owner, so both terms are
+    /// needed to keep the returned subgame total. See the "On-the-fly and partial solving" page
+    /// on the merc-website developer docs for the derivation.
     pub fn safe_vertices(
         &self,
         alpha: Player,
@@ -562,14 +606,15 @@ impl SymbolicParityGame {
     /// had its outgoing edges restricted to `strategy`.
     ///
     /// `strategy` is expected over the doubled, interleaved global vector
-    /// `[from_0, to_0, from_1, to_1, …]`. Restriction is per *source vertex*,
-    /// not per transition group. A group's `alpha`-owned rows are restricted to
-    /// `strategy`; every other row (including any non-`alpha`-owned rows the
-    /// same group happens to also carry) passes through unchanged. A
-    /// `alpha`-owned source with no strategy at all (the strategy is only ever
-    /// partial for vertices *outside* the winning region requested) loses its
-    /// outgoing edges entirely, which is what turns an unresolved vertex into a
-    /// fresh sink for the caller
+    /// `[from_0, to_0, from_1, to_1, …]`. A group's row is classified as `alpha`-owned by
+    /// projecting it onto the group's own read positions and testing membership of
+    /// `owned[alpha]`; every other row passes through unchanged. This requires every group's read
+    /// positions to determine the owner of its source vertex — true of every `TransitionGroup`
+    /// this is currently called with, since the owner-determining state component is always among
+    /// the read positions, but not checked here. An `alpha`-owned source with no strategy at all
+    /// (the strategy is only ever partial for vertices *outside* the winning region requested)
+    /// loses its outgoing edges entirely, which is what turns an unresolved vertex into a fresh
+    /// sink for the caller
     /// ([`verify_symbolic_strategy`][crate::symbolic::verify_symbolic::verify_symbolic_strategy])
     /// to route through [`Self::compute_total_graph`] again.
     pub fn apply_strategy(&self, alpha: Player, strategy: &LDDFunction) -> Result<Self, MercError> {
@@ -590,8 +635,7 @@ impl SymbolicParityGame {
                 .with_manager_shared(|m| LDDFunction::projection_meta(m, &keep))?;
 
             // The rows of this group whose source is `alpha`-owned, in the group's own
-            // read/write shape, found the same way `predecessors_group`'s callers restrict a
-            // global vertex set to a relation's shape (via `merge` + `project`).
+            // read/write shape.
             let alpha_rows = merge(&self.manager, alpha_vertices, all_vertices)?.project(&projection_meta)?;
             let alpha_part = intersect(&relation.relation, &alpha_rows)?;
             let other_part = relation.relation.minus(&alpha_part)?;

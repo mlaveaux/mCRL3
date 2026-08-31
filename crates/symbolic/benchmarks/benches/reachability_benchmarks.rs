@@ -1,7 +1,5 @@
-//! Times [`merc_symbolic::reachability_with_options`] on checked-in `.sym` examples, across
-//! every [`ExplorationStrategy`], before and after fusing `relational_product` with the
-//! per-group `union` into one traversal (see the conversation and
-//! `oxidd_rules_ldd::apply::apply_relational_product_union`).
+//! Times [`merc_symbolic::reachability_with_options`] on checked-in `.sym` examples, across every
+//! [`ExplorationStrategy`].
 //!
 //! A fresh manager and a freshly re-read `SymbolicLts` are built per criterion sample (in the
 //! untimed `iter_batched` setup), since `learn_successors` mutates the LTS's learned relations in

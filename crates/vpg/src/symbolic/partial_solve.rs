@@ -26,10 +26,8 @@ use crate::symbolic::symbolic_zielonka::zielonka;
 /// [`Self::resolve`]), and threaded from there as one value.
 ///
 /// [`Self::Restricted`] is not cheaper than [`Self::Safe`]: [`Self::resolve`] pays two extra full
-/// `safe_vertices` attractor fixed points *up front* to build it, exactly the cost
-/// [`Self::Safe`]'s per-step `minus(incomplete)` folding avoids. [`Self::Restricted`] earns its
-/// keep only when `safe_vertices` was already computed anyway for some other reason (as
-/// [`partial_solve`] does).
+/// `safe_vertices` attractor fixed points up front to build it. See the "On-the-fly and partial
+/// solving" page on the merc-website developer docs for the derivation.
 enum SafetyMode {
     /// Fold `incomplete` directly into every attractor/control-predecessor call.
     Safe,

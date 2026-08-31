@@ -641,10 +641,10 @@ impl ExplicitSummand {
             let lhs: DataVariable = assignment.arg(0).protect().into();
             let rhs = assignment.arg(1);
 
-            let rhs_vars = free_variables_data_expression(&rhs.copy().into());
-            read_vars.extend(rhs_vars);
-
             if DataExpressionRef::from(lhs.copy()) != DataExpressionRef::from(rhs.copy()) {
+                let rhs_vars = free_variables_data_expression(&rhs.copy().into());
+                read_vars.extend(rhs_vars);
+
                 write_vars.push(lhs);
                 write_assignments.push(assignment.protect());
             }
