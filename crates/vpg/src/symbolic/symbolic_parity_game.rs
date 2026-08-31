@@ -11,7 +11,6 @@ use oxidd::ldd::Value;
 use merc_io::TimeProgress;
 use merc_symbolic::TransitionGroup;
 use merc_symbolic::fix_element;
-use merc_symbolic::intersect;
 use merc_symbolic::merge;
 use merc_utilities::MercError;
 
@@ -185,15 +184,15 @@ impl SymbolicParityGame {
     /// player.
     pub fn players(&self, v: &LDDFunction) -> Result<[LDDFunction; 2], MercError> {
         Ok([
-            intersect(v, &self.owned[Player::Even.to_index()])?,
-            intersect(v, &self.owned[Player::Odd.to_index()])?,
+            v.intersect(&self.owned[Player::Even.to_index()])?,
+            v.intersect(&self.owned[Player::Odd.to_index()])?,
         ])
     }
 
     /// Returns the highest priority occurring in `v`, and the vertices of `v` at that priority.
     pub fn max_priority(&self, v: &LDDFunction) -> Result<Option<(Priority, LDDFunction)>, MercError> {
         for (&priority, block) in self.priorities.iter().rev() {
-            let restricted = intersect(v, block)?;
+            let restricted = v.intersect(block)?;
 
             if !restricted.is_empty() {
                 return Ok(Some((priority, restricted)));
@@ -265,8 +264,8 @@ impl SymbolicParityGame {
         let candidates = self.predecessors(search_space, u)?;
 
         let forced_owner = alpha.opponent();
-        let pulled_in = intersect(&candidates, &vplayer[alpha.to_index()])?;
-        let mut forced = intersect(&candidates, &vplayer[forced_owner.to_index()])?;
+        let pulled_in = candidates.intersect(&vplayer[alpha.to_index()])?;
+        let mut forced = candidates.intersect(&vplayer[forced_owner.to_index()])?;
         if let Some(incomplete) = incomplete {
             forced = forced.minus(incomplete)?;
         }
@@ -323,7 +322,7 @@ impl SymbolicParityGame {
 
         while !todo.is_empty() {
             if let Some(target) = target
-                && !intersect(target, &z)?.is_empty()
+                && !target.intersect(&z)?.is_empty()
             {
                 return Ok((z, strategy));
             }
@@ -377,7 +376,7 @@ impl SymbolicParityGame {
 
         loop {
             if let Some(target) = target
-                && !intersect(target, &z)?.is_empty()
+                && !target.intersect(&z)?.is_empty()
             {
                 return Ok((z, strategy));
             }
@@ -430,9 +429,9 @@ impl SymbolicParityGame {
 
         if !complete_sinks.is_empty() {
             winning[Player::Even.to_index()] = winning[Player::Even.to_index()]
-                .union(&intersect(&complete_sinks, &self.owned[Player::Odd.to_index()])?)?;
+                .union(&complete_sinks.intersect(&self.owned[Player::Odd.to_index()])?)?;
             winning[Player::Odd.to_index()] = winning[Player::Odd.to_index()]
-                .union(&intersect(&complete_sinks, &self.owned[Player::Even.to_index()])?)?;
+                .union(&complete_sinks.intersect(&self.owned[Player::Even.to_index()])?)?;
         }
 
         let (w0, s0) = self.attractor(
@@ -491,7 +490,7 @@ impl SymbolicParityGame {
         }
 
         let non_sinks = v.minus(&self.sinks(v, v)?)?;
-        Ok([intersect(&non_sinks, &parity[0])?, intersect(&non_sinks, &parity[1])?])
+        Ok([non_sinks.intersect(&parity[0])?, non_sinks.intersect(&parity[1])?])
     }
 
     /// Returns the vertices of `v` whose priority is at most `c` (under merc's max-parity
@@ -509,7 +508,7 @@ impl SymbolicParityGame {
                 below = below.union(block)?;
             }
         }
-        Ok(intersect(v, &below)?)
+        Ok(v.intersect(&below)?)
     }
 
     /// Computes the monotone attractor set of `u` for player `alpha` at priority `c` within `v`:
@@ -542,7 +541,7 @@ impl SymbolicParityGame {
 
         while !todo.is_empty() {
             if let Some(target) = target
-                && !intersect(target, &z)?.is_empty()
+                && !target.intersect(&z)?.is_empty()
             {
                 return Ok(z);
             }
@@ -550,7 +549,7 @@ impl SymbolicParityGame {
             let search_target = todo.union(u)?;
             let outside = z_outside.minus(u)?;
             let (pred, _) = self.control_predecessors(alpha, &search_target, v, &outside, vplayer, incomplete)?;
-            todo = intersect(&vc, &pred.minus(&z)?)?;
+            todo = vc.intersect(&pred.minus(&z)?)?;
             z = z.union(&todo)?;
             z_outside = z_outside.minus(&todo)?;
         }
@@ -577,7 +576,9 @@ impl SymbolicParityGame {
         let opponent = alpha.opponent();
 
         let sinks_of_incomplete = self.sinks(incomplete, v)?;
-        let seed = intersect(incomplete, &vplayer[opponent.to_index()])?.union(&sinks_of_incomplete)?;
+        let seed = incomplete
+            .intersect(&vplayer[opponent.to_index()])?
+            .union(&sinks_of_incomplete)?;
 
         let (attracted, _) = self.attractor(opponent, &seed, v, &vplayer, None, None, progress)?;
         Ok(v.minus(&attracted)?)
@@ -641,14 +642,14 @@ impl SymbolicParityGame {
             // The rows of this group whose source is `alpha`-owned, in the group's own
             // read/write shape.
             let alpha_rows = alpha_rows_full.project(&projection_meta)?;
-            let alpha_part = intersect(&relation.relation, &alpha_rows)?;
+            let alpha_part = relation.relation.intersect(&alpha_rows)?;
             let other_part = relation.relation.minus(&alpha_part)?;
 
             let restricted_alpha_part = if strategy_is_empty {
                 self.empty()?
             } else {
                 let projected_strategy = strategy.project(&projection_meta)?;
-                intersect(&alpha_part, &projected_strategy)?
+                alpha_part.intersect(&projected_strategy)?
             };
 
             let new_relation = other_part.union(&restricted_alpha_part)?;

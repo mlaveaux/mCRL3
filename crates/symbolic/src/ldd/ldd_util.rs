@@ -157,10 +157,9 @@ mod tests {
     use crate::random_vector_set;
 
     use super::fix_element;
-    use super::intersect;
     use super::merge;
 
-    /// Cross-checks [intersect] against a `HashSet` reference implementation.
+    /// Cross-checks [`LDDFunction::intersect`] against a `HashSet` reference implementation.
     #[test]
     #[cfg_attr(miri, ignore)] // Oxidd does not work with miri
     fn test_random_intersect() {
@@ -173,7 +172,7 @@ mod tests {
             let ldd_a = from_iter(&manager, a.iter());
             let ldd_b = from_iter(&manager, b.iter());
 
-            let result = intersect(&ldd_a, &ldd_b).unwrap();
+            let result = ldd_a.intersect(&ldd_b).unwrap();
             let expected: HashSet<Vec<u32>> = a.intersection(&b).cloned().collect();
 
             assert_eq!(result.len(), expected.len());
