@@ -390,10 +390,9 @@ fn detect_fatal_attractors_impl(
             SafetyMode::Restricted(safe) => &safe[i],
         };
 
-        let mut x = match &mode {
-            SafetyMode::Safe => block.clone(),
-            SafetyMode::Restricted(_) => intersect(block, search_space)?,
-        };
+        // Restricting the seed to `search_space` up front saves a wasted
+        // `monotone_attractor` fixpoint.
+        let mut x = intersect(block, search_space)?;
         let mut y = empty_set(game)?;
 
         while !x.is_empty() && x != y {

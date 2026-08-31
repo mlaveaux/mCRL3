@@ -269,8 +269,9 @@ impl<P: LPS> LPS for CacheLPS<P> {
     type Value = P::Value;
     type Label = P::Label;
     type StateInfo = P::StateInfo;
-    const HAS_LABELS: bool = P::HAS_LABELS;
     type Summand = CacheSummandWrapper<P>;
+    
+    const HAS_LABELS: bool = P::HAS_LABELS;
 
     fn initial_state(&self) -> Vec<Self::Value> {
         self.inner.initial_state()

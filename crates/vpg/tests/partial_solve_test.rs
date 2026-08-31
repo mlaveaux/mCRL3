@@ -213,6 +213,178 @@ fn test_cycle_detectors_are_sound() {
     });
 }
 
+/// Validate that with incomplete vertices the safe attractors are sound.
+#[test]
+#[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+fn test_partial_solving_is_sound_with_incomplete_vertices() {
+    random_test(100, |rng| {
+        let game = random_parity_game(rng, true, 60, 5, 3);
+        let (expected, _) = solve_zielonka(&game, false);
+
+        let manager = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+        let radix = rng.random_range(2..=5);
+        let num_groups = rng.random_range(1..=3);
+        let (symbolic, all_vertices, cubes) =
+            encode_parity_game(&manager, &game, rng, radix, num_groups, false).unwrap();
+
+        let empty_sinks = symbolic.sinks(&all_vertices, &all_vertices).unwrap();
+        let initial = manager
+            .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
+            .unwrap();
+        let empty = manager.with_manager_shared(LDDFunction::empty_set).unwrap();
+
+        // A random subset of vertices, treated as if their outgoing edges were not yet learned —
+        // even though `symbolic` actually has all of them already. Every accelerator must stay
+        // sound against the real game regardless.
+        let incomplete_cubes: Vec<_> = cubes.iter().filter(|_| rng.random_bool(0.3)).collect();
+        let incomplete = merc_symbolic::from_iter(&manager, incomplete_cubes.into_iter());
+
+        let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
+        let expected_winner = |v: usize| {
+            if expected[Player::Even.to_index()][v] {
+                Player::Even
+            } else {
+                Player::Odd
+            }
+        };
+        let fresh_solution = || SymbolicSolution {
+            winning: [empty.clone(), empty.clone()],
+            strategy: None,
+        };
+
+        let partial = partial_solve(
+            &epg,
+            &incomplete,
+            fresh_solution(),
+            &silent_recursion_progress(),
+            &silent_attractor_progress(),
+        )
+        .unwrap();
+
+        let solitair_safe =
+            detect_solitair_cycles(&epg, &incomplete, fresh_solution(), &silent_attractor_progress()).unwrap();
+        let solitair_restricted = detect_solitair_cycles_within_safe_vertices(
+            &epg,
+            &incomplete,
+            fresh_solution(),
+            &silent_attractor_progress(),
+        )
+        .unwrap();
+        let forced_safe =
+            detect_forced_cycles(&epg, &incomplete, fresh_solution(), &silent_attractor_progress()).unwrap();
+        let forced_restricted = detect_forced_cycles_within_safe_vertices(
+            &epg,
+            &incomplete,
+            fresh_solution(),
+            &silent_attractor_progress(),
+        )
+        .unwrap();
+        let fatal_safe =
+            detect_fatal_attractors(&epg, &incomplete, &empty, &empty, &silent_attractor_progress()).unwrap();
+        let fatal_restricted = detect_fatal_attractors_within_safe_vertices(
+            &epg,
+            &incomplete,
+            &empty,
+            &empty,
+            &silent_attractor_progress(),
+        )
+        .unwrap();
+
+        // `LDDFunction` has no `Debug` impl, so these can't be `assert_eq!`.
+        assert!(
+            solitair_safe.winning == solitair_restricted.winning,
+            "detect_solitair_cycles: Safe and Restricted must agree exactly"
+        );
+        assert!(
+            forced_safe.winning == forced_restricted.winning,
+            "detect_forced_cycles: Safe and Restricted must agree exactly"
+        );
+        assert!(
+            fatal_safe == fatal_restricted,
+            "detect_fatal_attractors: Safe and Restricted must agree exactly"
+        );
+
+        for v in game.iter_vertices() {
+            let vertex = manager
+                .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[*v]))
+                .unwrap();
+
+            if let Some(winner) = partial.winner(&vertex) {
+                assert_eq!(winner, expected_winner(*v), "partial_solve: vertex {v}");
+            }
+            if let Some(winner) = solitair_safe.winner(&vertex) {
+                assert_eq!(winner, expected_winner(*v), "detect_solitair_cycles: vertex {v}");
+            }
+            if let Some(winner) = forced_safe.winner(&vertex) {
+                assert_eq!(winner, expected_winner(*v), "detect_forced_cycles: vertex {v}");
+            }
+            for player in [Player::Even, Player::Odd] {
+                if merc_symbolic::element_of(&manager, &cubes[*v], &fatal_safe[player.to_index()]) {
+                    assert_eq!(player, expected_winner(*v), "detect_fatal_attractors: vertex {v}");
+                }
+            }
+        }
+    });
+}
+
+/// Exercises the strategy-computation code paths of [`partial_solve`], [`detect_solitair_cycles`]
+/// and [`detect_forced_cycles`] (`compute_strategy = true`; [`detect_fatal_attractors`] never
+/// computes one), which no other test in this crate reaches — every
+/// `expect("compute_strategy is set")` in `partial_solve.rs`'s strategy bookkeeping is otherwise
+/// dead code as far as the test suite is concerned. Only checks that computing a strategy doesn't
+/// panic and that whatever comes back is accepted by [`merc_vpg::SymbolicParityGame::apply_strategy`];
+/// a full certificate would need `verify_symbolic_strategy`, which requires the *whole* game to be
+/// resolved, not just whatever these accelerators manage to resolve on a random game.
+#[test]
+#[cfg_attr(miri, ignore)] // Oxidd does not work with miri
+fn test_partial_solving_computes_a_valid_strategy() {
+    random_test(100, |rng| {
+        let game = random_parity_game(rng, true, 60, 5, 3);
+
+        let manager = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
+        let radix = rng.random_range(2..=5);
+        let num_groups = rng.random_range(1..=3);
+        let (symbolic, all_vertices, cubes) =
+            encode_parity_game(&manager, &game, rng, radix, num_groups, true).unwrap();
+
+        let empty_sinks = symbolic.sinks(&all_vertices, &all_vertices).unwrap();
+        let incomplete = manager.with_manager_shared(LDDFunction::empty_set).unwrap();
+        let initial = manager
+            .with_manager_shared(|m| LDDFunction::singleton(m, &cubes[0]))
+            .unwrap();
+        let empty = manager.with_manager_shared(LDDFunction::empty_set).unwrap();
+
+        let fresh_solution = || SymbolicSolution {
+            winning: [empty.clone(), empty.clone()],
+            strategy: Some([empty.clone(), empty.clone()]),
+        };
+
+        let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
+
+        let solutions = [
+            partial_solve(
+                &epg,
+                &incomplete,
+                fresh_solution(),
+                &silent_recursion_progress(),
+                &silent_attractor_progress(),
+            )
+            .unwrap(),
+            detect_solitair_cycles(&epg, &incomplete, fresh_solution(), &silent_attractor_progress()).unwrap(),
+            detect_forced_cycles(&epg, &incomplete, fresh_solution(), &silent_attractor_progress()).unwrap(),
+        ];
+
+        for solution in solutions {
+            let strategy = solution.strategy.expect("compute_strategy is set");
+            for player in [Player::Even, Player::Odd] {
+                epg.game
+                    .apply_strategy(player, &strategy[player.to_index()])
+                    .expect("a partial solver's own strategy must be a valid input to apply_strategy");
+            }
+        }
+    });
+}
+
 /// A tiny fixed game with a genuine solitair cycle: vertex 0 (Even-owned, priority 0, so
 /// `Player::from_priority` maps it to Even — matching its owner, exactly the coincidence
 /// [`detect_solitair_cycles`] needs) has a self-loop, alongside an edge into vertex 1 that
