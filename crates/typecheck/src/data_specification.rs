@@ -495,6 +495,7 @@ mod tests {
     use crate::query_equation_typing;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_equation_typing_is_memoized() {
         let spec = UntypedDataSpecification::parse("map f: Nat; eqn f = 1;").unwrap();
         let mut checked = DataSpecification::from_untyped(spec).unwrap();
@@ -560,6 +561,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_system_constructors_present() {
         // `Bool` always pulls in its system constructors; at least `true`/`false` must appear.
         let spec = DataSpecification::from_untyped(UntypedDataSpecification::parse("map f: Bool;").unwrap()).unwrap();
@@ -571,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_system_equations_present() {
         // System Bool equations (e.g. `!true = false`) must appear now that
         // `lower_data_specification` includes structurally-lowerable system equations.
@@ -585,6 +588,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_empty_container_equations_present() {
         // A `List(D)` sort pulls in the Appendix-B list equations, several of
         // which mention the empty-list literal `[]` (`in(d, []) = false`,
@@ -612,6 +616,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_enumeration_literal_container_equations_present() {
         // `List(Nat)` never occurs as a textual sort here — only as the
         // element sort of the list-enumeration literal `[1, 2, 3]`, which
@@ -670,6 +675,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mcrl2_data_specification_bag_enumeration_literal_container_equations_present() {
         // As above, but for a bag-enumeration literal (`FBag(Nat)`, never
         // declared textually).
@@ -704,6 +710,7 @@ mod tests {
     // output rather than being dropped.
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_set_extensionality_equation_survives_lowering() {
         // `set.mcrl2`'s `@set(f, s) == @set(g, t) = forall c:S. ...`.
         let spec =
@@ -741,6 +748,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bare_higher_order_value_equation_survives_lowering() {
         // `set.mcrl2`'s `@setfset(s) = @set(@false_, s)`, where `@false_` is used
         // point-free (`S -> Bool`, never applied).
@@ -760,6 +768,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_struct_recogniser_and_projection_equations_survive_lowering() {
         // A struct's recogniser/projection equations reference symbols (`is_c1`,
         // `pr1`, `c1`) declared on the user spec by struct desugaring, not on

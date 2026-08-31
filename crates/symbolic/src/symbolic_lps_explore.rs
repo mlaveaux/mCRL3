@@ -623,6 +623,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // miri does not work with oxidd.
     fn test_variable_order_permutes_the_transition_groups() {
         let storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
         let options = SymbolicLpsOptions {
@@ -643,6 +644,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // miri does not work with oxidd.
     fn test_invalid_variable_order_is_rejected() {
         let storage = oxidd::ldd::new_manager(1 << 16, 1 << 16, 1);
         let options = SymbolicLpsOptions {

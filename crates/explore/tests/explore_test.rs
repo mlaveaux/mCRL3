@@ -129,7 +129,7 @@ fn baseline(lps: &MockLps) -> (BTreeSet<State>, BTreeSet<Edge>) {
 }
 
 #[test]
-fn breadth_first_matches_depth_first() {
+fn test_breadth_first_matches_depth_first() {
     // The traversal order must not change the discovered state space.
     for lps in fixtures() {
         assert_eq!(
@@ -142,7 +142,7 @@ fn breadth_first_matches_depth_first() {
 
 #[test]
 #[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
-fn parallel_matches_sequential() {
+fn test_parallel_matches_sequential() {
     for lps in fixtures() {
         assert_eq!(
             run_parallel(&lps),
@@ -154,7 +154,7 @@ fn parallel_matches_sequential() {
 
 #[test]
 #[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
-fn cached_matches_sequential() {
+fn test_cached_matches_sequential() {
     for strategy in [CachingStrategy::Local, CachingStrategy::None] {
         for lps in fixtures() {
             let expected = baseline(&lps);
@@ -179,7 +179,7 @@ fn cached_matches_sequential() {
 /// allocation contention-free. This means that indices are likely sparse.
 #[test]
 #[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
-fn parallel_state_indices_may_be_sparse() {
+fn test_parallel_state_indices_may_be_sparse() {
     // Large enough that several workers insert states concurrently.
     let lps = MockLps::grid(&[50, 50]);
     let pool = rayon::ThreadPoolBuilder::new()
@@ -225,7 +225,8 @@ fn parallel_state_indices_may_be_sparse() {
 }
 
 #[test]
-fn permuted_matches_unpermuted() {
+#[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
+fn test_permuted_matches_unpermuted() {
     // Permuting the state vector must not change the transition system, only the positions the
     // summands report it over. Every permutation of every fixture is checked, including the
     // identity, which the wrapper passes through untouched.
@@ -253,7 +254,7 @@ fn permuted_matches_unpermuted() {
 }
 
 #[test]
-fn permuted_reports_permuted_positions() {
+fn test_permuted_reports_permuted_positions() {
     // The metadata the wrapper exposes is in permuted positions: position `order[i]` of the
     // wrapped LPS becomes position `i`.
     let lps = MockLps::grid(&[2, 3, 4]);
@@ -275,7 +276,7 @@ fn permuted_reports_permuted_positions() {
 }
 
 #[test]
-fn sequential_propagates_callback_error() {
+fn test_sequential_propagates_callback_error() {
     // A transition callback that always fails must surface as an error rather
     // than completing the exploration.
     let lps = MockLps::grid(&[3, 3]);
@@ -292,7 +293,7 @@ fn sequential_propagates_callback_error() {
 
 #[test]
 #[cfg_attr(miri, ignore)] // rayon uses crossbeam-epoch which has Stacked Borrows violations under Miri
-fn parallel_propagates_callback_error() {
+fn test_parallel_propagates_callback_error() {
     // Exercises the abort path: one worker's failing callback sets `aborted`,
     // and every worker stops and reports the error.
     let lps = MockLps::grid(&[3, 3]);
@@ -306,7 +307,7 @@ fn parallel_propagates_callback_error() {
 }
 
 #[test]
-fn grid_state_and_transition_counts() {
+fn test_grid_state_and_transition_counts() {
     // Anchor the naive baseline to closed-form counts, so the driver everything
     // else is compared against cannot drift undetected.
     let lps = MockLps::grid(&[2, 3]);
@@ -319,7 +320,7 @@ fn grid_state_and_transition_counts() {
 }
 
 #[test]
-fn stepped_grid_state_and_transition_counts() {
+fn test_stepped_grid_state_and_transition_counts() {
     // A one-dimensional grid whose only summand fires at the initial state and
     // adds any value in `0..=2`, producing three successors (`0`, `1`, `2`).
     let lps = MockLps::grid_with_steps(&[1], &[2]);
