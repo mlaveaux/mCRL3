@@ -9,7 +9,6 @@ use oxidd::ldd::LDDFunction;
 
 use merc_io::LargeFormatter;
 use merc_io::TimeProgress;
-use merc_symbolic::intersect;
 use merc_symbolic::merge;
 use merc_utilities::MercError;
 
@@ -287,7 +286,7 @@ fn zielonka_rec(
             // `a_strategy` has no move for U itself (the attractor's target, not something pulled
             // in). Seed it with `merge(U ∩ Vplayer[alpha], v)`, later cut down to real edges by
             // `apply_strategy`.
-            let u_alpha = intersect(&u, &vplayer[alpha.to_index()])?;
+            let u_alpha = u.intersect(&vplayer[alpha.to_index()])?;
             let extra = merge(game.manager(), &u_alpha, v)?;
             let combined = a_strategy
                 .expect("compute_strategy is set")

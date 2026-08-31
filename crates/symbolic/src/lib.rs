@@ -53,7 +53,6 @@ pub use ldd::SymbolicLts;
 pub use ldd::convert_symbolic_lts;
 pub use ldd::fix_element;
 pub use ldd::from_iter;
-pub use ldd::intersect;
 pub use ldd::iter;
 pub use ldd::merge;
 pub use ldd::reachability;

@@ -7,7 +7,6 @@ use streaming_iterator::StreamingIterator;
 
 use merc_collections::IndexedSet;
 use merc_symbolic::element_of;
-use merc_symbolic::intersect;
 use merc_symbolic::iter;
 use merc_utilities::MercError;
 
@@ -55,7 +54,7 @@ pub fn convert_symbolic_parity_game(
         builder.add_vertex(vertex, owner, priority);
 
         let singleton = manager.with_manager_shared(|m| LDDFunction::singleton(m, cube))?;
-        let successors = intersect(&game.successors(&singleton)?, vertices)?;
+        let successors = game.successors(&singleton)?.intersect(vertices)?;
 
         let mut successor_iter = iter(&successors);
         while let Some(successor) = successor_iter.next() {
