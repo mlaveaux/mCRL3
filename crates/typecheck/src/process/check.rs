@@ -43,13 +43,19 @@ pub(super) fn check_process_specification(
     tables: &DeclarationTables,
     spec: &UntypedProcessSpecification,
 ) -> Result<(), ProcessError> {
-    let globals: Vec<(&str, ResolvedSortId)> =
-        spec.global_variables.iter().zip(&tables.global_sorts).map(|(decl, &sort)| (decl.identifier.as_str(), sort)).collect();
+    let globals: Vec<(&str, ResolvedSortId)> = spec
+        .global_variables
+        .iter()
+        .zip(&tables.global_sorts)
+        .map(|(decl, &sort)| (decl.identifier.as_str(), sort))
+        .collect();
 
     for (proc_decl, params) in spec.process_declarations.iter().zip(&tables.process_params) {
         let mut scope = Scope::new(globals.clone());
         // A process's own parameters shadow a global variable of the same name.
-        scope.variables.extend(params.iter().map(|(name, sort)| (name.as_str(), *sort)));
+        scope
+            .variables
+            .extend(params.iter().map(|(name, sort)| (name.as_str(), *sort)));
         check_process_expr(data, tables, &mut scope, &proc_decl.body)?;
     }
 
@@ -71,7 +77,9 @@ fn check_process_expr<'a>(
         ProcessExprKind::Delta | ProcessExprKind::Tau => Ok(()),
 
         ProcessExprKind::Action(name, args) => check_action_or_process(data, tables, scope, name, args, &expr.span),
-        ProcessExprKind::Id(name, assignments) => check_instantiation(data, tables, scope, name, assignments, &expr.span),
+        ProcessExprKind::Id(name, assignments) => {
+            check_instantiation(data, tables, scope, name, assignments, &expr.span)
+        }
 
         ProcessExprKind::Sum { variables, operand } => {
             let pushed = push_binders(data, scope, variables)?;
@@ -79,7 +87,11 @@ fn check_process_expr<'a>(
             scope.variables.truncate(scope.variables.len() - pushed);
             result
         }
-        ProcessExprKind::Dist { variables, expr: weight, operand } => {
+        ProcessExprKind::Dist {
+            variables,
+            expr: weight,
+            operand,
+        } => {
             let pushed = push_binders(data, scope, variables)?;
             // Checked against `Real` *with* the bound variables already in scope: `dist`'s weight
             // is the distribution's density over them.
@@ -105,7 +117,10 @@ fn check_process_expr<'a>(
             Ok(())
         }
 
-        ProcessExprKind::At { expr: inner, operand: time } => {
+        ProcessExprKind::At {
+            expr: inner,
+            operand: time,
+        } => {
             let real_sort = data.context().sorts.real_sort();
             check_expression_against(data, scope, time, real_sort)?;
             check_process_expr(data, tables, scope, inner)
@@ -145,7 +160,11 @@ fn check_process_expr<'a>(
 /// Resolves each of `variables`' declared sorts and pushes them onto `scope`, returning how many
 /// were pushed so the caller can `truncate` them back off once it's done with them — `Sum`/
 /// `Dist`'s shared shadowing step.
-fn push_binders<'a>(data: &mut DataSpecification, scope: &mut Scope<'a>, variables: &'a [IdDecl]) -> Result<usize, ProcessError> {
+fn push_binders<'a>(
+    data: &mut DataSpecification,
+    scope: &mut Scope<'a>,
+    variables: &'a [IdDecl],
+) -> Result<usize, ProcessError> {
     for var in variables {
         let sort = resolve_declared_sort(data, &var.sort)?;
         scope.variables.push((var.identifier.as_str(), sort));
@@ -205,7 +224,11 @@ fn check_action_or_process(
         .collect();
 
     if candidates.is_empty() {
-        return Err(ProcessError::UndeclaredActionOrProcess { name: name.to_string(), arity: args.len(), span: span.clone() });
+        return Err(ProcessError::UndeclaredActionOrProcess {
+            name: name.to_string(),
+            arity: args.len(),
+            span: span.clone(),
+        });
     }
 
     let mut successes = 0usize;
@@ -221,10 +244,16 @@ fn check_action_or_process(
         0 => Err(ProcessError::NoMatchingOverload {
             name: name.to_string(),
             span: span.clone(),
-            cause: Box::new(first_error.expect("at least one candidate, so at least one recorded error when none succeed")),
+            cause: Box::new(
+                first_error.expect("at least one candidate, so at least one recorded error when none succeed"),
+            ),
         }),
         1 => Ok(()),
-        count => Err(ProcessError::AmbiguousActionOrProcess { name: name.to_string(), count, span: span.clone() }),
+        count => Err(ProcessError::AmbiguousActionOrProcess {
+            name: name.to_string(),
+            count,
+            span: span.clone(),
+        }),
     }
 }
 
@@ -254,7 +283,11 @@ fn check_instantiation(
 ) -> Result<(), ProcessError> {
     let indices: &[usize] = tables.processes_by_name.get(name).map_or(&[], Vec::as_slice);
     if indices.is_empty() {
-        return Err(ProcessError::UndeclaredActionOrProcess { name: name.to_string(), arity: assignments.len(), span: span.clone() });
+        return Err(ProcessError::UndeclaredActionOrProcess {
+            name: name.to_string(),
+            arity: assignments.len(),
+            span: span.clone(),
+        });
     }
 
     let mut successes = 0usize;
@@ -269,7 +302,11 @@ fn check_instantiation(
     match successes {
         0 => Err(first_error.expect("at least one candidate, so at least one recorded error when none succeed")),
         1 => Ok(()),
-        count => Err(ProcessError::AmbiguousActionOrProcess { name: name.to_string(), count, span: span.clone() }),
+        count => Err(ProcessError::AmbiguousActionOrProcess {
+            name: name.to_string(),
+            count,
+            span: span.clone(),
+        }),
     }
 }
 
@@ -296,7 +333,10 @@ fn check_one_instantiation(
 fn check_action_names(tables: &DeclarationTables, names: &[String], span: &Span) -> Result<(), ProcessError> {
     for name in names {
         if !tables.actions_by_name.contains_key(name) {
-            return Err(ProcessError::UndeclaredAction { name: name.clone(), span: span.clone() });
+            return Err(ProcessError::UndeclaredAction {
+                name: name.clone(),
+                span: span.clone(),
+            });
         }
     }
     Ok(())

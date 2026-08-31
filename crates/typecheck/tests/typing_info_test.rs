@@ -19,7 +19,9 @@ fn typing_for(text: &str) -> TypingInfo {
 /// specific typed node there.
 #[track_caller]
 fn hover(text: &str, needle: &str) -> String {
-    let offset = text.find(needle).unwrap_or_else(|| panic!("'{needle}' not found in '{text}'"));
+    let offset = text
+        .find(needle)
+        .unwrap_or_else(|| panic!("'{needle}' not found in '{text}'"));
     typing_for(text)
         .at_offset(offset)
         .unwrap_or_else(|| panic!("no typed node at offset {offset} in '{text}'"))
@@ -30,7 +32,9 @@ fn hover(text: &str, needle: &str) -> String {
 /// As [`hover`], but returns the resolved name instead of the sort.
 #[track_caller]
 fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
-    let offset = text.find(needle).unwrap_or_else(|| panic!("'{needle}' not found in '{text}'"));
+    let offset = text
+        .find(needle)
+        .unwrap_or_else(|| panic!("'{needle}' not found in '{text}'"));
     typing_for(text)
         .at_offset(offset)
         .unwrap_or_else(|| panic!("no typed node at offset {offset} in '{text}'"))
@@ -102,7 +106,11 @@ fn test_constructor_goto_def_points_at_its_declaration() {
         ResolvedName::Constructor { name, declaration, .. } => {
             assert_eq!(name, "c");
             let span = declaration.expect("a plain `cons` declaration has a real span");
-            assert_eq!(&text[span.start..span.end], "c", "the declaration span is precisely the identifier, not `c: D`");
+            assert_eq!(
+                &text[span.start..span.end],
+                "c",
+                "the declaration span is precisely the identifier, not `c: D`"
+            );
         }
         other => panic!("expected a Constructor resolution, got {other:?}"),
     }
@@ -115,7 +123,11 @@ fn test_mapping_goto_def_points_at_its_declaration() {
         ResolvedName::Mapping { name, declaration, .. } => {
             assert_eq!(name, "f");
             let span = declaration.expect("a plain `map` declaration has a real span");
-            assert_eq!(&text[span.start..span.end], "f", "the declaration span is precisely the identifier, not `f: Bool`");
+            assert_eq!(
+                &text[span.start..span.end],
+                "f",
+                "the declaration span is precisely the identifier, not `f: Bool`"
+            );
         }
         other => panic!("expected a Mapping resolution, got {other:?}"),
     }
@@ -145,7 +157,11 @@ fn test_duplicate_declaration_resolves_to_the_first() {
     match resolved_name_at(text, "f =") {
         ResolvedName::Mapping { declaration, .. } => {
             let span = declaration.expect("a plain `map` declaration has a real span");
-            assert_eq!(&text[span.start..span.end], "f", "should resolve to the first declaration, and be precisely the identifier");
+            assert_eq!(
+                &text[span.start..span.end],
+                "f",
+                "should resolve to the first declaration, and be precisely the identifier"
+            );
         }
         other => panic!("expected a Mapping resolution, got {other:?}"),
     }
@@ -197,9 +213,20 @@ fn test_every_node_has_a_well_formed_non_degenerate_span_into_the_source() {
                 eqn g([1, 2, 3]) = 1 in [1, 2, 3];";
     let info = typing_for(text);
 
-    assert!(!info.nodes().is_empty(), "a specification with equations should produce typed nodes");
+    assert!(
+        !info.nodes().is_empty(),
+        "a specification with equations should produce typed nodes"
+    );
     for node in info.nodes() {
-        assert!(node.span.start <= node.span.end, "span {:?} has start after end", node.span);
-        assert!(node.span.end <= text.len(), "span {:?} runs past the end of the source", node.span);
+        assert!(
+            node.span.start <= node.span.end,
+            "span {:?} has start after end",
+            node.span
+        );
+        assert!(
+            node.span.end <= text.len(),
+            "span {:?} runs past the end of the source",
+            node.span
+        );
     }
 }

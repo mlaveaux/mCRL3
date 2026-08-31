@@ -17,9 +17,9 @@ use std::collections::HashMap;
 
 use merc_syntax::ConstructorId;
 use merc_syntax::MapId;
-use merc_syntax::Span;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::DataSpecification;
@@ -209,7 +209,9 @@ impl<'a> DeclarationIndex<'a> {
             };
             let sort = spec.sort_of_constructor(id);
             let declaration = declared_span(&decl.span);
-            constructors.entry((decl.identifier.as_str(), sort)).or_insert((id, declaration));
+            constructors
+                .entry((decl.identifier.as_str(), sort))
+                .or_insert((id, declaration));
         }
 
         let mut mappings = HashMap::new();
@@ -219,7 +221,9 @@ impl<'a> DeclarationIndex<'a> {
             };
             let sort = spec.sort_of_map(id);
             let declaration = declared_span(&decl.span);
-            mappings.entry((decl.identifier.as_str(), sort)).or_insert((id, declaration));
+            mappings
+                .entry((decl.identifier.as_str(), sort))
+                .or_insert((id, declaration));
         }
 
         DeclarationIndex { constructors, mappings }
@@ -256,7 +260,10 @@ fn sort_expression(
             SortExpressionKind::Complex(*op, Box::new(sort_expression(ctx, spec, system, *subsort))).into()
         }
         ResolvedSort::Function { domain, range } => SortExpressionKind::FlattenedFunction {
-            domain: domain.iter().map(|&sort| sort_expression(ctx, spec, system, sort)).collect(),
+            domain: domain
+                .iter()
+                .map(|&sort| sort_expression(ctx, spec, system, sort))
+                .collect(),
             range: Box::new(sort_expression(ctx, spec, system, *range)),
         }
         .into(),

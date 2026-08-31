@@ -218,7 +218,10 @@ fn eqn_spec_span_covers_the_whole_block() {
     let eqn_spec = &spec.equation_declarations[0];
 
     let block = &text[eqn_spec.span.start..eqn_spec.span.end];
-    assert_eq!(block, "var x: D;\neqn x = x;", "span should cover both the `var` and `eqn` sections");
+    assert_eq!(
+        block, "var x: D;\neqn x = x;",
+        "span should cover both the `var` and `eqn` sections"
+    );
 }
 
 /// A block with no `var` section starts its span at `eqn`, not at some earlier declaration.
@@ -238,7 +241,11 @@ fn eqn_spec_span_without_a_var_section_starts_at_eqn() {
 fn grouped_sort_declarations_get_distinct_precise_spans() {
     let text = "sort A, B, C;";
     let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
-    let spans: Vec<&str> = spec.sort_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    let spans: Vec<&str> = spec
+        .sort_declarations
+        .iter()
+        .map(|decl| &text[decl.span.start..decl.span.end])
+        .collect();
     assert_eq!(spans, ["A", "B", "C"]);
 }
 
@@ -256,8 +263,11 @@ fn sort_alias_declaration_span_is_precisely_the_identifier() {
 fn grouped_constructor_declarations_get_distinct_precise_spans() {
     let text = "sort D; cons c1, c2: D;";
     let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
-    let spans: Vec<&str> =
-        spec.constructor_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    let spans: Vec<&str> = spec
+        .constructor_declarations
+        .iter()
+        .map(|decl| &text[decl.span.start..decl.span.end])
+        .collect();
     assert_eq!(spans, ["c1", "c2"]);
 }
 
@@ -265,7 +275,11 @@ fn grouped_constructor_declarations_get_distinct_precise_spans() {
 fn grouped_action_declarations_get_distinct_precise_spans() {
     let text = "act a, b: Bool;";
     let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
-    let spans: Vec<&str> = spec.action_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    let spans: Vec<&str> = spec
+        .action_declarations
+        .iter()
+        .map(|decl| &text[decl.span.start..decl.span.end])
+        .collect();
     assert_eq!(spans, ["a", "b"]);
 }
 
@@ -287,7 +301,10 @@ fn assignment_span_is_precisely_the_identifier() {
 fn process_declaration_span_is_precisely_the_identifier() {
     let text = "proc P(x: Bool) = delta;\nproc Q = tau;\ninit P(true);";
     let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
-    let spans: Vec<&str> =
-        spec.process_declarations.iter().map(|decl| &text[decl.span.start..decl.span.end]).collect();
+    let spans: Vec<&str> = spec
+        .process_declarations
+        .iter()
+        .map(|decl| &text[decl.span.start..decl.span.end])
+        .collect();
     assert_eq!(spans, ["P", "Q"]);
 }

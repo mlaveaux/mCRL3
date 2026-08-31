@@ -43,7 +43,10 @@ impl ProcessSpecification {
     /// Type checks `spec`: its data specification first (exactly as
     /// [`DataSpecification::from_untyped_with`] does), then its action declarations' argument
     /// sorts, its global variables, and every `proc` body and `init` against them.
-    pub fn from_untyped_with(mut spec: UntypedProcessSpecification, encoding: NumberEncoding) -> Result<Self, ProcessError> {
+    pub fn from_untyped_with(
+        mut spec: UntypedProcessSpecification,
+        encoding: NumberEncoding,
+    ) -> Result<Self, ProcessError> {
         // Semantic-aware reparsing first.
         reparse::reparse_process_specification(&mut spec);
 
@@ -137,7 +140,10 @@ impl DeclarationTables {
                 let sort = resolve_declared_sort(data, &param.sort)?;
                 params.push((param.identifier.clone(), sort));
             }
-            processes_by_name.entry(decl.identifier.clone()).or_default().push(index);
+            processes_by_name
+                .entry(decl.identifier.clone())
+                .or_default()
+                .push(index);
             process_params.push(params);
         }
 
@@ -148,7 +154,10 @@ impl DeclarationTables {
         // deterministic.
         for decl in &spec.action_declarations {
             if processes_by_name.contains_key(&decl.identifier) {
-                return Err(ProcessError::ActionAndProcessConflict { name: decl.identifier.clone(), span: decl.span.clone() });
+                return Err(ProcessError::ActionAndProcessConflict {
+                    name: decl.identifier.clone(),
+                    span: decl.span.clone(),
+                });
             }
         }
 
@@ -156,19 +165,31 @@ impl DeclarationTables {
         let mut seen_globals = HashSet::new();
         for decl in &spec.global_variables {
             if !seen_globals.insert(decl.identifier.as_str()) {
-                return Err(ProcessError::DuplicateGlobalVariable { name: decl.identifier.clone(), span: decl.span.clone() });
+                return Err(ProcessError::DuplicateGlobalVariable {
+                    name: decl.identifier.clone(),
+                    span: decl.span.clone(),
+                });
             }
             global_sorts.push(resolve_declared_sort(data, &decl.sort)?);
         }
 
-        Ok(DeclarationTables { global_sorts, process_params, processes_by_name, action_domains, actions_by_name })
+        Ok(DeclarationTables {
+            global_sorts,
+            process_params,
+            processes_by_name,
+            action_domains,
+            actions_by_name,
+        })
     }
 }
 
 /// Resolves a sort expression occurring in an `act`/`proc`/`glob` declaration: rejects an
 /// anonymous `struct` (never legal here), then defers to
 /// [`DataSpecification::resolve_declared_sort`] for the rest.
-pub(super) fn resolve_declared_sort(data: &mut DataSpecification, sort: &SortExpression) -> Result<ResolvedSortId, ProcessError> {
+pub(super) fn resolve_declared_sort(
+    data: &mut DataSpecification,
+    sort: &SortExpression,
+) -> Result<ResolvedSortId, ProcessError> {
     if let Some(span) = find_anonymous_struct(sort) {
         return Err(ProcessError::AnonymousStructInDeclaration { span });
     }

@@ -325,7 +325,12 @@ fn infer_equation(
     let scope: Vec<(&str, ResolvedSortId)> = eqn_spec
         .variables
         .iter()
-        .map(|var| (var.identifier.as_str(), resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var)))
+        .map(|var| {
+            (
+                var.identifier.as_str(),
+                resolve_equation_variable_sort(ctx, spec, role, eqn_spec_id, var),
+            )
+        })
         .collect();
 
     infer(
@@ -418,7 +423,10 @@ enum Roots<'a> {
     /// or a process-instantiation argument's declared sort, a `sum`/`dist` condition or time
     /// bound — rather than typed purely from its own structure (see
     /// [infer_expression_in_scope]/[crate::process]).
-    ExpressionAgainst { expr: &'a DataExpr, expected: ResolvedSortId },
+    ExpressionAgainst {
+        expr: &'a DataExpr,
+        expected: ResolvedSortId,
+    },
 }
 
 /// Generates the constraints of `roots`, solves them by ranked backtracking,
@@ -628,7 +636,11 @@ fn infer<'a>(
                 debug!("inference: solved '{}' at measure {:?}", equation_text(), best.measure);
                 if log::log_enabled!(log::Level::Debug) {
                     for &(name, sort) in scope {
-                        trace!("inference:   variable {}: {}", name, DisplaySortContext::new(ctx, spec, system, sort));
+                        trace!(
+                            "inference:   variable {}: {}",
+                            name,
+                            DisplaySortContext::new(ctx, spec, system, sort)
+                        );
                     }
                     for (&sort, text) in sorts.iter().zip(&expr_texts) {
                         trace!(
@@ -934,7 +946,8 @@ impl<'a> ConstraintGenerator<'a> {
 
         let sort = self.visit(expr)?;
         let target = self.unifier.resolved_node(expected);
-        self.constraints.push(Constraint::Sub(SubConstraint { lhs: sort, rhs: target }));
+        self.constraints
+            .push(Constraint::Sub(SubConstraint { lhs: sort, rhs: target }));
         Ok(())
     }
 
@@ -1833,8 +1846,12 @@ mod tests {
 
         // Same node numbering as `test_infers_basic_equation`: 0 = `f(n)`,
         // 1 = `n`, 2 = `f`, 3 = `true`.
-        let EquationTyping { sorts, spans, identifier_names, .. } =
-            spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
+        let EquationTyping {
+            sorts,
+            spans,
+            identifier_names,
+            ..
+        } = spec.equation_typing((EqnSpecId::new(0), EquationId::new(0)));
 
         // `spans` is parallel to `sorts`, one entry per expression node.
         assert_eq!(spans.len(), sorts.len());

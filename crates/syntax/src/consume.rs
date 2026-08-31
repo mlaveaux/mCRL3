@@ -791,7 +791,10 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn IdList(identifiers: ParseNode) -> ParseResult<Vec<(String, Span)>> {
-        Ok(identifiers.into_children().map(|node| (node.as_str().to_string(), node.as_span().into())).collect())
+        Ok(identifiers
+            .into_children()
+            .map(|node| (node.as_str().to_string(), node.as_span().into()))
+            .collect())
     }
 
     fn IdInfix(identifier: ParseNode) -> ParseResult<String> {
@@ -799,7 +802,10 @@ impl Mcrl2Parser {
     }
 
     fn IdInfixList(identifiers: ParseNode) -> ParseResult<Vec<(String, Span)>> {
-        Ok(identifiers.into_children().map(|node| (node.as_str().to_string(), node.as_span().into())).collect())
+        Ok(identifiers
+            .into_children()
+            .map(|node| (node.as_str().to_string(), node.as_span().into()))
+            .collect())
     }
 
     // Complex sorts

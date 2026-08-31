@@ -116,7 +116,12 @@ fn fix_swallow(names: &Names, node: &ProcessExpr) -> Option<ProcessExpr> {
 /// -> (a(1) . P)`.
 ///
 /// [`Choice`]: ProcExprBinaryOp::Choice
-fn fix_condition(names: &Names, condition: DataExpr, then: ProcessExpr, else_: Option<Box<ProcessExpr>>) -> ProcessExpr {
+fn fix_condition(
+    names: &Names,
+    condition: DataExpr,
+    then: ProcessExpr,
+    else_: Option<Box<ProcessExpr>>,
+) -> ProcessExpr {
     // Peel `condition` itself: any leading, fully-unconditional `+`-branches first (a whole run
     // with no `->` of its own at all, up to the *one* `->` this construct actually has — see
     // `peel_condition`), then a leading `.`-prefix off whatever's left (the plain `.` case).
@@ -128,20 +133,46 @@ fn fix_condition(names: &Names, condition: DataExpr, then: ProcessExpr, else_: O
             // `then` hid a further `+`-separated clause (see `take_swallow`). `else_` belongs to
             // *this* clause, not `rest` — an explicit `<>` always closes the construct it was
             // written on, never a clause a swallow only revealed after the fact.
-            let this_span = Span { start: condition.span.start, end: this_then.span.end };
-            let this_clause =
-                ProcessExprKind::Condition { condition, then: Box::new(this_then), else_ }.spanned(this_span.clone());
-            let choice_span = Span { start: this_span.start, end: rest.span.end };
-            ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: Box::new(this_clause), rhs: Box::new(rest) }.spanned(choice_span)
+            let this_span = Span {
+                start: condition.span.start,
+                end: this_then.span.end,
+            };
+            let this_clause = ProcessExprKind::Condition {
+                condition,
+                then: Box::new(this_then),
+                else_,
+            }
+            .spanned(this_span.clone());
+            let choice_span = Span {
+                start: this_span.start,
+                end: rest.span.end,
+            };
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Choice,
+                lhs: Box::new(this_clause),
+                rhs: Box::new(rest),
+            }
+            .spanned(choice_span)
         }
         Err(then) => {
             let this_then = reparse(names, *then);
-            let this_span = Span { start: condition.span.start, end: this_then.span.end };
+            let this_span = Span {
+                start: condition.span.start,
+                end: this_then.span.end,
+            };
             let this_span = match &else_ {
-                Some(else_) => Span { end: else_.span.end, ..this_span },
+                Some(else_) => Span {
+                    end: else_.span.end,
+                    ..this_span
+                },
                 None => this_span,
             };
-            ProcessExprKind::Condition { condition, then: Box::new(this_then), else_ }.spanned(this_span)
+            ProcessExprKind::Condition {
+                condition,
+                then: Box::new(this_then),
+                else_,
+            }
+            .spanned(this_span)
         }
     };
 
@@ -153,8 +184,16 @@ fn fix_condition(names: &Names, condition: DataExpr, then: ProcessExpr, else_: O
     // and only `->` swallows into this single `Condition`'s `condition` in one shot, rather than
     // cascading through nested `Condition`s the way `take_swallow`'s two shapes do.
     branches.into_iter().rev().fold(result, |acc, branch| {
-        let span = Span { start: branch.span.start, end: acc.span.end };
-        ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: Box::new(branch), rhs: Box::new(acc) }.spanned(span)
+        let span = Span {
+            start: branch.span.start,
+            end: acc.span.end,
+        };
+        ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs: Box::new(branch),
+            rhs: Box::new(acc),
+        }
+        .spanned(span)
     })
 }
 
@@ -171,7 +210,12 @@ fn peel_condition(names: &Names, condition: DataExpr) -> (Vec<ProcessExpr>, Vec<
         if !is_branch {
             break;
         }
-        let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, rhs } = current.node else {
+        let DataExprKind::Binary {
+            op: DataExprBinaryOp::Add,
+            lhs,
+            rhs,
+        } = current.node
+        else {
             unreachable!("just matched this shape above");
         };
         branches.push(reinterpret_as_process(*lhs));
@@ -195,7 +239,11 @@ fn peel_condition(names: &Names, condition: DataExpr) -> (Vec<ProcessExpr>, Vec<
 /// here can distinguish a user's own, already-correct `a + b` from one that needs splitting.
 fn take_swallow(names: &Names, node: ProcessExpr) -> Result<(ProcessExpr, ProcessExpr), Box<ProcessExpr>> {
     let is_add_swallow = if let ProcessExprKind::Condition { condition, .. } = &node.node
-        && let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, .. } = &condition.node
+        && let DataExprKind::Binary {
+            op: DataExprBinaryOp::Add,
+            lhs,
+            ..
+        } = &condition.node
     {
         is_fully_process_content(names, lhs)
     } else {
@@ -205,10 +253,20 @@ fn take_swallow(names: &Names, node: ProcessExpr) -> Result<(ProcessExpr, Proces
         return Err(Box::new(node));
     }
 
-    let ProcessExprKind::Condition { condition, then: inner_then, else_: inner_else } = node.node else {
+    let ProcessExprKind::Condition {
+        condition,
+        then: inner_then,
+        else_: inner_else,
+    } = node.node
+    else {
         unreachable!("just matched this shape above");
     };
-    let DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, rhs } = condition.node else {
+    let DataExprKind::Binary {
+        op: DataExprBinaryOp::Add,
+        lhs,
+        rhs,
+    } = condition.node
+    else {
         unreachable!("just matched this shape above");
     };
     let this = reinterpret_as_process(*lhs);
@@ -243,7 +301,11 @@ fn flatten_at_chain(expr: DataExpr) -> Vec<DataExpr> {
     let mut current = expr;
     loop {
         match current.node {
-            DataExprKind::Binary { op: DataExprBinaryOp::At, lhs, rhs } => {
+            DataExprKind::Binary {
+                op: DataExprBinaryOp::At,
+                lhs,
+                rhs,
+            } => {
                 parts.push(*rhs);
                 current = *lhs;
             }
@@ -261,10 +323,20 @@ fn flatten_at_chain(expr: DataExpr) -> Vec<DataExpr> {
 /// chain. Panics on an empty `pieces` — never called with one.
 fn rebuild_at_chain(pieces: Vec<DataExpr>) -> DataExpr {
     let mut pieces = pieces.into_iter();
-    let mut result = pieces.next().expect("rebuild_at_chain is never called with an empty piece list");
+    let mut result = pieces
+        .next()
+        .expect("rebuild_at_chain is never called with an empty piece list");
     for piece in pieces {
-        let span = Span { start: result.span.start, end: piece.span.end };
-        result = DataExprKind::Binary { op: DataExprBinaryOp::At, lhs: Box::new(result), rhs: Box::new(piece) }.spanned(span);
+        let span = Span {
+            start: result.span.start,
+            end: piece.span.end,
+        };
+        result = DataExprKind::Binary {
+            op: DataExprBinaryOp::At,
+            lhs: Box::new(result),
+            rhs: Box::new(piece),
+        }
+        .spanned(span);
     }
     result
 }
@@ -293,9 +365,11 @@ fn is_process_constant(name: &str) -> bool {
 /// precondition [`reinterpret_as_process`] relies on.
 fn is_fully_process_content(names: &Names, expr: &DataExpr) -> bool {
     match &expr.node {
-        DataExprKind::Binary { op: DataExprBinaryOp::At | DataExprBinaryOp::Add, lhs, rhs } => {
-            is_fully_process_content(names, lhs) && is_fully_process_content(names, rhs)
-        }
+        DataExprKind::Binary {
+            op: DataExprBinaryOp::At | DataExprBinaryOp::Add,
+            lhs,
+            rhs,
+        } => is_fully_process_content(names, lhs) && is_fully_process_content(names, rhs),
         _ => is_declared_step(names, expr),
     }
 }
@@ -308,13 +382,21 @@ fn is_fully_process_content(names: &Names, expr: &DataExpr) -> bool {
 fn reinterpret_as_process(expr: DataExpr) -> ProcessExpr {
     let span = expr.span.clone();
     match expr.node {
-        DataExprKind::Binary { op: DataExprBinaryOp::At, lhs, rhs } => ProcessExprKind::Binary {
+        DataExprKind::Binary {
+            op: DataExprBinaryOp::At,
+            lhs,
+            rhs,
+        } => ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Sequence,
             lhs: Box::new(reinterpret_as_process(*lhs)),
             rhs: Box::new(reinterpret_as_process(*rhs)),
         }
         .spanned(span),
-        DataExprKind::Binary { op: DataExprBinaryOp::Add, lhs, rhs } => ProcessExprKind::Binary {
+        DataExprKind::Binary {
+            op: DataExprBinaryOp::Add,
+            lhs,
+            rhs,
+        } => ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Choice,
             lhs: Box::new(reinterpret_as_process(*lhs)),
             rhs: Box::new(reinterpret_as_process(*rhs)),
@@ -338,8 +420,16 @@ fn reinterpret_as_process(expr: DataExpr) -> ProcessExpr {
 fn prepend_seq(prefix: Vec<DataExpr>, tail: ProcessExpr) -> ProcessExpr {
     prefix.into_iter().rev().fold(tail, |acc, piece| {
         let step = reinterpret_as_process(piece);
-        let span = Span { start: step.span.start, end: acc.span.end };
-        ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, lhs: Box::new(step), rhs: Box::new(acc) }.spanned(span)
+        let span = Span {
+            start: step.span.start,
+            end: acc.span.end,
+        };
+        ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Sequence,
+            lhs: Box::new(step),
+            rhs: Box::new(acc),
+        }
+        .spanned(span)
     })
 }
 
@@ -367,7 +457,12 @@ mod tests {
     #[test]
     fn dot_swallowed_action_prefix_is_recovered() {
         let body = reparsed_body("act a: Nat; init a(1) . true -> delta;");
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, lhs, rhs } = &body.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Sequence,
+            lhs,
+            rhs,
+        } = &body.node
+        else {
             panic!("expected a Sequence, got {body:?}");
         };
         assert!(matches!(&lhs.node, ProcessExprKind::Action(name, _) if name == "a"));
@@ -379,7 +474,12 @@ mod tests {
     #[test]
     fn choice_swallowed_guarded_actions_are_recovered() {
         let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);");
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs, rhs } = &body.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs,
+            rhs,
+        } = &body.node
+        else {
             panic!("expected a Choice, got {body:?}");
         };
         let ProcessExprKind::Condition { then: lhs_then, .. } = &lhs.node else {
@@ -399,21 +499,43 @@ mod tests {
         let body = reparsed_body(
             "act a: Nat; b: Nat; c: Nat; init (true) -> a(1) . b(1) + (false) -> a(2) . b(2) + (true) -> c(3);",
         );
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs, rhs } = &body.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs,
+            rhs,
+        } = &body.node
+        else {
             panic!("expected a Choice, got {body:?}");
         };
         let ProcessExprKind::Condition { then: first_then, .. } = &lhs.node else {
             panic!("expected a Condition, got {lhs:?}");
         };
-        assert!(matches!(&first_then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
+        assert!(matches!(
+            &first_then.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                ..
+            }
+        ));
 
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: second, rhs: third } = &rhs.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs: second,
+            rhs: third,
+        } = &rhs.node
+        else {
             panic!("expected a nested Choice, got {rhs:?}");
         };
         let ProcessExprKind::Condition { then: second_then, .. } = &second.node else {
             panic!("expected a Condition, got {second:?}");
         };
-        assert!(matches!(&second_then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
+        assert!(matches!(
+            &second_then.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                ..
+            }
+        ));
         let ProcessExprKind::Condition { then: third_then, .. } = &third.node else {
             panic!("expected a Condition, got {third:?}");
         };
@@ -434,11 +556,23 @@ mod tests {
         let ProcessExprKind::Condition { then, else_, .. } = &body.node else {
             panic!("expected a Condition, got {body:?}");
         };
-        assert!(matches!(&then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
+        assert!(matches!(
+            &then.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                ..
+            }
+        ));
         let Some(else_) = else_ else {
             panic!("expected an else_ branch, got None");
         };
-        assert!(matches!(&else_.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, .. }));
+        assert!(matches!(
+            &else_.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Choice,
+                ..
+            }
+        ));
     }
 
     /// Minimal form of the same bug: `then` hiding an unrelated (`Add`-shaped) swallow must never
@@ -450,7 +584,12 @@ mod tests {
     #[test]
     fn else_branch_survives_a_swallow_one_level_down() {
         let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);");
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: first, rhs: second } = &body.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs: first,
+            rhs: second,
+        } = &body.node
+        else {
             panic!("expected a Choice, got {body:?}");
         };
         let ProcessExprKind::Condition { else_: first_else, .. } = &first.node else {
@@ -476,7 +615,16 @@ mod tests {
             panic!("expected a Condition, got {body:?}");
         };
         assert!(matches!(&condition.node, DataExprKind::Bool(true)));
-        assert!(matches!(&then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, .. }), "a + b must stay intact, got {then:?}");
+        assert!(
+            matches!(
+                &then.node,
+                ProcessExprKind::Binary {
+                    op: ProcExprBinaryOp::Choice,
+                    ..
+                }
+            ),
+            "a + b must stay intact, got {then:?}"
+        );
         let Some(else_) = else_ else {
             panic!("expected `<> c(3)` to survive, got None");
         };
@@ -494,19 +642,47 @@ mod tests {
         // The two unconditional branches (`a.P`, `b.P`) peel off together, in one `Add`-chain
         // piece, as a nested `Choice` of their own; the real, guarded clause (`c.P`) is the
         // right-hand side.
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: branches, rhs: guarded } = &body.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs: branches,
+            rhs: guarded,
+        } = &body.node
+        else {
             panic!("expected a Choice, got {body:?}");
         };
-        let ProcessExprKind::Binary { op: ProcExprBinaryOp::Choice, lhs: first, rhs: second } = &branches.node else {
+        let ProcessExprKind::Binary {
+            op: ProcExprBinaryOp::Choice,
+            lhs: first,
+            rhs: second,
+        } = &branches.node
+        else {
             panic!("expected a nested Choice, got {branches:?}");
         };
-        assert!(matches!(&first.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
-        assert!(matches!(&second.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
+        assert!(matches!(
+            &first.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &second.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                ..
+            }
+        ));
         let ProcessExprKind::Condition { condition, then, else_ } = &guarded.node else {
             panic!("expected a Condition, got {guarded:?}");
         };
         assert!(matches!(&condition.node, DataExprKind::Bool(true)));
-        assert!(matches!(&then.node, ProcessExprKind::Binary { op: ProcExprBinaryOp::Sequence, .. }));
+        assert!(matches!(
+            &then.node,
+            ProcessExprKind::Binary {
+                op: ProcExprBinaryOp::Sequence,
+                ..
+            }
+        ));
         assert!(else_.is_none());
     }
 

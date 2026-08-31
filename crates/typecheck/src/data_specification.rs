@@ -403,7 +403,8 @@ impl DataSpecification {
     /// it — an internal inconsistency between the two phases, treated the same
     /// way as for a user equation in [`Self::lower_data_specification`].
     pub fn typecheck_expression(&mut self, expr: &DataExpr) -> Result<DataExpression, InferenceError> {
-        self.typecheck_expression_with_typing(expr).map(|(lowered, _typing_info)| lowered)
+        self.typecheck_expression_with_typing(expr)
+            .map(|(lowered, _typing_info)| lowered)
     }
 
     /// As [`Self::typecheck_expression`], additionally returning `expr`'s [`TypingInfo`] — the
@@ -427,8 +428,15 @@ impl DataSpecification {
         let typing = infer_expression(&mut self.context, &self.spec, &self.system, &lowered_expr)?;
         let info = typing_info::build(self, &typing);
 
-        let lowered = lower_expression(&self.context, &self.spec, &self.system, &typing, &lowered_expr, self.encoding)
-            .unwrap_or_else(|| panic!("expression '{lowered_expr}' passed inference but failed lowering"));
+        let lowered = lower_expression(
+            &self.context,
+            &self.spec,
+            &self.system,
+            &typing,
+            &lowered_expr,
+            self.encoding,
+        )
+        .unwrap_or_else(|| panic!("expression '{lowered_expr}' passed inference but failed lowering"));
         Ok((lowered, info))
     }
 
@@ -460,7 +468,10 @@ impl DataSpecification {
     /// already-resolved specification's declared sort names.
     ///
     /// Requires `sort` to contain no anonymous `struct` (see [`crate::process`]).
-    pub(crate) fn resolve_declared_sort(&mut self, sort: &SortExpression) -> Result<crate::ResolvedSortId, WellTypedError> {
+    pub(crate) fn resolve_declared_sort(
+        &mut self,
+        sort: &SortExpression,
+    ) -> Result<crate::ResolvedSortId, WellTypedError> {
         check_products_within_domains(sort)?;
         let resolved = resolve_sort_id(sort, &self.sorts)?;
         Ok(resolve_sort(&mut self.context, &self.spec, &resolved))
@@ -471,7 +482,11 @@ impl DataSpecification {
     /// against a variable scope of its own rather than one of `self`'s own equations.
     pub(crate) fn context_and_specs_mut(
         &mut self,
-    ) -> (&mut TypeCheckContext, &UntypedDataSpecification, &UntypedDataSpecification) {
+    ) -> (
+        &mut TypeCheckContext,
+        &UntypedDataSpecification,
+        &UntypedDataSpecification,
+    ) {
         (&mut self.context, &self.spec, &self.system)
     }
 
@@ -484,10 +499,13 @@ impl DataSpecification {
     /// [`Self::typecheck_expression`] — so a binder over a user-declared sort name resolves
     /// correctly.
     pub(crate) fn resolve_expression_binder_sorts(&mut self, expr: &mut DataExpr) -> Result<(), WellTypedError> {
-        apply_sorts_in_data_expr(expr, &mut |sort: &SortExpression| -> Result<SortExpression, WellTypedError> {
-            let flattened = flatten_function_sorts(sort);
-            resolve_sort_id(&flattened, &self.sorts)
-        })
+        apply_sorts_in_data_expr(
+            expr,
+            &mut |sort: &SortExpression| -> Result<SortExpression, WellTypedError> {
+                let flattened = flatten_function_sorts(sort);
+                resolve_sort_id(&flattened, &self.sorts)
+            },
+        )
     }
 }
 
