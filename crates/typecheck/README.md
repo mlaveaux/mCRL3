@@ -51,49 +51,6 @@ standalone expression. Note that a resolved *sort* embedded in a `TypedNode`
 carries no reliable source span of its own — only spans on the original
 specification's declarations and expressions are meaningful.
 
-### Whole-process type checking
-
-`ProcessSpecification::from_untyped` extends the above to a full
-`UntypedProcessSpecification`: it type checks the data specification first
-(exactly as `DataSpecification::from_untyped_with` does), then every `act`
-argument sort, every `glob`/`proc` parameter sort, and every `proc` body and
-`init` — action and process-instantiation arguments against their declared
-sorts (with overload resolution when a name is declared more than once),
-`sum`/`dist`-bound variables in scope for the subtree they bind, conditions
-against `Bool`, and time bounds/`dist` weights against `Real`. Errors are
-`ProcessError`, a superset of `WellTypedError`/`InferenceError`.
-
-**mCRL2's `.`/`+` grammar ambiguity**: its concrete syntax overloads several
-tokens between the process algebra and the data language — most notably `.`
-(process sequential composition vs. the data "at"/indexing operator) and `+`
-(process choice vs. data addition) — and disambiguating between the two
-readings needs semantic information a context-free grammar doesn't have, so
-`merc_syntax`'s grammar always parses the greedier data-expression reading
-first: `act(args) . cond -> P <> Q` parses `act(args) . cond` as a single data
-expression rather than an action step followed by the real condition, and
-`cond1 -> P1 + cond2 -> P2` similarly folds `cond2` into `P1`'s subtree rather
-than starting a sibling clause. Before type checking runs at all,
-`crate::process::reparse` fixes this up using only the declared action/process
-*names* already available at that point (no type information, matching how
-mCRL2 itself resolves the same ambiguity) — see its module doc comment for
-the exact shapes it recognizes and rewrites. This runs unconditionally inside
-`ProcessSpecification::from_untyped`; there is no lower-level entry point that
-skips it.
-
-**Known limitation**: this reparse pass is itself a workaround for a deeper,
-pre-existing performance issue in `merc_syntax`'s parser — most likely
-catastrophic backtracking somewhere in the shared `DataExpr`/`ProcExpr`
-grammar — that can make `UntypedProcessSpecification::parse` itself never
-return on a pathological input, before any of the above even runs.
-`crates/typecheck/tests/example_tests.rs` documents which specifications in
-the example corpus are affected. Fixing the parser itself is out of scope for
-this crate.
-
-`DataSpecification::from_untyped_with` additionally takes a `NumberEncoding`,
-selecting how number literals are lowered to their Appendix-B constructor
-chains: the recursive-binary encoding (the default), or a 64-bit machine-word
-encoding.
-
 ## Safety
 
 This crate contains no unsafe code.

@@ -243,7 +243,7 @@ fn declared_span(span: &Span) -> Option<Span> {
 /// go-to-definition. Mirrors [`crate::lower_sort`]'s structural recursion (same crate, targeting
 /// the binary aterm format instead of the AST's own sort type).
 ///
-/// Every produced node gets [`Span::default`] — see the [module docs](self).
+/// Every produced node gets [`Span::default`].
 fn sort_expression(
     ctx: &TypeCheckContext,
     spec: &UntypedDataSpecification,
