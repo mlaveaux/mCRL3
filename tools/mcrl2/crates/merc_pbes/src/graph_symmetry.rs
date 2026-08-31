@@ -1,5 +1,3 @@
-// Authors: Menno Bartels and Maurice Laveaux
-
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -217,7 +215,6 @@ impl fmt::Display for Quantifier {
     }
 }
 
-/// `C(e)`, the colour of an edge, passed to GAP as a native edge colour (no
 impl fmt::Display for EdgeColour {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -247,7 +244,6 @@ enum EdgeColour {
     /// update vertex `X_{i,k}`. Note that for copy updates (see
     /// [`SdgBuilder::add_update_vertices`]) the `Data` and `Par` edges land on
     /// the same vertex and are combined, so this is a set, not a singleton.
-    /// vertex and are combined.
     Update(BTreeSet<UpdateRole>),
 }
 

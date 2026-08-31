@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-/// Authors: Menno Bartels and Maurice Laveaux
 /// To keep consistent with the theory we allow non-snake case names.
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -556,7 +555,8 @@ impl SymmetryAlgorithm {
                     // s == s'
                     for (to_c, labels) in s_c.outgoing_edges() {
                         for (to_c1, labels_prime) in s_c1.outgoing_edges() {
-                            // TODO: This is not optimal since we are not interested in the outgoing edges, which new() computes.
+                            // `find_by_ptr` re-derives what `new()` already computed for the
+                            // outgoing edges, which this loop does not need.
                             let to = c.find_by_ptr(*to_c);
                             let to_prime = c1.find_by_ptr(*to_c1);
 
@@ -644,7 +644,7 @@ impl SymmetryAlgorithm {
 
     /// Computes the sizes(c, s, s')
     ///
-    /// TODO: used is used_for and used_in in the theory (and should be split eventually)
+    /// `variable.used()` here combines what the theory calls `used_for` and `used_in`.
     fn sizes(
         &self,
         s: &mcrl2::Mcrl2ControlFlowGraphVertex,
@@ -669,8 +669,9 @@ impl SymmetryAlgorithm {
     }
 
     /// Returns the equation with the given name.
+    ///
+    /// Linear scan over all equations.
     fn find_equation_by_name(&self, name: &ATermString) -> Option<&StategraphEquation> {
-        // TODO: Fix naive implementation
         self.state_graph
             .equations()
             .iter()

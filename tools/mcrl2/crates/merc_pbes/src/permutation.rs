@@ -1,4 +1,3 @@
-/// Authors: Menno Bartels and Maurice Laveaux
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::fmt;

@@ -1,5 +1,5 @@
-//! Integration tests for the symmetry parameter basis helpers, moved out of
-//! `src/explore_common.rs` since they only exercise the crate's public API.
+//! Integration tests for the symmetry parameter basis helpers, exercising
+//! only the crate's public API.
 
 use mcrl2::Pbes;
 

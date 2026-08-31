@@ -1,9 +1,8 @@
-//! Integration tests for [`Permutation`], moved out of `src/permutation.rs`
-//! since they only exercise the crate's public API.
+//! Integration tests for [`Permutation`], exercising only its public API.
 //!
 //! `Permutation`'s backing `mapping` field is private, so equality between
 //! two permutations (available via its derived `PartialEq`) stands in for
-//! the direct field comparisons the original in-crate tests used.
+//! direct field comparisons.
 
 use rand::RngExt;
 use rand::seq::IteratorRandom;
@@ -15,10 +14,11 @@ use merc_pbes::Permutation;
 use merc_pbes::permutation::permutation_group;
 use merc_pbes::permutation::permutation_group_size;
 
-/// `permutation_group_size` previously used `.product()`, which overflows
-/// `usize` for `n >= 21` (21! > `usize::MAX` on 64-bit). The fix uses
-/// `saturating_mul` so that large inputs return `usize::MAX` rather than
-/// panicking in debug builds or wrapping silently in release.
+/// `permutation_group_size` computes `n!` with `saturating_mul` rather than
+/// `.product()`, since `.product()` overflows `usize` for `n >= 21`
+/// (21! > `usize::MAX` on 64-bit). Large inputs must therefore return
+/// `usize::MAX` rather than panicking in debug builds or wrapping silently
+/// in release.
 #[test]
 fn permutation_group_size_saturates_instead_of_overflowing() {
     assert_eq!(permutation_group_size(0), 1, "0! = 1");

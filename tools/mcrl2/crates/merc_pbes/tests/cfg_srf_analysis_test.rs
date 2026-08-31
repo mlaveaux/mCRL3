@@ -149,8 +149,8 @@ fn control_flow_parameter_survives_a_reachable_true_false_sink() {
     assert_cfg_matches_srf_text(text);
 }
 
-/// Regression test for a bug where `unify_parameters(reset = false)` defeated
-/// the analysis.
+/// Checks that `s` is still found as a CFP when `unify_parameters` runs with
+/// `reset = false`.
 #[test]
 fn control_flow_parameter_survives_a_reachable_sink_without_reset() {
     let text = "pbes mu X(s: Nat, b: Bool) =

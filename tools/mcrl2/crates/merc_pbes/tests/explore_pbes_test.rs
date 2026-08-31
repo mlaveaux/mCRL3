@@ -161,7 +161,7 @@ fn test_multiple_equations_data() {
 
 /// Explores `pbes` with local caching and asserts the result matches the uncached exploration.
 ///
-/// [`explore_pbes`] itself no longer offers caching, since none of [`PbesLps`]'s
+/// [`explore_pbes`] itself does not cache, since none of [`PbesLps`]'s
 /// summands can benefit from it. Its state effects are still consumed whenever a
 /// [`CacheLPS`] is composed with it — which is what [`crate::quotient_lps`] does —
 /// so the declarations still have to be honest, and this builds that composition
