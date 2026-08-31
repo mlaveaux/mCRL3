@@ -1,10 +1,7 @@
 //! Public typing and name-resolution information for a checked data specification, keyed by
-//! [`Span`] so a consumer (an LSP building hover text or go-to-definition, most concretely) never
-//! has to reproduce [`crate::ExprId`]'s internal numbering itself — that numbering is assigned
-//! over the *lowered* expression tree (see its doc comment in `inference.rs`), which can contain
-//! nodes with no counterpart in the original, unlowered `DataExpr` a caller parsed (the desugared
-//! `Id("+")` of `x + y`, for instance), so it cannot safely be reconstructed by re-walking that
-//! original tree after the fact.
+//! [`Span`] rather than [`crate::ExprId`]: `ExprId` is assigned over the *lowered* expression
+//! tree and can contain nodes with no counterpart in the original `DataExpr` a caller parsed, so
+//! it cannot be reconstructed externally.
 //!
 //! # Caveats
 //!
@@ -174,10 +171,6 @@ fn resolved_name(index: &DeclarationIndex<'_>, target: NameTarget, name: String)
         NameTarget::Variable => ResolvedName::Variable { name },
         NameTarget::Builtin => ResolvedName::Builtin { name },
         NameTarget::Op { sort } => {
-            // Looked up and cloned into owned locals *before* the `if let`s below: a temporary
-            // borrowing `name` (to form the `&str` half of the lookup key) would otherwise live
-            // for the whole `if let` body, not just the lookup itself, conflicting with moving
-            // `name` into the `ResolvedName` built inside that same body.
             let constructor = index.constructors.get(&(name.as_str(), sort)).cloned();
             let mapping = index.mappings.get(&(name.as_str(), sort)).cloned();
 

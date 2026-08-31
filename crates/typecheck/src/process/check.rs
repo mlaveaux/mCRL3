@@ -2,17 +2,9 @@
 //! `DataExpr` it contains — action arguments, process-instantiation arguments, conditions, time
 //! bounds, `dist` weights — against its own expected sort and its own enclosing variable scope.
 //!
-//! There is deliberately no generic "visit every `DataExpr` root in the specification" helper
-//! here (and no attempt to extend [`crate::Traverse`] to a heterogeneous container like
-//! `UntypedProcessSpecification`, which its own doc comment already rules out): a generic walker
-//! would hand back roots stripped of exactly what checking a root needs — the expected sort and
-//! the variable scope at that point. This module *is* that walk, hand-written once, over
-//! [`ProcessExprKind`] directly.
-//!
 //! By the time this runs, [`super::reparse`] has already fixed up every `Condition` the grammar
 //! misparsed because of mCRL2's `.`/`+` ambiguity (see its module doc comment and the crate
-//! README) — this walk can assume every `Condition` it sees is already correctly shaped, and
-//! needs no error-driven recovery of its own.
+//! README); this walk assumes every `Condition` it sees is already correctly shaped.
 
 use merc_syntax::Assignment;
 use merc_syntax::DataExpr;
@@ -161,10 +153,8 @@ fn push_binders<'a>(data: &mut DataSpecification, scope: &mut Scope<'a>, variabl
     Ok(variables.len())
 }
 
-/// Prepares a raw process-body expression for inference: resolves its embedded binder sorts
-/// (see [`DataSpecification::resolve_expression_binder_sorts`] — an equation's binder sorts are
-/// resolved once, up front, over the whole data specification, but a process-body expression
-/// never goes through that pass) and lowers it, exactly as
+/// Prepares a raw process-body expression for inference: resolves its embedded binder sorts (see
+/// [`DataSpecification::resolve_expression_binder_sorts`]) and lowers it, exactly as
 /// [`crate::DataSpecification::typecheck_expression`] does for a standalone expression.
 fn prepare_expression(data: &mut DataSpecification, expr: &DataExpr) -> Result<DataExpr, ProcessError> {
     let mut expr = expr.clone();

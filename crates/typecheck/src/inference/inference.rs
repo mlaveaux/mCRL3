@@ -79,8 +79,7 @@ pub(crate) struct EquationTyping {
     pub(crate) sorts: Vec<ResolvedSortId>,
     /// The source span of every expression node, parallel to `sorts`. Only
     /// filled for [EquationRole::User] (see [crate::typing_info], the sole
-    /// consumer): the much larger system-defined equation set never needs it,
-    /// so it stays empty there rather than paying for a `Vec<Span>` per node.
+    /// consumer).
     ///
     /// A synthesized node (the desugared `Id("+")` of `x + y`, a list
     /// literal's cons chain, …) inherits the span of the whole surface
@@ -90,12 +89,6 @@ pub(crate) struct EquationTyping {
     /// The resolution of every name, keyed by the [ExprId] of its `Id` node.
     pub(crate) names: HashMap<ExprId, NameTarget>,
     /// The identifier text of every `Id` node, keyed the same way as `names`.
-    /// Recorded separately from [NameTarget] (rather than folding the name
-    /// into it) so [NameTarget]'s solver-facing shape — read on the hot path
-    /// by every constraint-solving branch — doesn't change; this field is
-    /// solver-independent (the surface name of an `Id` node is the same
-    /// regardless of which overload the solver eventually picks for it), so
-    /// it's recorded once, unconditionally, in `ConstraintGenerator::gen_name`.
     /// Only filled for [EquationRole::User], like `spans`.
     pub(crate) identifier_names: HashMap<ExprId, String>,
 }
@@ -327,9 +320,8 @@ fn infer_equation(
     };
     let equation = &eqn_spec.equations[equation_id];
 
-    // Resolved here rather than inside `infer`, so `infer` stays agnostic to where a scope came
-    // from — a process-level scope ([`crate::process`]) is already resolved by the time it
-    // reaches `infer`, and this is the same resolution [`infer`] used to do internally before.
+    // `infer` takes a pre-resolved `(name, sort)` scope; resolve each equation variable's sort
+    // up front here.
     let scope: Vec<(&str, ResolvedSortId)> = eqn_spec
         .variables
         .iter()
@@ -434,11 +426,9 @@ enum Roots<'a> {
 /// [infer_expression], and [infer_expression_in_scope]; `text` renders the whole input for
 /// diagnostics and `span` locates it in the source.
 ///
-/// `scope` is a pre-resolved `(name, sort)` list rather than `&[IdDecl<EqnVarId>]`: an equation's
-/// own variables need [resolve_equation_variable_sort]'s per-role lookup to resolve, but a
-/// process-level scope ([crate::process]) is already fully resolved by the time it reaches here,
-/// so resolving *both* the same way — here, once, up front at each call site — keeps this
-/// function itself agnostic to where a scope came from.
+/// `scope` is a pre-resolved `(name, sort)` list, resolved by the caller before this is called —
+/// see [infer_equation] for an equation's own variables, or [crate::process] for a process-level
+/// scope.
 #[allow(clippy::too_many_arguments)]
 fn infer<'a>(
     ctx: &mut TypeCheckContext,
@@ -878,12 +868,7 @@ struct ConstraintGenerator<'a> {
     /// [EquationTyping::identifier_names].
     expr_names: HashMap<ExprId, String>,
     /// Whether [Self::expr_spans]/[Self::expr_names] should be filled — i.e.
-    /// whether `role` is [EquationRole::User]. Sampled once at construction,
-    /// the same way [Self::log_texts] is, even though (unlike log filtering)
-    /// `role` cannot actually change mid-equation; kept as its own field
-    /// rather than matching on `role` at every [Self::visit]/[Self::gen_name]
-    /// call for symmetry with `log_texts` and to keep the hot path a single
-    /// bool check.
+    /// whether `role` is [EquationRole::User]. Sampled once at construction.
     collect_typing_info: bool,
     /// The targets of names resolved during generation (variables and
     /// single-candidate names); disjunction choices are added by the solver.
@@ -943,12 +928,7 @@ impl<'a> ConstraintGenerator<'a> {
     }
 
     /// As [`Self::generate_expression`], but additionally constrains `expr`'s sort to be a
-    /// subsort of `expected` — the same `Sub`-into-a-target encoding an equation's two sides use
-    /// against their shared fresh join variable ([`Self::generate`]), except `expected` here is
-    /// already concrete rather than fresh. The solver's existing widening search (see
-    /// `Solver::solve_join_seq`'s "a concrete target met from below" branch) already handles a
-    /// bound target, so overload disambiguation and implicit upcasts against `expected` come for
-    /// free from the same machinery an equation's join already relies on.
+    /// subsort of `expected`, which must already be concrete (not a fresh variable).
     fn generate_against(&mut self, expr: &'a DataExpr, expected: ResolvedSortId) -> Result<(), GenFailure> {
         debug_assert!(is_lowered(expr), "inference requires lowered expressions");
 
@@ -1214,10 +1194,8 @@ impl<'a> ConstraintGenerator<'a> {
     /// function-update operations, the comparison operators and `if`), each
     /// instantiated fresh per occurrence.
     fn gen_name(&mut self, id: ExprId, node: InferSortId, name: &'a str, span: &Span) -> Result<(), GenFailure> {
-        // Recorded unconditionally, ahead of every branch below: the surface name of an `Id`
-        // node doesn't depend on which candidate (variable / a specific overload / builtin) it
-        // eventually resolves to, including the disjunction case, which the solver — not this
-        // function — resolves later.
+        // Recorded before resolving which candidate `name` refers to; the disjunction case is
+        // resolved later by the solver, not here.
         if self.collect_typing_info {
             self.expr_names.insert(id, name.to_string());
         }

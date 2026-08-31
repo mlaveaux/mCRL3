@@ -142,11 +142,10 @@ impl DeclarationTables {
         }
 
         // A name declared as both an action and a process would make `Action(name, args)`
-        // (which the grammar hands out for both an action instance and a positional process
-        // instantiation, see the crate README) permanently ambiguous between the two tables.
-        // Iterates `action_declarations` itself (source-order, deterministic) rather than
-        // `actions_by_name`'s keys (a `HashMap`, iteration order unspecified) — with more than one
-        // conflicting name, which one gets reported would otherwise vary from run to run.
+        // (used for both an action instance and a positional process instantiation, see the crate
+        // README) permanently ambiguous between the two tables. Iterated in source order, not via
+        // `actions_by_name`'s (unordered) keys, so which conflicting name gets reported is
+        // deterministic.
         for decl in &spec.action_declarations {
             if processes_by_name.contains_key(&decl.identifier) {
                 return Err(ProcessError::ActionAndProcessConflict { name: decl.identifier.clone(), span: decl.span.clone() });
@@ -167,9 +166,8 @@ impl DeclarationTables {
 }
 
 /// Resolves a sort expression occurring in an `act`/`proc`/`glob` declaration: rejects an
-/// anonymous `struct` (never legal here — [`DataSpecification::resolve_declared_sort`] has no
-/// desugaring support for this position, since that desugaring only ever ran over the data
-/// specification), then defers to it for the rest.
+/// anonymous `struct` (never legal here), then defers to
+/// [`DataSpecification::resolve_declared_sort`] for the rest.
 pub(super) fn resolve_declared_sort(data: &mut DataSpecification, sort: &SortExpression) -> Result<ResolvedSortId, ProcessError> {
     if let Some(span) = find_anonymous_struct(sort) {
         return Err(ProcessError::AnonymousStructInDeclaration { span });

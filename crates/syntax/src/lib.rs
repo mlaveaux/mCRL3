@@ -68,6 +68,7 @@ pub use syntax_tree::ProcDecl;
 pub use syntax_tree::ProcExprBinaryOp;
 pub use syntax_tree::ProcessExpr;
 pub use syntax_tree::ProcessExprKind;
+pub use syntax_tree::PropVarInst;
 pub use syntax_tree::Quantifier;
 pub use syntax_tree::RegFrm;
 pub use syntax_tree::RegFrmKind;

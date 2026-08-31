@@ -418,24 +418,16 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn DataSpec(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
-        for child in spec.into_children() {
-            match child.as_rule() {
-                Rule::DataSpecBody => {
-                    return Mcrl2Parser::DataSpecBody(child);
-                }
-                Rule::EOI => {
-                    // End of input
-                    break;
-                }
-                _ => {
-                    unimplemented!("Unexpected rule: {:?}", child.as_rule());
-                }
-            }
-        }
-
         // `DataSpecBody` always matches (its repetition allows zero declarations), so it's always
-        // present as a child above; this is unreachable in practice.
-        Ok(UntypedDataSpecification::default())
+        // the first child, ahead of `EOI` — no need to look past it.
+        let Some(child) = spec.into_children().next() else {
+            return Ok(UntypedDataSpecification::default());
+        };
+
+        match child.as_rule() {
+            Rule::DataSpecBody => Mcrl2Parser::DataSpecBody(child),
+            rule => unimplemented!("Unexpected rule: {:?}", rule),
+        }
     }
 
     /// The declarations of a data specification, without its own `SOI`/`EOI` — see
