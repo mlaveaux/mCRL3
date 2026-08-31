@@ -51,11 +51,7 @@ MCRL2Spec = { SOI ~ (ActSpec | ConsSpec | EqnSpec | GlobVarSpec | ProcSpec | Ini
 /// Parsing an mCRL2 specification
 DataSpec = { SOI ~ DataSpecBody ~ EOI }
 
-/// The declarations of a data specification, without its own `SOI`/`EOI` (those are absolute to
-/// the whole input in pest, not scoped to the containing rule, so a rule wrapped in them can only
-/// ever be embedded as the very last thing in a file). Used both as `DataSpec`'s body above and,
-/// unwrapped, as the optional leading data specification in `PbesSpec`/`PresSpec`, which have
-/// their own `SOI`/`EOI` and more to parse after it.
+/// The declarations of a data specification, without its own `SOI`/`EOI`.
 DataSpecBody = { (ConsSpec | EqnSpec | MapSpec | SortSpec)* }
 
 /// Action specification
