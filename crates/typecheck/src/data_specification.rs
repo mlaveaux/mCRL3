@@ -444,7 +444,7 @@ impl DataSpecification {
     /// sub-expression by source position (see [`TypingInfo::at_offset`]).
     ///
     /// `key` must index an equation of this specification (the `EqnSpecId`/`EquationId` on
-    /// [`Self::data_specification`]); panics otherwise, the same as [`Self::equation_typing`].
+    /// [`Self::data_specification`]); panics otherwise.
     pub fn equation_typing_info(&self, key: (EqnSpecId, EquationId)) -> TypingInfo {
         typing_info::build(self, self.equation_typing(key))
     }
