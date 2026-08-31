@@ -262,6 +262,7 @@ mod tests {
     /// bucket-local approach is not silently missing or duplicating entries a
     /// naive approach would catch.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_drop_matches_naive_reference() {
         random_test(200, |rng| {
             let num_buckets = rng.random_range(1..20);
@@ -301,6 +302,7 @@ mod tests {
     /// i.e. the merge mode used by `VariabilityParityGameBuilder::remove_duplicates`
     /// (which merges BDD configurations with a boolean `or` instead of a sum).
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_merge_matches_naive_reference() {
         random_test(200, |rng| {
             let num_buckets = rng.random_range(1..20);
@@ -350,25 +352,9 @@ mod tests {
 
     /// Exercises `scatter_into_buckets` and `dedup_grouped` directly rather
     /// than through the `dedup_by_bucket` convenience wrapper, mirroring how
-    /// `LtsBuilderMem::remove_duplicates` uses them - scattering its own
-    /// payload straight into bucket-grouped order in one pass (as if freeing
-    /// the original storage right after, and relying on `dedup_grouped`'s
-    /// `bucket` to rebuild a "from" column since the original one is gone)
-    /// before deduplicating - and checks that composition matches the same
-    /// naive reference as [`test_random_drop_matches_naive_reference`].
-    ///
-    /// Unlike [`test_random_drop_matches_naive_reference`], `on_entry` here
-    /// compacts `scattered` *in place* (the same storage `key_of` reads from) -
-    /// exactly what `LtsBuilderMem::remove_duplicates` does - rather than
-    /// gathering survivors into a separate `Vec`. This is a deliberate
-    /// regression test: an earlier version of `dedup_grouped` re-derived a
-    /// survivor's key by re-reading its original grouped position instead of
-    /// caching the key value, which was silently wrong here - a later `Keep`
-    /// in the same bucket can overwrite an earlier survivor's original
-    /// position (once some duplicate has shifted the write cursor behind the
-    /// read cursor), corrupting that stale re-read into a false negative that
-    /// leaves an actual duplicate in the output.
+    /// `LtsBuilderMem::remove_duplicates` uses them.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_scatter_then_dedup_grouped_in_place_matches_naive_reference() {
         random_test(200, |rng| {
             let num_buckets = rng.random_range(1..20);
@@ -376,12 +362,7 @@ mod tests {
                 .map(|_| (rng.random_range(0..num_buckets), rng.random_range(0..10)))
                 .collect();
 
-            // Scatter the payload straight into grouped order via a write callback, as a
-            // caller freeing its original storage would - keeping only the `key` half,
-            // since `bucket` is meant to come back from `dedup_grouped` itself rather than
-            // a scattered copy. Wrapped in a `RefCell` so `key_of` (reading) and `on_entry`
-            // (writing, to compact in place) can both access it - see
-            // `LtsBuilderMem::remove_duplicates`.
+            // Scatter the payload straight into grouped order via a write callback.
             let scattered = RefCell::new(vec![0u32; entries.len()]);
             let bucket_ends = scatter_into_buckets(
                 num_buckets,

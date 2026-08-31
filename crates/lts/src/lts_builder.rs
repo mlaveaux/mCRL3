@@ -640,12 +640,13 @@ mod tests {
     fn all_transitions<L: TransitionLabel>(
         lts: &LabelledTransitionSystem<L>,
     ) -> Vec<(StateIndex, LabelIndex, StateIndex)> {
-        lts.iter_states()
+    lts.iter_states()
             .flat_map(|state| lts.outgoing_transitions(state).map(move |t| (state, t.label, t.to)))
             .collect()
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_per_state_dedup_removes_within_state_duplicates() {
         let labels = vec!["a".to_string(), "b".to_string()];
         let mut inner = LtsBuilderMem::new(labels.clone(), Vec::new());

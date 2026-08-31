@@ -399,6 +399,7 @@ mod tests {
     use crate::SetIndex;
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_indexed_set_construction() {
         random_test(100, |rng| {
             let mut input = vec![];

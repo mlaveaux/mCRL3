@@ -70,6 +70,7 @@ fn plus_spec() -> RewriteSpecification {
 
 /// The empty substitution must leave the plain rewrite path untouched.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_empty_substitution_reproduces_rewrite() {
     let spec = plus_spec();
     let input = term("plus(s(zero), s(s(zero)))", &[]);
@@ -96,6 +97,7 @@ fn test_empty_substitution_reproduces_rewrite() {
 
 /// A bare variable input is replaced by its image, which is already a normal form.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bare_variable_input() {
     let spec = plus_spec();
 
@@ -110,6 +112,7 @@ fn test_bare_variable_input() {
 /// `plus(x, zero)` with `x` mapped to `s(zero)` must yield `s(zero)`, not `plus(s(zero), zero)`:
 /// the rule fires after the substitution has been applied.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_rule_fires_across_substitution_boundary() {
     let spec = plus_spec();
 
@@ -124,6 +127,7 @@ fn test_rule_fires_across_substitution_boundary() {
 /// A variable outside the domain of the substitution is its own normal form, including when it
 /// ends up as the result.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_variable_outside_domain_is_unchanged() {
     let spec = plus_spec();
 
@@ -138,6 +142,7 @@ fn test_variable_outside_domain_is_unchanged() {
 /// A variable also blocks a match when it sits at a position a left-hand side observes: it has
 /// no head symbol, so no pattern applies and the surrounding term is in normal form.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_variable_at_an_observed_position_blocks_the_match() {
     let spec = plus_spec();
 
@@ -152,6 +157,7 @@ fn test_variable_at_an_observed_position_blocks_the_match() {
 
 /// Open terms are normal forms for a plain rewrite too, without any substitution involved.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_plain_rewrite_leaves_open_terms_alone() {
     let spec = plus_spec();
     let input = term("plus(zero, y)", &["y"]);
@@ -164,6 +170,7 @@ fn test_plain_rewrite_leaves_open_terms_alone() {
 /// The image of a variable is assumed to be in normal form and is spliced in without being
 /// rewritten again, which is observable both in the result and in the number of rewrite steps.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_substituted_value_is_not_rewritten() {
     let spec = RewriteSpecification::new(vec![
         create_rewrite_rule("f(x)", "g(x)", &["x"]).unwrap(),
@@ -185,6 +192,7 @@ fn test_substituted_value_is_not_rewritten() {
 
 /// A non-linear pattern whose repeated variable is only equal after substituting.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_nonlinear_pattern_with_substituted_variable() {
     let spec = RewriteSpecification::new(vec![create_rewrite_rule("eq(x, x)", "t", &["x"]).unwrap()]);
 
@@ -206,6 +214,7 @@ fn test_nonlinear_pattern_with_substituted_variable() {
 
 /// A condition that only holds once the substitution has been applied.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_condition_depends_on_substituted_subterm() {
     let spec = RewriteSpecification::new(vec![Rule::with_condition(
         vec![Condition::new(term("x", &["x"]), term("a", &[]), true)],

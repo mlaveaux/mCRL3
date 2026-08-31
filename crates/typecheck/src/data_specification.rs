@@ -840,6 +840,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_struct_constant_and_unrelated_projection_sharing_a_name_do_not_collide() {
         // `a` is both struct A's nullary constant and an unrelated struct's
         // projection — a constructor-vs-mapping overload of one name, which

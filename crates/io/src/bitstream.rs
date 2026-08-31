@@ -169,6 +169,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_arbitrary_bitstream() {
         random_test(100, |rng| {
             let instructions: Vec<Instruction> = (0..100)
@@ -264,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_string_roundtrip_random_unicode() {
         random_test(100, |rng| {
             let strings: Vec<String> = (0..50)

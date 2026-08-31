@@ -335,6 +335,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_arithmetic_matches_binary_encoding() {
         random_test(10_000, |rng| {
             let a: u64 = rng.random();
@@ -387,6 +388,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_div_mod_identities() {
         random_test(10_000, |rng| {
             let a: u64 = rng.random();

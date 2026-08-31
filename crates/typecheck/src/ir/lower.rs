@@ -251,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_from_untyped_lowers_user_and_system_equations() {
         let spec = DataSpecification::from_untyped(
             UntypedDataSpecification::parse(

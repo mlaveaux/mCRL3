@@ -215,6 +215,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_random_antichain() {
         random_test(100, |rng| {
             let mut antichain: Antichain<u32, u32> = Antichain::new();

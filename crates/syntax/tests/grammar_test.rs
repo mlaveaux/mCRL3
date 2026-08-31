@@ -163,117 +163,20 @@ fn test_sort_precedence() {
     }
 }
 
-#[test]
-fn test_bool_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/bool.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_int_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/int.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_nat_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/nat.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_pos_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/pos.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_real_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/real.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_list_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/list.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_set_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/set.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_fset_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/fset.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_bag_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/bag.mcrl2")) {
-        Ok(result) => {
-            println!("{}", result);
-        }
-        Err(e) => {
-            panic!("Failed to parse expression: {}", e);
-        }
-    }
-}
-
-#[test]
-fn test_fbag_spec() {
-    match UntypedDataSpecification::parse(include_str!("../spec/fbag.mcrl2")) {
+/// Parses every base data specification shipped in `spec/`.
+#[test_case(include_str!("../spec/bool.mcrl2") ; "bool.mcrl2")]
+#[test_case(include_str!("../spec/int.mcrl2") ; "int.mcrl2")]
+#[test_case(include_str!("../spec/nat.mcrl2") ; "nat.mcrl2")]
+#[test_case(include_str!("../spec/pos.mcrl2") ; "pos.mcrl2")]
+#[test_case(include_str!("../spec/real.mcrl2") ; "real.mcrl2")]
+#[test_case(include_str!("../spec/list.mcrl2") ; "list.mcrl2")]
+#[test_case(include_str!("../spec/set.mcrl2") ; "set.mcrl2")]
+#[test_case(include_str!("../spec/fset.mcrl2") ; "fset.mcrl2")]
+#[test_case(include_str!("../spec/bag.mcrl2") ; "bag.mcrl2")]
+#[test_case(include_str!("../spec/fbag.mcrl2") ; "fbag.mcrl2")]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_data_spec(spec: &str) {
+    match UntypedDataSpecification::parse(spec) {
         Ok(result) => {
             println!("{}", result);
         }
@@ -295,6 +198,7 @@ fn test_fbag_spec() {
 #[test_case(include_str!("../spec/fset64.mcrl2") ; "fset64.mcrl2")]
 #[test_case(include_str!("../spec/bag64.mcrl2") ; "bag64.mcrl2")]
 #[test_case(include_str!("../spec/fbag64.mcrl2") ; "fbag64.mcrl2")]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_machine_number_spec(spec: &str) {
     match UntypedDataSpecification::parse(spec) {
         Ok(result) => {

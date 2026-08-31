@@ -1086,6 +1086,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lower_primitive_sort() {
         let spec = typed("map f: Nat;");
         let sort = lower_sort(
@@ -1098,6 +1099,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lower_generic_sort() {
         let spec = typed("map f: List(Nat);");
         let sort = lower_sort(
@@ -1110,6 +1112,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lower_function_sort() {
         let spec = typed("map f: Nat -> Bool;");
         let sort = lower_sort(
@@ -1122,6 +1125,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lower_def_sort() {
         let spec = typed("sort D; map f: D;");
         let sort = lower_sort(
@@ -1134,6 +1138,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_pos_literals() {
         assert_eq!(
             lower_number_literal("1", Sort::Pos, NumberEncoding::Binary).to_string(),
@@ -1161,6 +1166,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_nat_literals() {
         assert_eq!(
             lower_number_literal("0", Sort::Nat, NumberEncoding::Binary).to_string(),
@@ -1173,6 +1179,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_int_literal() {
         assert_eq!(
             lower_number_literal("0", Sort::Int, NumberEncoding::Binary).to_string(),
@@ -1181,6 +1188,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_real_literal() {
         assert_eq!(
             lower_number_literal("0", Sort::Real, NumberEncoding::Binary).to_string(),
@@ -1192,19 +1200,12 @@ mod tests {
         );
     }
 
-    // === Machine-word encoding ===
-    //
-    // A number is a base-2^64 digit chain, most significant digit first:
-    // `@most_significant_digit(w)` for `Pos` (`@most_significant_digitNat(w)` for
-    // `Nat`), wrapped in `@concat_digit(p, w)` for each less significant digit,
-    // where `@concat_digit(p, w)` denotes `2^64 * p + w`. This matches mCRL2's
-    // `sort_pos::pos` / `sort_nat::nat` under `MCRL2_ENABLE_MACHINENUMBERS`.
-
     /// `2^64` and `2^128` as decimal strings, the first values needing 2 and 3 digits.
     const TWO_POW_64: &str = "18446744073709551616";
     const TWO_POW_128: &str = "340282366920938463463374607431768211456";
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_decimal_words_lsb_first() {
         assert_eq!(decimal_words_lsb_first("0"), vec![0]);
         assert_eq!(decimal_words_lsb_first("1"), vec![1]);
@@ -1217,6 +1218,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_pos_literals_machine_word() {
         let e = NumberEncoding::MachineWord;
         assert_eq!(
@@ -1240,6 +1242,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_nat_literals_machine_word() {
         let e = NumberEncoding::MachineWord;
         // Zero is a single zero digit, not `@c0` as in the binary encoding.
@@ -1258,6 +1261,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_int_and_real_literals_machine_word() {
         let e = NumberEncoding::MachineWord;
         // `@cInt` / `@cReal` are shared with the binary encoding; only the
@@ -1277,6 +1281,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_pos_to_nat_coercion_differs_per_encoding() {
         // The binary encoding embeds `Pos` into `Nat` with the `@cNat`
         // constructor; the machine-word `Nat` has no such constructor, so it
@@ -1290,6 +1295,7 @@ mod tests {
         assert_eq!(widened.to_string(), "Pos2Nat(@most_significant_digit(1))");
     }
 
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     #[test]
     fn test_bool_literals() {
         assert_eq!(lower_bool_literal(true).to_string(), "true");
@@ -1297,15 +1303,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_literal_sort_is_embedded() {
         // The `@cDub` `OpId` embeds its own (function) sort, `Bool # Pos -> Pos`.
         let cdub = lower_number_literal("2", Sort::Pos, NumberEncoding::Binary);
         assert!(is_function_sort(&cdub.data_function_symbol().sort()));
     }
 
-    // === lower_equation: the non-binder happy path ===
-
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_user_op_application_no_coercion() {
         let equation = lower("map f: Bool -> Bool; var x: Bool; eqn f(x) = x;").expect("no coercion, no binder");
         assert_eq!(equation.lhs.to_string(), "f(x)");
@@ -1313,6 +1319,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_comparison_scheme_on_declared_sort() {
         let equation = lower("sort D; cons d: D; map b: Bool; eqn b = (d == d);").expect("== is a supported scheme");
         assert_eq!(equation.lhs.to_string(), "b");
@@ -1320,12 +1327,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_if_scheme_on_declared_sort() {
         let equation = lower("sort D; cons d: D; map f: D; eqn f = if(true, d, d);").expect("if is a supported scheme");
         assert_eq!(equation.rhs.to_string(), "if(true, d, d)");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_literal_at_its_natural_sort() {
         // `1`'s minimal inferred sort is `Pos`, exactly `p`'s declared sort:
         // no coercion needed.
@@ -1334,14 +1343,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_zero_literal_at_nat_sort() {
         let equation = lower("map n: Nat; eqn n = 0;").expect("0 is already Nat");
         assert_eq!(equation.rhs.to_string(), "@c0");
     }
 
-    // === lower_equation: coercion insertion ===
-
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_equation_level_coercion_widens_rhs() {
         // `1`'s minimal sort is `Pos`, but `n` is declared `Nat`: the
         // equation itself needs a `Pos -> Nat` coercion, inserted on the
@@ -1354,6 +1363,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_equation_level_coercion_widens_lhs() {
         // Symmetric to the above, with the narrower side on the left.
         let equation = lower("map n: Nat; eqn 1 = n;").expect("Pos widens to Nat");
@@ -1362,6 +1372,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_direct_coercion_composes_intermediate_sorts() {
         // A `Pos -> Real` coercion composes every intermediate constructor
         // (`@cReal(@cInt(@cNat(x)), @c1)`), it does not call a single
@@ -1371,6 +1382,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_argument_coercion_widens_to_domain() {
         // `f`'s parameter is `Nat`, but `1` naturally infers to `Pos`: an
         // argument coercion.
@@ -1379,6 +1391,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_fset_argument_widens_to_set() {
         // The `@set` constructor is inserted directly, not a call to
         // `@setfset` (a rewrite-system-only operator, per `set.mcrl2`'s own
@@ -1389,33 +1402,36 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_fbag_argument_widens_to_bag() {
         let equation =
             lower("map e: FBag(Nat); map s: Bag(Nat) -> Bool; eqn s(e) = true;").expect("FBag widens to Bag");
         assert_eq!(equation.lhs.to_string(), "s(@bag(@zero_, e))");
     }
 
-    // === lower_equation: container literal lowering ===
-
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_list_lowers() {
         let equation = lower("map s: List(Nat); eqn s = [];").expect("empty list lowers");
         assert_eq!(equation.rhs.to_string(), "[]");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_set_lowers() {
         let equation = lower("map s: FSet(Nat); eqn s = {};").expect("empty set lowers");
         assert_eq!(equation.rhs.to_string(), "{}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_bag_lowers() {
         let equation = lower("map b: FBag(Nat); eqn b = {:};").expect("empty bag lowers");
         assert_eq!(equation.rhs.to_string(), "{:}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_fset_literal_lowers() {
         let equation = lower("map s: FSet(Nat); var n: Nat; eqn s = {n};").expect("singleton FSet lowers");
         // @fset_insert(n, {})
@@ -1423,6 +1439,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_fset_literal_two_elements_lowers() {
         let equation = lower("map s: FSet(Nat); var n: Nat; m: Nat; eqn s = {n, m};").expect("two-element FSet lowers");
         let rhs = equation.rhs.to_string();
@@ -1430,6 +1447,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_fbag_literal_lowers() {
         let equation = lower("map b: FBag(Nat); var n: Nat; eqn b = {n: 1};").expect("singleton FBag lowers");
         // @fbag_cinsert(n, @cNat(@c1), {:})  — 1 infers Pos, widened to Nat
@@ -1438,6 +1456,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_list_sort_is_embedded() {
         // The `[]` constant must carry a container (List) sort as its embedded sort.
         let equation = lower("map s: List(Nat); eqn s = [];").expect("empty list lowers");
@@ -1449,6 +1468,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_set_literal_widens_element_to_nat() {
         // `{1}` : FSet(Nat) — the `1` infers Pos, coerced to element sort Nat.
         let equation = lower("map s: FSet(Nat); eqn s = {1};").expect("FSet literal lowers");
@@ -1458,6 +1478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lambda_lowers() {
         let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
         assert!(
@@ -1468,6 +1489,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_forall_lowers() {
         let equation = lower("map b: Bool; eqn b = forall x: Bool. x;").expect("forall lowers");
         assert!(
@@ -1478,6 +1500,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_exists_lowers() {
         let equation = lower("map b: Bool; eqn b = exists x: Bool. x;").expect("exists lowers");
         assert!(
@@ -1488,6 +1511,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_setcomp_lowers() {
         // A comprehension becomes the `Set` constructor applied to its
         // characteristic function, not a `SetComp` binder — see
@@ -1502,6 +1526,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bagcomp_lowers() {
         // The body counts multiplicities, so it is widened to `Nat`; `x + 0`
         // is already `Nat` here, and the empty finite bag completes the pair.
@@ -1515,6 +1540,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bagcomp_widens_a_positive_body_to_nat() {
         // A `Pos` body cannot be the multiplicity function `@bag` requires, so
         // the literal is rebuilt at `Nat` (the same rule `coerce` applies to
@@ -1529,6 +1555,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_whr_lowers() {
         let equation = lower("map f: Bool; var x: Bool; eqn f = x whr x = true end;").expect("where clause lowers");
         assert!(
@@ -1539,6 +1566,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lambda_variable_has_sort() {
         // The bound variable in the Binder must carry its declared sort.
         let equation = lower("map f: Bool -> Bool; eqn f = lambda x: Bool. x;").expect("lambda lowers");
@@ -1555,9 +1583,8 @@ mod tests {
         );
     }
 
-    // === lower_equation: all NameTarget::Builtin ops use inferred sort ===
-
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_builtin_arithmetic_op() {
         // `+` is a system-declared op (`NameTarget::Op` after overload resolution against
         // the basic-sort system signature), but verifies that arithmetic resolves.
@@ -1576,6 +1603,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_builtin_func_update() {
         // `@func_update` is lowered by lower.rs to an Application; with the
         // step-3 fix its Builtin target uses the inferred sort directly.

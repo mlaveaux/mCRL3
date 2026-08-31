@@ -359,6 +359,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_struct_desugars_to_constructors() {
         let (constructors, mappings) = constructors_and_mappings("sort D = struct c1(p1: Bool)?is_c1 | c2;");
         assert!(constructors.contains(&"c1".to_string()));
@@ -368,6 +369,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_reused_projection_is_generated_once() {
         // `p` is shared by `c` and `d` with the same sort, so only one mapping
         // is generated for it.
@@ -377,6 +379,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_struct_equations_are_in_system_spec() {
         let checked = DataSpecification::from_untyped(
             UntypedDataSpecification::parse("sort D = struct c1(p1: Bool)?is_c1 | c2;").unwrap(),
@@ -399,6 +402,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_anonymous_struct_in_mapping_is_desugared() {
         // An anonymous struct in a mapping declaration is hoisted to a fresh
         // **abstract** sort (no body, no constructors): mCRL2 only generates
@@ -415,6 +419,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_nested_anonymous_struct_is_desugared() {
         // The struct nested inside `t`'s argument is hoisted and desugared, so
         // its constructor `e` is declared too.
@@ -424,6 +429,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_identical_anonymous_structs_share_a_declaration() {
         // Structurally identical structs in map positions share one abstract
         // sort declaration (deduplication still works), but generate no
@@ -437,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_anonymous_struct_reuses_named_alias() {
         // An anonymous struct that matches a named struct alias is the same
         // sort as the alias, so no second declaration (and constructor) is
@@ -446,6 +453,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under mir i
     fn test_recursive_struct_is_non_empty() {
         // A recursive structured sort with a base constructor is non-empty and
         // type checks after desugaring.
@@ -456,6 +464,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_struct_over_abstract_arguments_is_non_empty() {
         // A struct whose constructors take abstract-sort arguments is non-empty
         // (the abstract arguments are assumed non-empty).

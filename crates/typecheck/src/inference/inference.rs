@@ -1765,6 +1765,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_equality_scheme_on_user_sort() {
         let spec = typed("sort D; cons d: D; map b: Bool; eqn b = d == d;");
 
@@ -1776,6 +1777,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_if_scheme_infers_element_sort() {
         let spec = typed("map n: Nat; eqn n = if(true, 1, 2);");
 
@@ -1787,6 +1789,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_free_element_sort_defaults_to_bool() {
         // A free element sort (the element of an empty list whose sort is
         // never constrained by context) defaults to Bool rather than causing
@@ -1806,6 +1809,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_undeclared_name() {
         let text = "map b: Bool; eqn b = undeclared;";
         let error = inference_error(text);
@@ -1819,6 +1823,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_incompatible_sides_have_no_typing() {
         let text = "map f: Bool; eqn f = 1;";
         let error = inference_error(text);
@@ -1851,6 +1856,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_sides_join_through_upcast() {
         let spec = typed("map f: Nat; eqn f = 1;");
 
@@ -1884,6 +1890,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_quantifier_infers_bool_sort() {
         let spec = typed("map b: Bool; eqn b = forall n: Nat. n >= 0;");
 
@@ -1895,6 +1902,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_quantifier_requires_boolean_body() {
         let text = "map b: Bool; eqn b = forall n: Nat. n;";
         let error = inference_error(text);
@@ -1911,6 +1919,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_where_binds_variable_to_assignment_sort() {
         // `x` inside the body takes the sort inferred for its assignment `2`
         // (here upcast to `Nat`, matching `g`'s declared sort), rather than a
@@ -1920,6 +1929,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_where_assignments_do_not_see_each_other() {
         // Every assignment's right-hand side is typed against the outer
         // scope, not against sibling bindings, so `y`'s `x` resolves to the
@@ -1943,6 +1953,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_set_literal_takes_finite_set_sort() {
         let spec = typed("map s: FSet(Pos); eqn s = {1, 2};");
 
@@ -1954,6 +1965,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_set_literal_widens_to_set_at_use() {
         let spec = typed("map s: Set(Nat); eqn s = {1, 2};");
 
@@ -1971,6 +1983,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_set_elements_join_to_common_supersort() {
         let spec = typed("map s: FSet(Int); var n: Int; eqn s = {1, n};");
 
@@ -1983,12 +1996,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow
     fn test_incompatible_set_elements_have_no_typing() {
         let error = inference_error("map s: FSet(Nat); eqn s = {1, true};");
         assert!(matches!(error, InferenceError::NoTyping { .. }), "{error}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_set_takes_element_sort_from_context() {
         let spec = typed("map s: Set(Nat); eqn s = {};");
 
@@ -2003,6 +2018,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_free_empty_set_defaults_to_bool() {
         // Same as test_free_element_sort_defaults_to_bool: a free element sort
         // of an empty finite set defaults to Bool.
@@ -2021,6 +2037,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bag_literal_counts_are_natural() {
         let spec = typed("map b: FBag(Nat); eqn b = {0: 2};");
 
@@ -2033,12 +2050,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bag_count_must_be_a_natural_number() {
         let error = inference_error("map b: FBag(Nat); r: Real; eqn b = {0: r};");
         assert!(matches!(error, InferenceError::NoTyping { .. }), "{error}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_empty_bag_takes_element_sort_from_context() {
         let spec = typed("map b: Bag(Pos); eqn b = {:};");
 
@@ -2052,6 +2071,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_set_comprehension_from_boolean_body() {
         let spec = typed("map s: Set(Nat); eqn s = { n: Nat | n < 3 };");
 
@@ -2066,6 +2086,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bag_comprehension_from_numeric_body() {
         let spec = typed("map b: Bag(Nat); var m: Nat; eqn b = { n: Nat | m };");
 
@@ -2077,6 +2098,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_bag_comprehension_from_positive_body() {
         let spec = typed("map b: Bag(Pos); eqn b = { p: Pos | 2 };");
 
@@ -2089,12 +2111,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_comprehension_body_must_be_bool_or_number() {
         let error = inference_error("map r: Real; s: Set(Nat); eqn s = { n: Nat | r };");
         assert!(matches!(error, InferenceError::NoTyping { .. }), "{error}");
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_comprehension_readings_can_be_ambiguous() {
         // `f(n)` types as both `Bool` (a set) and `Nat` (a bag), and `==`
         // accepts either pair, so the equation is genuinely ambiguous.
@@ -2105,6 +2129,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_comprehension_variable_shadows_declarations() {
         // The bound `n: Nat` shadows the boolean map `n` inside the predicate
         // and stops shadowing it after the comprehension.
@@ -2114,6 +2139,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_comprehension_over_alias_and_user_sort() {
         let spec = typed("sort A = Nat; map s: Set(A); eqn s = { a: A | a < 3 };");
         let (sorts, _) = typing(&spec);
@@ -2176,6 +2202,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_function_update_is_polymorphic() {
         let spec = typed("map f: Nat -> Bool; g: Nat -> Bool; eqn g = f[1 -> true];");
 
