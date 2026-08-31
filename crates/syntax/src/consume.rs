@@ -430,10 +430,6 @@ impl Mcrl2Parser {
         }
     }
 
-    /// The declarations of a data specification, without its own `SOI`/`EOI` — see
-    /// `DataSpecBody`'s doc comment in the grammar. Shared by [`Mcrl2Parser::DataSpec`] (the
-    /// standalone `.data` entry point) and [`Mcrl2Parser::PbesSpec`]/[`Mcrl2Parser::PresSpec`]
-    /// (their optional leading data specification).
     pub(crate) fn DataSpecBody(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
         let mut map_declarations = Vec::new();
         let mut equation_declarations = Vec::new();
