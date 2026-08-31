@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::PathBuf;
 
 use log::debug;
@@ -74,6 +75,82 @@ impl VariableOrder {
         validate_permutation(&order, num_positions)?;
         debug!("Variable order = {order:?}");
         Ok(order)
+    }
+}
+
+/// The order in which parameters are considered for reordering, as given on the command line.
+///
+/// Kept separate from [`VariableOrder`] so that the `kahypar` tool is only resolved, via
+/// [`Order::resolve`], when [`Self::Mince`] is actually selected. Shared by the `merc-lps` and
+/// `merc-pbes` tools' `--reorder` argument.
+#[derive(Debug, Clone)]
+pub enum Order {
+    /// Do not reorder the parameters, the default.
+    None,
+
+    /// The MINCE algorithm for reordering parameters, requires the 'kahypar' tool.
+    Mince,
+
+    /// An explicit order given as a whitespace separated string of numbers.
+    Explicit(Vec<usize>),
+}
+
+impl Order {
+    /// Resolves this into the [`VariableOrder`] to explore with. `resolve_kahypar` locates the
+    /// `kahypar` executable and its configuration, and is only invoked when [`Self::Mince`] is
+    /// selected.
+    pub fn resolve(
+        &self,
+        resolve_kahypar: impl FnOnce() -> Result<(PathBuf, PathBuf), MercError>,
+    ) -> Result<VariableOrder, MercError> {
+        match self {
+            Order::None => Ok(VariableOrder::None),
+            Order::Mince => {
+                let (kahypar_path, kahypar_ini_path) = resolve_kahypar()?;
+                Ok(VariableOrder::Mince {
+                    kahypar_path,
+                    kahypar_ini_path,
+                })
+            }
+            Order::Explicit(order) => Ok(VariableOrder::Explicit(order.clone())),
+        }
+    }
+}
+
+impl fmt::Display for Order {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "none"),
+            Self::Mince => write!(f, "mince"),
+            Self::Explicit(order) => {
+                for (i, index) in order.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{index}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Parses the `--reorder` argument into an [`Order`]. Behind the `clap` feature since the
+/// `Result<_, String>` signature is a `clap::value_parser` convention rather than a general API.
+#[cfg(feature = "clap")]
+pub fn parse_order(s: &str) -> Result<Order, String> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(Order::None),
+        "mince" => Ok(Order::Mince),
+        _ => {
+            // Parse the permutation
+            let permutation = s
+                .split_whitespace()
+                .map(|s| s.parse::<usize>())
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| format!("Failed to parse explicit order: {error}"))?;
+            Ok(Order::Explicit(permutation))
+        }
     }
 }
 

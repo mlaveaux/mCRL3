@@ -76,4 +76,7 @@ pub use util::SatCountCache;
 pub use util::approx_satcount;
 pub use util::element_of;
 pub use util::height;
+pub use variable_order::Order;
 pub use variable_order::VariableOrder;
+#[cfg(feature = "clap")]
+pub use variable_order::parse_order;
