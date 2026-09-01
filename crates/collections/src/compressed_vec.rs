@@ -22,21 +22,10 @@ macro_rules! bytevec {
     };
 }
 
-/// A vector data structure that stores objects in a byte compressed format.
+/// A vector that stores `CompressedEntry` elements in a fixed, per-vector byte width sized to the
+/// largest entry added so far; the width only ever grows, never shrinks, as larger entries arrive.
 ///
-/// # Details
-///
-/// The basic idea is that elements of type `T` implement the `CompressedEntry`
-/// trait which allows them to be converted to and from a byte representation.
-/// The vector dynamically adjusts the number of bytes used per entry based on
-/// the maximum size of the entries added so far.
-///
-/// For numbers this means that we only store the number of bytes required to
-/// represent the largest number added so far. Note that the number of bytes
-/// used per entry is only increased over time as larger entries are added.
-///
-/// Note that the `drop()` function of `T` is never called, but we cannot
-/// require that `T: !Drop`.
+/// `T::drop` is never called for stored entries.
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct ByteCompressedVec<T> {
     data: Vec<u8>,
@@ -62,9 +51,8 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
         }
     }
 
-    /// This is basically the collect() of `Vec`.
-    ///
-    /// However, we use it to determine the required bytes per entry in advance.
+    /// Equivalent to `collect()`, but scans the iterator up front to size the entries once
+    /// instead of growing the byte width as larger entries are pushed.
     pub fn with_iter<I>(iter: I) -> ByteCompressedVec<T>
     where
         I: ExactSizeIterator<Item = T> + Clone,
@@ -103,6 +91,10 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Returns the entry at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= len()`.
     pub fn index(&self, index: usize) -> T {
         let start = index * self.bytes_per_entry;
         let end = start + self.bytes_per_entry;
@@ -110,6 +102,10 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Sets the entry at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= len()`; unlike `push`, this does not grow the vector.
     pub fn set(&mut self, index: usize, entry: T) {
         self.resize_entries(entry.bytes_required());
 
@@ -165,6 +161,10 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Updates the given entry using a closure.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= len()`.
     pub fn update<F>(&mut self, index: usize, mut update: F)
     where
         F: FnMut(&mut T),
@@ -300,6 +300,10 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
     }
 
     /// Swaps the entries at the given indices.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either index is `>= len()`.
     pub fn swap(&mut self, index1: usize, index2: usize) {
         if index1 != index2 {
             let start1 = index1 * self.bytes_per_entry;
@@ -339,7 +343,8 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
         }
     }
 
-    /// Reserves capacity for at least additional more entries to be inserted with the given bytes per entry.
+    /// Reserves capacity for at least `additional` more entries, sized for entries up to
+    /// `bytes_per_entry` bytes wide.
     pub fn reserve(&mut self, additional: usize, bytes_per_entry: usize) {
         self.resize_entries(bytes_per_entry);
         self.data.reserve(additional * self.bytes_per_entry);
@@ -363,11 +368,9 @@ impl<T: CompressedEntry> ByteCompressedVec<T> {
 
     /// Releases any excess allocated capacity back to the allocator.
     ///
-    /// Like [`Vec::shrink_to_fit`], this is a hint: the allocator is not
-    /// required to actually shrink the allocation. In particular, shrinking
-    /// after [`Self::resize_with`] has truncated the vector is useful because
-    /// truncation (like `Vec::truncate`) only reduces the logical length, it
-    /// never releases the underlying allocation on its own.
+    /// This is a hint: the allocator is not required to actually shrink the allocation.
+    /// Useful after `resize_with` truncates the vector, since truncation only reduces the
+    /// logical length and never releases the underlying allocation on its own.
     pub fn shrink_to_fit(&mut self) {
         self.data.shrink_to_fit();
     }

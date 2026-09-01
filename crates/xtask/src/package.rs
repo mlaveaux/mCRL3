@@ -1,7 +1,3 @@
-//!
-//! Package command for creating release distributions.
-//!
-
 use duct::cmd;
 use std::env;
 use std::error::Error;
@@ -17,8 +13,17 @@ fn exe_name(binary_name: &str) -> String {
     }
 }
 
-/// Builds the project in release mode and packages specified binaries into a
-/// newly created 'package' directory.
+/// Builds all three workspaces in release mode and collects the resulting binaries, the
+/// `LICENSE`, and `kahypar.ini` into a `package` directory created under the current directory.
+///
+/// # Panics
+///
+/// Panics if the current directory is not a workspace root, or if a binary is still missing
+/// after its `cargo build --release` succeeded.
+///
+/// # Errors
+///
+/// Returns an error if a `cargo build` invocation or a file copy fails.
 pub(crate) fn package() -> Result<(), Box<dyn Error>> {
     // Get the workspace root directory
     let workspace_root = env::current_dir()?;

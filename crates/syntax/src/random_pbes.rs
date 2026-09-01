@@ -125,14 +125,12 @@ fn random_leaf<R: Rng>(rng: &mut R, freevars: &[IdDecl], config: &PbesGenConfig,
     }
 }
 
-/// Generates a random PBES expression with the given parameters.  
+/// Generates a random PBES expression with the given parameters.
 ///
-/// `depth` controls the maximum depth of the generated expression, and
-/// `propvar_probability` controls how likely a leaf is to be a predicate variable
-/// instantiation versus a `val(...)` atom.  If `use_quantifiers` is false, no
-/// quantifiers will be generated.  If `negated` is true, the top-level polarity
-/// is negative, which biases the generator to produce more negations and
-/// implications, which flip polarity.
+/// `depth` controls the maximum depth of the generated expression. `config` controls how likely a
+/// leaf is to be a predicate variable instantiation versus a `val(...)` atom, and whether
+/// quantifiers may be generated. If `negated` is true, the top-level polarity is negative, which
+/// biases the generator to produce more negations and implications, which flip polarity.
 fn random_pbes_expr<R: Rng>(
     rng: &mut R,
     depth: usize,
@@ -194,12 +192,11 @@ fn random_pbes_expr<R: Rng>(
     }
 }
 
-/// Generates a random quantifier expression.  The quantifier variable is always
-/// of type Nat and is artificially bounded (e.g. `forall t. t < 3 => body`) to
-/// ensure termination of the generator.  The variable is added to `freevars`
-/// when generating the body, so it may be used there.  If `negated` is true,
-/// the quantifier is generated with negative polarity, which biases the
-/// generator to produce more negations and implications, which flip polarity.
+/// Generates a random quantifier expression. The quantifier variable is always of type Nat and is
+/// artificially bounded (e.g. `forall t. t < 3 => body`) to ensure termination of the generator,
+/// and is added to `freevars` when generating the body. If `negated` is true, the quantifier is
+/// generated with negative polarity, which biases the generator to produce more negations and
+/// implications, which flip polarity.
 fn random_quantifier<R: Rng>(
     rng: &mut R,
     quantifier: Quantifier,

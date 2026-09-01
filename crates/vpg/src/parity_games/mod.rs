@@ -1,9 +1,3 @@
-//!
-//! This module defines parity games themselves.
-//!
-//! Authors: Maurice Ter Beek, Maurice Laveaux, Sjef van Loo, Erik de Vink and Tim A.C. Willemse,
-//!
-
 #![forbid(unsafe_code)]
 
 mod display_dot;

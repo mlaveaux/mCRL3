@@ -1,3 +1,4 @@
+//! Authors: Maurice Laveaux and Jan Martens.
 use std::mem::swap;
 
 use bumpalo::Bump;
@@ -64,11 +65,10 @@ pub(crate) fn strong_bisim_sigref_naive<L: LTS>(lts: L, timing: &Timing) -> (L, 
 }
 
 /// Computes a strong bisimulation partitioning using signature refinement,
-/// additionally returning the [`PartitionTree`] recorded during refinement.
+/// additionally returning the block-history tree recorded during refinement.
 ///
-/// The tree can be used to reconstruct a minimal-depth distinguishing formula
-/// for any two states found in different blocks, via
-/// [`PartitionTree::distinguish`].
+/// The tree can reconstruct a minimal-depth distinguishing formula for any
+/// two states found in different blocks.
 pub(crate) fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(
     lts: L,
     timing: &Timing,
@@ -78,7 +78,7 @@ pub(crate) fn strong_bisim_sigref_naive_with_counterexample<L: LTS>(
     (lts, partition, tree)
 }
 
-/// Shared implementation of the actual naive strong bisimulation refinement.
+/// Shared implementation of the naive strong bisimulation refinement.
 fn strong_bisim_sigref_naive_impl<L: LTS, R: RefinementForest>(
     lts: &L,
     forest: &mut R,
@@ -97,9 +97,10 @@ fn strong_bisim_sigref_naive_impl<L: LTS, R: RefinementForest>(
 
 /// Computes a branching bisimulation partitioning using signature refinement.
 ///
-/// The `state` is any state for which we return the equivalent state in the
-/// preprocessed LTS. And if `divergence_preserving` is true, we compute
-/// divergence preserving branching bisimulation instead.
+/// Internally preprocesses `lts` for tau-cycles, so the returned LTS and
+/// `StateIndex` correspond to `state` after preprocessing, not before. When
+/// `divergence_preserving` is true, computes divergence-preserving branching
+/// bisimulation instead.
 pub fn branching_bisim_sigref<L: LTS>(
     lts: L,
     state: StateIndex,
@@ -179,12 +180,14 @@ fn branching_bisim_sigref_impl<L: LTS>(preprocessed_lts: &L, timing: &Timing) ->
     })
 }
 
-/// Computes a branching bisimulation partitioning using signature refinement
-/// without dirty blocks.
+/// Computes a branching bisimulation partitioning using signature
+/// refinement, without the process-the-smaller-half (dirty block)
+/// optimisation.
 ///
-/// The `state` is any state for which we return the equivalent state in the
-/// preprocessed LTS. And if `divergence_preserving` is true, we compute
-/// divergence preserving branching bisimulation instead.
+/// Internally preprocesses `lts` for tau-cycles, so the returned LTS and
+/// `StateIndex` correspond to `state` after preprocessing, not before. When
+/// `divergence_preserving` is true, computes divergence-preserving branching
+/// bisimulation instead.
 pub(crate) fn branching_bisim_sigref_naive<L: LTS>(
     lts: L,
     state: StateIndex,
@@ -241,9 +244,13 @@ fn branching_bisim_sigref_naive_impl<L: LTS>(preprocessed_lts: &L, timing: &Timi
     })
 }
 
-/// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
+/// Computes a weak bisimulation partitioning using signature refinement with
+/// inductive signatures, without the process-the-smaller-half (dirty block)
+/// optimisation.
 ///
-/// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
+/// If `preprocess` is true, first reduces modulo branching bisimulation; the
+/// returned LTS and `StateIndex` correspond to `state` after whatever
+/// preprocessing occurred.
 pub(crate) fn weak_bisim_sigref_inductive_naive<L: LTS>(
     lts: L,
     state: StateIndex,
@@ -287,9 +294,12 @@ pub(crate) fn weak_bisim_sigref_inductive_naive_impl<L: LTS>(
     (preprocessed_lts, mapped_state, partition)
 }
 
-/// Computes a branching bisimulation partitioning using signature refinement without dirty blocks.
+/// Computes a weak bisimulation partitioning using naive signature
+/// refinement (no inductive signatures).
 ///
-/// The `state` is any state for which we return the equivalent state in the preprocessed LTS.
+/// If `preprocess` is true, first reduces modulo branching bisimulation; the
+/// returned LTS and `StateIndex` correspond to `state` after whatever
+/// preprocessing occurred.
 pub(crate) fn weak_bisim_sigref_naive<L: LTS>(
     lts: L,
     state: StateIndex,
@@ -674,11 +684,11 @@ fn signature_refinement_weak<L: LTS>(lts: &L) -> IndexedPartition {
     partition
 }
 
-/// General signature refinement algorithm that accepts an arbitrary signature
+/// General signature refinement algorithm that accepts an arbitrary signature.
 ///
-/// The signature function is called for each state and should fill the
-/// signature builder with the signature of the state. It consists of the
-/// current partition, the signatures per state for the next partition.
+/// The `signature` closure receives the current partition and the per-state
+/// signatures computed so far for the next partition, and fills the builder
+/// with the signature of the given state.
 ///
 /// The `forest` records the block-history of the refinement, which can later
 /// be used to reconstruct a distinguishing formula for any two states in
@@ -815,7 +825,9 @@ where
     partition
 }
 
-/// Returns true iff the given partition is a strong bisimulation partition
+/// Returns true iff `partition` is stable under `compute_signature`: every
+/// state in a block has the same signature, and no two blocks share a
+/// signature.
 pub(crate) fn is_valid_refinement<F, P, L>(lts: &L, partition: &P, mut compute_signature: F) -> bool
 where
     F: FnMut(StateIndex, &P, &mut SignatureBuilder),

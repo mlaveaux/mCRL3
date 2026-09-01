@@ -8,12 +8,11 @@ use std::path::PathBuf;
 
 use duct::cmd;
 
-///
-/// Remove a set of files given a glob
+/// Removes every file matching `pattern`.
 ///
 /// # Errors
-/// Fails if listing or removal fails
 ///
+/// Returns an error if listing or removing a matched file fails.
 fn clean_files(pattern: &str) -> Result<(), Box<dyn Error>> {
     let files: Result<Vec<PathBuf>, _> = glob(pattern)?.collect();
     files?.iter().try_for_each(|path| {
@@ -22,9 +21,15 @@ fn clean_files(pattern: &str) -> Result<(), Box<dyn Error>> {
     })
 }
 
+/// Runs `cargo <arguments>` instrumented for coverage and renders an HTML report with `grcov`.
 ///
-/// Run coverage, pass the given arguments to cargo.
+/// Requires the nightly toolchain and `grcov` on `PATH`, and must be run from the workspace
+/// root. Deletes and recreates `target/coverage` first, discarding any previous report there;
+/// the intermediate `.profraw` files are removed again once the report is generated.
 ///
+/// # Errors
+///
+/// Returns an error if the instrumented `cargo` run, `grcov`, or a filesystem operation fails.
 pub(crate) fn coverage(arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     // Ignore errors about missing directory.
     let _ = remove_dir_all("target/coverage");

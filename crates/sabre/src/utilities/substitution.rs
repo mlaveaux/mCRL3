@@ -6,20 +6,11 @@ use merc_aterm::storage::ThreadTermPool;
 
 pub type SubstitutionBuilder = Protected<Vec<ATermRef<'static>>>;
 
-/// Creates a new term where a subterm is replaced with another term.
+/// Creates a new term with the subterm at position `p` (a slice of 1-indexed indices) replaced by
+/// `new_subterm`.
 ///
-/// # Parameters
-/// 't'             -   The original term
-/// 'new_subterm'   -   The subterm that will be injected
-/// 'p'             -   The place in 't' on which 'new_subterm' will be placed,
-///                     given as a slice of position indexes
-///
-/// # Example
-///
-/// The term is constructed bottom up. As an example take the term s(s(a)).
-/// Lets say we want to replace the a with the term 0. Then we traverse the term
-/// until we have arrived at a and replace it with 0. We then construct s(0)
-/// and then construct s(s(0)).
+/// The term is rebuilt bottom-up: e.g. replacing `a` with `0` in `s(s(a))` at position `[1, 1]`
+/// first constructs `s(0)`, then `s(s(0))`.
 pub fn substitute<'a, 'b, T: Term<'a, 'b>>(tp: &ThreadTermPool, t: &'b T, new_subterm: ATerm, p: &[usize]) -> ATerm {
     let mut args = Protected::new(vec![]);
     substitute_rec(tp, t, new_subterm, p, &mut args, 0)
@@ -35,12 +26,8 @@ pub fn substitute_with<'a, 'b, T: Term<'a, 'b>>(
     substitute_rec(tp, t, new_subterm, p, builder, 0)
 }
 
-/// The recursive implementation for substitute.
-///
-/// # Details
-///
-/// The `depth` keeps track of the depth in 't'. Function should be called with
-/// 'depth' = 0.
+/// The recursive implementation for [substitute] and [substitute_with]. `depth` tracks the depth
+/// reached in `t` so far and must be `0` on the initial call.
 fn substitute_rec<'a, 'b, T: Term<'a, 'b>>(
     tp: &ThreadTermPool,
     t: &'b T,

@@ -14,6 +14,10 @@ use crate::CpuTopology;
 /// and inter-core latencies) is logged at info level. If no core information
 /// is available on this platform, the pool is still created but worker
 /// pinning is skipped.
+///
+/// # Errors
+///
+/// Returns an error if the underlying thread pool fails to build.
 pub fn configure_rayon_thread_pool(num_threads: usize, pinned: bool) -> Result<ThreadPool, MercError> {
     let worker_count = num_threads.max(1);
     let cores = if pinned {

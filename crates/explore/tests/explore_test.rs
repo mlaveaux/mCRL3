@@ -129,6 +129,7 @@ fn baseline(lps: &MockLps) -> (BTreeSet<State>, BTreeSet<Edge>) {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_breadth_first_matches_depth_first() {
     // The traversal order must not change the discovered state space.
     for lps in fixtures() {

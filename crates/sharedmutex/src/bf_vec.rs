@@ -1,4 +1,4 @@
-//! Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
+// Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
 
 use std::alloc;
 use std::alloc::Layout;
@@ -11,16 +11,15 @@ use std::sync::atomic::Ordering;
 
 use crate::BfSharedMutex;
 
-/// An implementation of [`Vec<T>`] based on the [BfSharedMutex] implementation
-/// that can be safely sent between threads. Elements can be appended
-/// concurrently from multiple threads holding a [`BfVec::share`] of the vector.
+/// A vector that can be safely sent between and appended to concurrently by threads holding a
+/// clone made with `share`.
 ///
 /// Zero-sized element types are not supported.
 pub struct BfVec<T> {
     shared: BfSharedMutex<BfVecShared<T>>,
 }
 
-/// The internal shared data of the [BfVec].
+/// Shared state behind a `BfVec`, protected by a `BfSharedMutex`.
 pub struct BfVecShared<T> {
     buffer: Option<NonNull<T>>,
     capacity: usize,
@@ -124,6 +123,10 @@ impl<T> BfVec<T> {
     /// The value is cloned while holding the read lock; handing out a
     /// reference instead would let it dangle when another thread's `push`
     /// reallocates the buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is out of bounds.
     pub fn at(&self, index: usize) -> T
     where
         T: Clone,

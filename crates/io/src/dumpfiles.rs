@@ -6,29 +6,27 @@ use log::info;
 use merc_utilities::MercError;
 use tempfile::TempDir;
 
-/// A utility for dumping files, mostly used for testing and debugging
+/// Writes files to disk for test and debug inspection, gated by the `MERC_DUMP` environment variable.
 ///
-/// # Details
-///
-/// The given name is used to create a dedicated directory for the output files,
-/// this is especially useful for files dumped from (random) tests.
-///
-/// Uses the `MERC_DUMP=1` environment variable to enable or disable dumping files
-/// to disk, to avoid unnecessary writes during normal runs. In combination with
-/// `MERC_SEED` we can reproduce specific tests cases for random runs.
+/// Dumping is a no-op unless `MERC_DUMP` is set to an absolute directory path; combine it with
+/// `MERC_SEED` to reproduce the files written by a specific randomized test run.
 pub struct DumpFiles {
     // None when dumping is disabled.
     directory: Option<PathBuf>,
 }
 
 impl DumpFiles {
-    /// Creates a new `DumpFiles` instance with the given directory as output.
+    /// Creates a `DumpFiles` that writes under a `directory` subdirectory of the `MERC_DUMP` path.
     pub fn new(directory: &str) -> Self {
         Self::with_dump_dir(std::env::var("MERC_DUMP").ok().as_deref(), directory)
     }
 
     /// Constructs a `DumpFiles` from an explicit `MERC_DUMP` value, so the logic
     /// can be tested without mutating the process environment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `dump_dir` is `Some` and not an absolute path.
     fn with_dump_dir(dump_dir: Option<&str>, directory: &str) -> Self {
         match dump_dir {
             Some(dump_dir) => {
@@ -46,8 +44,12 @@ impl DumpFiles {
         }
     }
 
-    /// Dumps a file with the given filename suffix by calling the provided function
-    /// to write the contents.
+    /// Writes a file named `filename` by calling `write` with an open handle to it.
+    /// Does nothing if dumping is disabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the output directory or file cannot be created, or if `write` errors.
     pub fn dump<F>(&self, filename: &str, mut write: F) -> Result<(), MercError>
     where
         F: FnMut(&mut File) -> Result<(), MercError>,
@@ -69,12 +71,22 @@ impl DumpFiles {
 }
 
 /// Uses `MERC_DUMP` as the temporary directory if set, and otherwise the default temp directory.
+///
+/// A directory created under `MERC_DUMP` is not cleaned up on drop, so it survives for inspection.
+///
+/// # Errors
+///
+/// Returns an error if the temporary directory cannot be created.
 pub fn temp_dir(name: &str) -> Result<TempDir, MercError> {
     temp_dir_in(std::env::var("MERC_DUMP").ok().as_deref(), name)
 }
 
 /// Creates a temporary directory under an explicit `MERC_DUMP` value, so the
 /// logic can be tested without mutating the process environment.
+///
+/// # Panics
+///
+/// Panics if `dump_dir` is `Some` and not an absolute path.
 fn temp_dir_in(dump_dir: Option<&str>, name: &str) -> Result<TempDir, MercError> {
     if let Some(dump_dir) = dump_dir {
         // Check if the directory is an absolute path

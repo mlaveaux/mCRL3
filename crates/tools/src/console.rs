@@ -1,12 +1,3 @@
-//! Helper functions for handling the Windows console from a GUI context.
-//!
-//! Windows subsystem applications must explicitly attach to an existing console
-//! before stdio works, and if not available, create their own if they wish to
-//! print anything.
-//!
-//! These functions enable that, primarily for the purposes of displaying Rust
-//! panics.
-
 use std::result::Result;
 
 use merc_utilities::MercError;
@@ -22,18 +13,19 @@ use winapi::um::wincon::FreeConsole;
 #[cfg(windows)]
 use winapi::um::wincon::GetConsoleWindow;
 
+/// Guard returned by [`init_console`]; dropping it frees a console this call allocated.
 pub struct Console {
     #[cfg(windows)]
     attached: bool,
 }
 
-/// Initialises the console and returns a [`Console`] guard.
+/// Attaches to a console so `println!` and panic output are visible from a
+/// Windows-subsystem GUI binary, which otherwise starts with no attached stdio.
 ///
-/// On Windows this either attaches to the parent process' console, attaches to
-/// an existing console, or allocates a fresh one when none is available, so that
-/// `println!` and panic output are visible from a windows-subsystem binary.
-/// Dropping the returned guard frees a console that this call allocated. On
-/// other platforms it is a no-op and the guard does nothing.
+/// On Windows this attaches to the parent process' console, an existing console,
+/// or allocates a fresh one when none is available. Dropping the returned guard
+/// frees a console that this call allocated. On other platforms it is a no-op and
+/// the guard does nothing.
 pub fn init_console() -> Result<Console, MercError> {
     #[cfg(windows)]
     unsafe {

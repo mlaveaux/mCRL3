@@ -60,6 +60,14 @@ impl CombineLabel for LtsAction {
 ///
 /// The `builder` is used to construct the resulting LTS, which can also be
 /// stored immediately in a file.
+///
+/// # Errors
+///
+/// Returns an error if `parallel_composition` is empty, if `allow` contains the
+/// tau action, or if any expression in `comm` has a tau action or fewer than
+/// two actions on its left-hand side, shares a left-hand side action with
+/// another expression, or has its right-hand side appear in another
+/// expression's left-hand side.
 pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBuilder<L::Label>>(
     builder: &mut B,
     parallel_composition: Vec<L>,
@@ -221,10 +229,6 @@ pub fn combine_lts<L: LTS<Label = LtsMultiAction<A>>, A: CombineLabel, B: LtsBui
     Ok(())
 }
 
-/// Applies the communication operator to a multi-action according to the given
-/// communication expressions.
-///
-/// # Details
 /// Applies the communication operator $\gamma_C$ to a multi-action.
 ///
 /// For each communication expression $a_1 | \cdots | a_n \rightarrow c$ in $C$,
@@ -505,6 +509,12 @@ struct ParallelTransitionIter<'ctx, 'a, L: LTS> {
 impl<'ctx, 'a, L: LTS> ParallelTransitionIter<'ctx, 'a, L> {
     /// Creates a new iterator over parallel transitions for the given LTSs
     /// and current state vector, reusing the buffers held in `ctx`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lts_list` has `usize::BITS` or more elements, since subsets
+    /// are enumerated as a `usize` bitmask, or if `lts_list` and
+    /// `current_states` differ in length.
     pub(crate) fn new(
         ctx: &'ctx mut ParallelTransitionContext,
         lts_list: &'a [L],

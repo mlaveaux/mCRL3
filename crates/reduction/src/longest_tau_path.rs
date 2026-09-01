@@ -1,15 +1,13 @@
 use merc_lts::LTS;
 use merc_lts::StateIndex;
 
-/// Computes the length of the longest path consisting solely of tau (hidden) transitions in the given LTS.
+/// Returns the longest path consisting solely of tau (hidden) transitions, as
+/// the sequence of states visited from start to end.
 ///
-/// # Details
-///
-/// Assumes that the LTS does not contain any tau-cycles.
-///
-/// This runs a relaxation fixpoint that re-scans every tau-edge until no length
-/// changes, so it is `O(states * transitions)` in the worst case. A single pass
-/// suffices when the states are topologically sorted on tau-transitions.
+/// Assumes the LTS has no tau-cycles. Runs a relaxation fixpoint that
+/// rescans every tau-edge until no length changes, `O(states * transitions)`
+/// in the worst case; a single pass suffices when states are topologically
+/// sorted on tau-transitions.
 pub(crate) fn longest_tau_path<L: LTS>(lts: &L) -> Vec<StateIndex> {
     let mut length = vec![0usize; lts.num_of_states()];
     let mut next = vec![None; lts.num_of_states()];

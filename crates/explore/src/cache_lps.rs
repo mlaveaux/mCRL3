@@ -213,6 +213,8 @@ impl CacheMetrics {
     }
 
     /// Fraction of lookups served from the cache across all summands.
+    ///
+    /// Returns `0.0` when there were no lookups.
     pub fn hit_rate(&self) -> f64 {
         let hits = self.total_hits();
         let lookups = hits + self.total_misses();

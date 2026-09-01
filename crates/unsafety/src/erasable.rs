@@ -3,8 +3,9 @@
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-/// A thin, type-erased pointer. This should mimic the interface of NonNull, but
-/// with the ability to erase the type information.
+/// A thin, type-erased pointer that stays pointer-sized even when `T` is an
+/// unsized type whose length is stored in the pointee rather than in a fat
+/// pointer's metadata.
 ///
 /// `repr(transparent)` guarantees the same layout and niche as the underlying
 /// [`ErasedPtr`], so `Option<Thin<T>>` stays pointer-sized.

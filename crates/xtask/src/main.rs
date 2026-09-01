@@ -1,6 +1,5 @@
-//!
-//! `xtask` is a crate that can be used to enable `make`-like commands in cargo. These commands are then implemented in Rust.
-//!
+//! Build-automation commands for the merc workspace (sanitizers, coverage, packaging, tool
+//! smoke tests), invoked as `cargo xtask <command>`.
 
 #![forbid(unsafe_code)]
 
@@ -46,7 +45,7 @@ enum Commands {
     DiscoverTests,
     /// Builds and packages the binaries for release.
     Package,
-    /// Publishes the crates to crates.io.
+    /// Runs `cargo publish --dry-run` for every library crate, in dependency order.
     Publish,
     /// Runs a smoke test of the packaged tool binaries found in the given directory.
     TestTools { directory: PathBuf },

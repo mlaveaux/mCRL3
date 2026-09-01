@@ -55,7 +55,10 @@ pub enum Equivalence {
     BranchingBisimDivergencePreservingNaive,
 }
 
-/// Reduces the given LTS modulo the given equivalence using signature refinement
+/// Reduces `lts` modulo the given equivalence, returning the quotient LTS.
+///
+/// The algorithm used depends on `equivalence`; see [`Equivalence`] for the
+/// available variants and their complexity.
 pub fn reduce_lts<L: LTS>(
     lts: L,
     equivalence: Equivalence,

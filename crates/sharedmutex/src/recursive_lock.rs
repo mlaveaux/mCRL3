@@ -1,4 +1,4 @@
-//! Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
+// Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
 
 use std::cell::Cell;
 use std::error::Error;
@@ -173,7 +173,7 @@ impl<T> RecursiveLockReadGuard<'_, T> {
     }
 }
 
-/// Allow dereferences the underlying object.
+/// Allows dereferencing to the underlying object.
 impl<T> Deref for RecursiveLockReadGuard<'_, T> {
     type Target = T;
 
@@ -213,7 +213,7 @@ pub struct RecursiveLockWriteGuard<'a, T> {
     guard: BfSharedMutexWriteGuard<'a, T>,
 }
 
-/// Allow dereferences the underlying object.
+/// Allows dereferencing to the underlying object.
 impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
     type Target = T;
 
@@ -224,7 +224,7 @@ impl<T> Deref for RecursiveLockWriteGuard<'_, T> {
     }
 }
 
-/// Allow dereferences the underlying object.
+/// Allows dereferencing to the underlying object.
 impl<T> DerefMut for RecursiveLockWriteGuard<'_, T> {
     /// # Panics
     ///

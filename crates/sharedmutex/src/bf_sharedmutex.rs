@@ -1,4 +1,4 @@
-//! Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
+// Authors: Maurice Laveaux, Flip van Spaendonck and Jan Friso Groote
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -38,22 +38,17 @@ use inner::*;
 
 use crossbeam_utils::CachePadded;
 
-/// A shared mutex (readers-writer lock) implementation based on the so-called
-/// busy-forbidden protocol.
+/// A readers-writer lock implementation based on the busy-forbidden protocol.
 ///
-/// # Details
-///
-/// Compared to a regular [std::sync::Mutex] this struct is Send but not Sync.
-/// This means that every thread must acquire a clone of the shared mutex and
-/// the cloned instances of the same shared mutex guarantee shared access
-/// through the `read` operation and exclusive access for the `write` operation
-/// of the given object.
+/// Unlike a regular [`std::sync::Mutex`], this type is `Send` but not `Sync`: every thread must
+/// hold its own clone, and clones of the same mutex give shared access through `read` and
+/// exclusive access through `write`.
 ///
 /// # Poisoning
 ///
-/// A panic inside a `write` section poisons the internal registration mutex.
-/// After that, every [`BfSharedMutex::read`] and [`BfSharedMutex::write`]
-/// returns `Err`; the poison is only cleared once enough clones are dropped.
+/// A panic inside a `write` section poisons the internal registration mutex. After that, every
+/// `read` and `write` call returns `Err`; the poison is only cleared once enough clones are
+/// dropped.
 pub struct BfSharedMutex<T> {
     /// The local control bits of each instance.
     control: Arc<CachePadded<SharedMutexControl>>,
@@ -162,7 +157,7 @@ pub struct BfSharedMutexWriteGuard<'a, T> {
     ptr: ManuallyDrop<loom::cell::MutPtr<T>>,
 }
 
-/// Allow dereferencing the underlying object.
+/// Allows dereferencing the underlying object.
 impl<T> Deref for BfSharedMutexWriteGuard<'_, T> {
     type Target = T;
 
@@ -290,7 +285,11 @@ impl<T> BfSharedMutex<T> {
     /// The caller becomes responsible for eventually clearing the `busy` flag, e.g. by dropping a
     /// guard reconstructed with [`Self::create_read_guard_unchecked`]. Unlike [`Self::read`], this
     /// takes no data borrow of the cell, so under loom it can be paired with `mem::forget`-style
-    /// ownership transfer (as `RecursiveLock` does) without leaking a read borrow.
+    /// ownership transfer without leaking a read borrow.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this instance already holds a read guard.
     pub(crate) fn acquire_shared(&self) -> Result<(), Box<dyn Error + '_>> {
         assert!(
             !self.control.busy.load(Ordering::Relaxed),
@@ -363,7 +362,8 @@ impl<T> BfSharedMutex<T> {
         self.shared.object.get()
     }
 
-    /// Provide write access to the underlying object, only a single mutable reference to the object exists.
+    /// Provides write access to the underlying object, blocking until every other clone's read
+    /// or write access has ended so only one mutable reference exists at a time.
     pub fn write<'a>(&'a self) -> Result<BfSharedMutexWriteGuard<'a, T>, Box<dyn Error + 'a>> {
         let other = self.shared.other.lock()?;
         Ok(self.acquire_exclusive(other))
@@ -433,16 +433,14 @@ impl<T> BfSharedMutex<T> {
         }
     }
 
-    /// Check if this instance's read lock is currently held (i.e., this instance's `busy` flag is set).
-    ///
-    /// Note: this only reflects the state of **this** clone of the shared mutex. Other clones
-    /// may independently hold their own read locks.
+    /// Returns whether this clone currently holds a read lock. Other clones may independently
+    /// hold their own.
     pub fn is_locked(&self) -> bool {
         self.control.busy.load(Ordering::Relaxed)
     }
 
-    /// Check if this instance has been forbidden from acquiring a read lock, which indicates
-    /// that another clone is holding or acquiring a write lock.
+    /// Returns whether this clone is forbidden from acquiring a read lock, which indicates that
+    /// another clone is holding or acquiring a write lock.
     pub fn is_locked_exclusive(&self) -> bool {
         self.control.forbidden.load(Ordering::Relaxed)
     }
@@ -504,13 +502,8 @@ impl<T: Debug> Debug for BfSharedMutex<T> {
     }
 }
 
-/// A global shared mutex that can be used to protect global data.
-///
-/// # Details
-///
-/// This is a wrapper around `BfSharedMutex` that provides a global instance
-/// that can be used to protect global data. Must be cloned to obtain mutable
-/// access.
+/// A `BfSharedMutex` held as a single global instance; call `share` to obtain a clone with
+/// read/write access.
 pub struct GlobalBfSharedMutex<T> {
     /// The shared mutex that is used to protect the global data.
     shared_mutex: BfSharedMutex<T>,

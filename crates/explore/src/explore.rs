@@ -40,9 +40,8 @@ pub enum ExplorationStrategy {
 ///
 /// # Closures
 ///
-/// The mutable caller context `ctx`  is passed into
-/// every closure invocation so the closures themselves can stay
-/// non-capturing of the outer mutable state.
+/// The mutable caller context `ctx` is passed into every closure invocation so
+/// the closures themselves can stay non-capturing of the outer mutable state.
 ///
 /// - `on_state(ctx, state_index, &state_info)` is called exactly once per
 ///   discovered state, in the order the state was popped from the working set,
@@ -53,6 +52,11 @@ pub enum ExplorationStrategy {
 /// Returns the [`StateIndex`] assigned to the initial state of `lps`. The
 /// caller is responsible for finalising any builder it owns; counting states
 /// and transitions (and any progress reporting) is left to the closures.
+///
+/// # Errors
+///
+/// Returns the first error returned by `on_state` or `on_transition`,
+/// aborting exploration at that point.
 ///
 /// # Logging
 ///
@@ -152,6 +156,13 @@ where
 /// discovered set, whose backing store hands each worker a whole block of
 /// consecutive indices at once to keep index allocation contention-free. This
 /// means that the returned state indices are not dense.
+///
+/// # Errors
+///
+/// Returns the first error returned by any worker's `on_state` or
+/// `on_transition`, in worker-index order. Once one worker hits an error, every
+/// worker stops promptly, but states and transitions already reported through
+/// the callbacks before that point stand.
 ///
 /// # Logging
 ///

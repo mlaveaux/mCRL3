@@ -45,8 +45,9 @@ impl NaiveRewriter {
         }
     }
 
-    /// Function to rewrite a term 't'. The elements of the automaton 'states' and 'tp' are passed
-    /// as separate parameters to satisfy the borrow checker.
+    /// Rewrites `t` to normal form by first normalising every subterm, then matching the result
+    /// at the root: naive because it never observes a symbol below the root before its
+    /// subterms are already fully rewritten.
     fn rewrite_aux(
         automaton: &SetAutomaton<AnnouncementInnermost>,
         t: DataExpressionRef<'_>,
@@ -154,8 +155,7 @@ impl NaiveRewriter {
         }
     }
 
-    /// Given a term with head symbol 't_head' and subterms 't_subterms' and an EnhancedMatchAnnouncement,
-    /// check if the conditions hold.
+    /// Checks whether every condition of `ema` holds for the (already normalised) subterms of `t`.
     fn check_conditions(
         automaton: &SetAutomaton<AnnouncementInnermost>,
         t: &DataExpressionRef<'_>,

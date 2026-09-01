@@ -56,10 +56,9 @@ use crate::structured_sort_equations;
 
 /// A type checked and well-typed data specification.
 ///
-/// Holds the resolved user declarations (see [`Self::data_specification`] for
-/// exactly which sorts are resolved), the sort-name → [`DefId`] map assigned
+/// Holds the resolved user declarations, the sort-name → [`DefId`] map assigned
 /// during name resolution, and the system-defined (Appendix-B) declarations for
-/// the sorts that occur (see [`Self::system_defined_specification`]).
+/// the sorts that occur.
 pub struct DataSpecification {
     spec: UntypedDataSpecification,
     sorts: IndexedSet<String>,
@@ -76,9 +75,7 @@ impl DataSpecification {
     }
 
     /// Create a completed well-typed data specification from an untyped data
-    /// specification.
-    ///
-    /// For the encoding see [`NumberEncoding`].
+    /// specification, using `encoding` to represent the numeric sorts.
     pub fn from_untyped_with(
         mut spec: UntypedDataSpecification,
         encoding: NumberEncoding,
@@ -298,9 +295,8 @@ impl DataSpecification {
         &self.system
     }
 
-    /// The query context holding the interned sorts referenced by the
-    /// declaration-sort queries ([`crate::query_sort_of_constructor`],
-    /// [`crate::query_sort_of_map`], [`crate::query_sort_of_equation_var`]).
+    /// The query context holding the sorts interned during type checking,
+    /// backing the declaration-sort accessors below.
     // Currently exercised by tests only.
     #[allow(dead_code)]
     pub(crate) fn context(&self) -> &TypeCheckContext {

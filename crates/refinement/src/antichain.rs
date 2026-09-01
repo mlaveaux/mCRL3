@@ -4,22 +4,18 @@ use std::hash::Hash;
 
 use merc_collections::VecSet;
 
-/// An antichain is a structure (<, S) such that < is a preorder on S, such that
-/// for any s, t in S neither s < t nor t < s holds. In other words, all
-/// elements of S are incomparable under the preorder <. This is dual to the
-/// notion of a chain.
-///
-/// # Details
-///
-/// This implementation stores pairs (s, T) in S.
+/// An antichain is a structure (<, S) such that < is a preorder on S and no
+/// two elements of S are comparable under <; it is dual to a chain. Here,
+/// values are grouped by key, and the sets stored under each key are kept
+/// pairwise incomparable under the subset relation.
 pub struct Antichain<K, V> {
     storage: HashMap<K, VecSet<VecSet<V>>>,
 
-    /// The largest number of keys stored in the antichain.
+    /// The largest number of keys the antichain has held at once.
     max_antichain: usize,
-    /// Number of times a pair was inserted into the antichain.
+    /// Number of `insert` calls that added a new pair.
     antichain_misses: usize,
-    /// Number of times antichain_insert was called.
+    /// Total number of `insert` calls.
     antichain_inserts: usize,
 }
 
@@ -56,14 +52,16 @@ impl<K: Eq + Hash, V: Clone + Ord> Antichain<K, V> {
         self.storage.is_empty()
     }
 
-    /// Returns the number of pairs in the antichain, i.e., the number of items
-    /// yielded by [`Antichain::iter`].
+    /// Returns the number of (key, value) pairs stored, i.e., how many items
+    /// `iter` yields.
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.storage.values().map(|values| values.len()).sum()
     }
 
-    /// Returns the metrics of this antichain
+    /// Returns `(max_antichain_size, insert_misses, insert_calls)`: the largest
+    /// number of keys held at once, the number of `insert` calls that added a
+    /// new pair, and the total number of `insert` calls.
     pub fn metrics(&self) -> (usize, usize, usize) {
         (self.max_antichain, self.antichain_misses, self.antichain_inserts)
     }
@@ -108,12 +106,12 @@ impl<K, V: fmt::Debug + Ord> Antichain<K, V> {
 
 /// Represents the antichain data structure used in the refinement checks.
 pub trait AC<K: Eq + Hash, V: Clone + Ord> {
-    /// Inserts the given (s, T) pair into the antichain and returns true iff it was
-    /// not already present.
+    /// Inserts `(key, value)` into the antichain.
     ///
-    /// # Details
-    ///
-    /// A pair (s, T) is `present` in `S` iff there exists a pair (s, T') in S such that T < T'.
+    /// If a set already stored under `key` is a subset of `value`, `value` is
+    /// dominated: nothing is inserted and this returns `false`. Otherwise
+    /// `value` is inserted (any stored superset of `value` is removed, as it
+    /// is now dominated) and this returns `true`.
     fn insert(&mut self, key: K, value: VecSet<V>) -> bool;
 
     /// Clears the antichain.
@@ -237,9 +235,8 @@ mod tests {
         })
     }
 
-    /// `Antichain::len` used to return `storage.len()` (the number of distinct keys)
-    /// rather than the total number of (key, value) pairs. When a key maps to multiple
-    /// incomparable sets, the old implementation under-counted.
+    /// `len()` must count (key, value) pairs, not distinct keys: a key that
+    /// maps to multiple incomparable sets should contribute one count per set.
     #[test]
     fn test_antichain_len_counts_pairs_not_keys() {
         let mut antichain: Antichain<u32, u32> = Antichain::new();

@@ -11,6 +11,10 @@ use merc_io::LargeFormatter;
 ///
 /// Uses recursive Tarjan's algorithm. For large graphs that may cause a stack overflow,
 /// prefer [`scc_decomposition_iterative`] instead.
+///
+/// # Panics
+///
+/// In debug builds, panics if a vertex index is `>= graph.num_of_vertices()`.
 pub fn scc_decomposition<F, G>(graph: &G, filter: F) -> IndexedPartition
 where
     F: Fn(G::VertexIndex, G::LabelIndex, G::VertexIndex) -> bool,
@@ -61,8 +65,12 @@ where
     partition
 }
 
-/// Computes the strongly connected component partitioning of the given LTS using an iterative
+/// Computes the strongly connected component partitioning of the given graph using an iterative
 /// algorithm, based on the iterative Tarjan's SCC algorithm from the mCRL2 toolset (Wouter Schols).
+///
+/// # Panics
+///
+/// In debug builds, panics if a vertex index is `>= graph.num_of_vertices()`.
 pub fn scc_decomposition_iterative<F, G>(graph: &G, filter: F) -> IndexedPartition
 where
     F: Fn(G::VertexIndex, G::LabelIndex, G::VertexIndex) -> bool,
@@ -177,10 +185,9 @@ struct StateInfo {
 
 /// Tarjan's strongly connected components algorithm.
 ///
-/// The `filter` can be used to determine which (from, label, to) edges should
-/// to be connected.
+/// The `filter` determines which (from, label, to) edges are followed.
 ///
-/// The `smallest_index`, `stack` and `indices` are updated in each recursive
+/// The `smallest_index`, `stack` and `state_info` are updated in each recursive
 /// call to keep track of the current SCC.
 #[allow(clippy::too_many_arguments)]
 fn strongly_connect<F, G>(

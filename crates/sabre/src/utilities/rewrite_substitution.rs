@@ -64,8 +64,12 @@ impl RewriteSubstitution for HashMap<DataVariable, DataExpression> {
 /// Replaces every free variable of `t` by its image under `sigma`.
 ///
 /// The result is not normalised: rewrite rules can fire across the substitution boundary, so
-/// callers must still rewrite the result. Panics for binders and where clauses, whose bound
-/// variables would need capture-avoiding renaming.
+/// callers must still rewrite the result.
+///
+/// # Panics
+///
+/// Panics if `t` contains a binder or where clause, whose bound variables would need
+/// capture-avoiding renaming.
 pub fn apply_substitution<S: RewriteSubstitution>(t: &DataExpression, sigma: &S) -> DataExpression {
     // A closed term has no free variables, so no substitution can change it.
     if S::IS_EMPTY || is_closed(t) {

@@ -99,13 +99,21 @@ impl<'a> IncomingTransitions<'a> {
     }
 
     /// Returns an iterator over the incoming transitions for the given state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `state_index` is not less than the number of states in the underlying LTS.
     pub fn incoming_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = FromTransition> + '_ {
         let start = self.state2incoming.index(state_index.value());
         let end = self.state2incoming.index(state_index.value() + 1);
         (start..end).map(move |i| FromTransition::new(self.transition_labels.index(i), self.transition_from.index(i)))
     }
 
-    // Return an iterator over the incoming silent transitions for the given state.
+    /// Returns an iterator over the incoming silent (tau-labelled) transitions for the given state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `state_index` is not less than the number of states in the underlying LTS.
     pub fn incoming_silent_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = FromTransition> + '_ {
         let start = self.state2incoming.index(state_index.value());
         let end = self.state2incoming.index(state_index.value() + 1);

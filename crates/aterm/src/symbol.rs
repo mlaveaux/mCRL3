@@ -31,7 +31,7 @@ pub trait Symb<'a, 'b> {
     /// Returns a unique index for the symbol.
     fn index(&self) -> usize;
 
-    /// TODO: How to actually hide this implementation?
+    /// Returns the underlying pool index of the symbol.
     fn shared(&self) -> &SymbolIndex;
 }
 

@@ -5,6 +5,11 @@ use std::io::Read;
 use streaming_iterator::StreamingIterator;
 
 /// A lending iterator over the lines of a type implementing Read.
+///
+/// # Errors
+///
+/// Stops on the first I/O error rather than panicking; the error is then
+/// available from `error`.
 pub struct LineIterator<T: Read> {
     reader: BufReader<T>,
     buffer: String,

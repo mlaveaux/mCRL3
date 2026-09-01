@@ -74,24 +74,13 @@ pub fn scatter_into_buckets(
 /// position in that grouped order, *not* by any original index - dropping or
 /// merging entries that share the same `key_of` within a bucket.
 ///
-/// # Details
-///
-/// This is the generic core shared by `LtsBuilderMem::remove_duplicates`,
-/// `ParityGameBuilder::remove_duplicates` and
-/// `VariabilityParityGameBuilder::remove_duplicates`: all three group entries
-/// by a "from" bucket (a state/vertex index), then, within each bucket, either
-/// drop or merge entries that share the same secondary key. Two entries can
-/// only be duplicates of each other if they're in the same bucket, so once the
-/// entries are bucket-grouped this never needs a global sort - just a single
-/// walk over each bucket, calling `on_entry(position, bucket, outcome)` once
-/// per entry with a [`DedupOutcome`] as described above (`bucket` is the
-/// entry's bucket id, e.g. its "from" state/vertex - handed back here because
-/// a caller using [`scatter_into_buckets`]'s early-free property, see its
-/// docs, has by this point discarded whatever column it originally read
-/// `bucket_of` from).
-/// Small buckets (`<= HASH_DEDUP_THRESHOLD`) use a linear scan to find a
-/// duplicate; larger ones a reused hash map, so a handful of very high
-/// out-degree buckets can't make this quadratic in the bucket size.
+/// Two entries can only be duplicates of each other if they're in the same
+/// bucket, so once entries are bucket-grouped this never needs a global sort -
+/// just a single walk over each bucket, calling `on_entry(position, bucket,
+/// outcome)` once per entry with a [`DedupOutcome`]. Small buckets
+/// (`<= HASH_DEDUP_THRESHOLD`) use a linear scan to find a duplicate; larger
+/// ones a reused hash map, so a handful of very high out-degree buckets can't
+/// make this quadratic in the bucket size.
 ///
 /// A caller that only wants to drop duplicates copies the surviving entry's
 /// columns into fresh storage on `Keep` and does nothing on `Duplicate`; one
@@ -175,17 +164,11 @@ where
 /// against it, translating grouped positions back to original indices so
 /// `on_entry` never has to deal with the grouped order itself.
 ///
-/// `on_entry` receives the entry's *original* index (and its bucket, e.g. its
-/// "from" state/vertex - the same value `bucket_of` would return for it), not
-/// a grouped or compacted one, so a caller never needs to physically scatter
-/// its own per-entry columns to match the bucket-grouped order - it can index
-/// them directly by that original index from inside the callback. This is
-/// enough for callers that don't need [`scatter_into_buckets`]'s "free the
-/// original storage before building the deduplicated copy" property (see its
-/// docs) - `ParityGameBuilder::remove_duplicates` and
-/// `VariabilityParityGameBuilder::remove_duplicates` both use this directly;
-/// `LtsBuilderMem::remove_duplicates` instead calls [`scatter_into_buckets`]
-/// and [`dedup_grouped`] separately.
+/// `on_entry` receives the entry's *original* index (and its bucket - the
+/// same value `bucket_of` would return for it), not a grouped or compacted
+/// one, so a caller can index its own per-entry columns directly by that
+/// original index from inside the callback, rather than physically
+/// scattering them to match the bucket-grouped order.
 pub fn dedup_by_bucket<K, FBucket, FKey, FEntry>(
     num_buckets: usize,
     num_entries: usize,

@@ -15,7 +15,11 @@ use merc_utilities::MercError;
 
 /// Trait for writing bit-level data.
 pub trait BitStreamWrite {
-    /// Writes the least significant bits from a u64 value. The `number_of_bits` must be <= 64.
+    /// Writes the low `number_of_bits` bits of `value`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `number_of_bits` exceeds 64.
     fn write_bits(&mut self, value: u64, number_of_bits: u8) -> Result<(), MercError>;
 
     /// Writes a string prefixed with its length as a variable-width integer.
@@ -30,23 +34,32 @@ pub trait BitStreamWrite {
 
 /// Trait for reading bit-level data.
 pub trait BitStreamRead {
-    /// Reads bits into the least significant bits of a u64. The `number_of_bits` must be <= 64.
+    /// Reads `number_of_bits` bits into the low bits of a u64.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `number_of_bits` exceeds 64.
     fn read_bits(&mut self, number_of_bits: u8) -> Result<u64, MercError>;
 
     /// Reads a length-prefixed string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the encoded length does not fit in a `usize`, the
+    /// bytes cannot be allocated, or the bytes are not valid UTF-8.
     fn read_string(&mut self) -> Result<String, MercError>;
 
     /// Reads a variable-width encoded integer.
     fn read_integer(&mut self) -> Result<u64, MercError>;
 }
 
-/// Writer for bit-level output operations using an underlying writer.
+/// Bit-level writer wrapping an underlying byte writer.
 pub struct BitStreamWriter<W: Write> {
     writer: BitWriter<W, BigEndian>,
 }
 
 impl<W: Write> BitStreamWriter<W> {
-    /// Creates a new BitStreamWriter wrapping the provided writer.
+    /// Wraps `writer` for bit-level output.
     pub fn new(writer: W) -> Self {
         Self {
             writer: BitWriter::new(writer),
@@ -62,14 +75,14 @@ impl<W: Write> Drop for BitStreamWriter<W> {
     }
 }
 
-/// Reader for bit-level input operations from an underlying reader.
+/// Bit-level reader wrapping an underlying byte reader.
 pub struct BitStreamReader<R: Read> {
     reader: BitReader<R, BigEndian>,
     text_buffer: Vec<u8>,
 }
 
 impl<R: Read> BitStreamReader<R> {
-    /// Creates a new BitStreamReader wrapping the provided reader.
+    /// Wraps `reader` for bit-level input.
     pub fn new(reader: R) -> Self {
         Self {
             reader: BitReader::new(reader),
@@ -158,8 +171,7 @@ mod tests {
         Bits(u64, u8),
     }
 
-    /// Calculate minimum bits needed to represent the value
-    /// Use 1 bit if value is 0 to ensure at least 1 bit is written
+    /// Minimum number of bits needed to represent `value` (at least 1).
     pub(super) fn required_bits(value: u64) -> u8 {
         if value == 0 {
             1

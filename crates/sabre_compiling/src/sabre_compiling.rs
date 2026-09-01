@@ -27,7 +27,7 @@ pub struct SabreCompilingRewriter {
     /// Cached `rewrite` entry point of `library`. Resolved once in `new`; valid
     /// for as long as `library` stays loaded.
     rewrite_fn: extern "C-unwind" fn(&DataExpressionRefFFI<'_>) -> DataExpressionFFI,
-    /// Keeps every term hose raw address is baked into the generated
+    /// Keeps every term whose raw address is baked into the generated
     /// library protected.
     _spec: RewriteSpecification,
     /// The loaded library, keeps rewrite_fn alive.
@@ -50,12 +50,20 @@ impl RewriteEngine for SabreCompilingRewriter {
 }
 
 impl SabreCompilingRewriter {
-    /// Creates a new compiling rewriter for the given specifications.
+    /// Compiles a rewriter for `spec` into a fresh dynamic library and loads
+    /// it into the current process.
     ///
-    /// - use_local_workspace: Use the development version of the toolset instead of referring to the github one.
-    /// - use_local_tmp: Use a relative 'tmp' directory instead of using the system directory. Mostly used for debugging purposes.
+    /// `use_local_workspace` links the generated crate against this
+    /// repository's `sabre_ffi` by path instead of a pinned git revision, for
+    /// local development. `use_local_tmp` builds under `./tmp` instead of a
+    /// fresh system temporary directory, so the generated source survives for
+    /// inspection.
     ///
-    /// - [`RewriteEngine`]
+    /// # Errors
+    ///
+    /// Returns an error if the generated crate fails to compile, or if the
+    /// resulting library is missing the `initialise`/`rewrite` symbols
+    /// emitted by the code generator.
     pub fn new(
         spec: &RewriteSpecification,
         use_local_workspace: bool,

@@ -98,7 +98,7 @@ where
     }
 
     /// Reconstructs the state vector for `reference` into the freshly cleared
-    /// `out` buffer.
+    /// `out` buffer, returning whether `reference` was present.
     #[allow(dead_code)]
     pub(crate) fn get_into(&self, reference: StateRef, out: &mut Vec<T>) -> bool {
         out.clear();
@@ -109,7 +109,8 @@ where
         true
     }
 
-    /// Returns the state vector for `reference`, allocating a fresh [`Vec`].
+    /// Returns the state vector for `reference`, allocating a fresh [`Vec`], or
+    /// `None` if `reference` is not present.
     ///
     /// Prefer [`DiscoveredSet::get_into`] on hot paths to reuse a buffer.
     #[allow(dead_code)]

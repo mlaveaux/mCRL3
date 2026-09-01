@@ -7,7 +7,8 @@ use oxidd::util::OutOfMemory;
 use rand::Rng;
 use rand::RngExt;
 
-/// Generate `num_vectors` random bitvectors of length `num_vars`.
+/// Generates a random number (fewer than `num_vectors`, or none when `num_vectors` is 0) of random
+/// bitvectors of length `num_vars`.
 pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usize) -> Vec<Vec<OptBool>> {
     let mut vectors = Vec::new();
     // random_range panics on an empty range, so a request for zero vectors yields nothing.
@@ -31,6 +32,10 @@ pub fn random_bitvectors<R: Rng>(rng: &mut R, num_vars: usize, num_vectors: usiz
 }
 
 /// Constructs a BDD representing the given cube (bitvector) over the given variables.
+///
+/// # Panics
+///
+/// Panics if `variables` and `cube` have different lengths.
 pub fn bdd_from_cube(
     manager_ref: &BDDManagerRef,
     variables: &[BDDFunction],
@@ -71,7 +76,8 @@ where
     Ok(bdd)
 }
 
-/// Create a random BDD over the given variables with the given number of cubes.
+/// Create a random BDD over the given variables from a random number of cubes, fewer than
+/// `num_of_cubes`.
 pub fn random_bdd<R: Rng>(
     manager_ref: &BDDManagerRef,
     rng: &mut R,

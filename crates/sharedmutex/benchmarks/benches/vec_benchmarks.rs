@@ -30,7 +30,8 @@ pub fn benchmark_vector(c: &mut Criterion) {
     }
 }
 
-/// A hack where clone does actually call share
+/// Wraps `BfVec` so `Clone` produces a shared handle (via `share`) rather than an independent
+/// copy, matching what the `benchmark` harness expects from its `shared` argument.
 struct VecClone<T> {
     vector: BfVec<T>,
 }

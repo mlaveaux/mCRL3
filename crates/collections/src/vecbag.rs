@@ -22,10 +22,7 @@ macro_rules! vecbag {
     }};
 }
 
-///
-/// A bag (multiset) that is internally represented by a sorted vector.
-/// Mostly useful for a compact representation of bags that are not changed often.
-///
+/// A bag (multiset) internally represented by a sorted vector; compact for bags that are not changed often.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VecBag<T: Ord> {
     /// The internal storage with the invariant that the array is sorted.

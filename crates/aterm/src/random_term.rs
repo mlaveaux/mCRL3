@@ -14,9 +14,14 @@ use crate::Term;
 #[cfg(test)]
 use crate::storage::THREAD_TERM_POOL;
 
-/// Create a random term consisting of the given symbol and constants. Performs
-/// iterations number of constructions, and uses chance_duplicates to choose the
-/// amount of subterms that are duplicated.
+/// Builds a random term over the given function symbols and constants by applying `iterations`
+/// construction steps, each of which extends the pool of available subterms that later steps can
+/// reuse as arguments.
+///
+/// # Panics
+///
+/// Panics if `constants` is empty, since at least one constant is needed to seed the pool of
+/// subterms.
 #[cfg(test)]
 pub(crate) fn random_term<R: Rng>(
     rng: &mut R,

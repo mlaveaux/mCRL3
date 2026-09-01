@@ -93,7 +93,7 @@ pub struct UntypedPbes {
     pub init: PropVarInst,
 }
 
-/// An mCRL2 parameterised boolean equation system (PBES).
+/// An mCRL2 parameterised real equation system (PRES).
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct UntypedPres {
     pub data_specification: UntypedDataSpecification,

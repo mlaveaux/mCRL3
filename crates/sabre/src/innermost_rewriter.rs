@@ -47,8 +47,11 @@ impl InnermostRewriter {
         self.rewrite_under_with_statistics(t, &EmptySubstitution)
     }
 
-    /// Same as [InnermostRewriter::rewrite_with_statistics], but replaces the free variables of
-    /// `t` according to `sigma`, see [RewriteEngine::rewrite_with].
+    /// Replaces the free variables of `t` according to `sigma` and rewrites the result to normal
+    /// form, returning it together with the gathered [RewritingStatistics].
+    ///
+    /// `sigma` must map every variable to a term already in normal form: replacements are spliced
+    /// in without being rewritten again.
     pub fn rewrite_under_with_statistics<S: RewriteSubstitution>(
         &mut self,
         t: &DataExpression,
@@ -80,19 +83,19 @@ impl InnermostRewriter {
         }
     }
 
-    /// Function to rewrite a term 't'. The elements of the automaton 'states'
-    /// and 'tp' are passed as separate parameters to satisfy the borrow
-    /// checker.
+    /// Rewrites `input_term` to normal form, replacing its free variables by their image under
+    /// `sigma`.
     ///
-    /// # Details
+    /// `automaton`, `stack` and `builder` are passed as separate parameters, rather than bundled
+    /// behind `&mut self`, so the borrow checker allows each to be borrowed independently.
     ///
-    /// Uses a stack of terms and configurations to avoid recursions and to keep
-    /// track of terms in normal forms without explicit tagging. The configuration
-    /// stack consists of three different possible values with the following semantics
+    /// Uses a stack of terms and configurations to avoid recursion and to keep track of terms in
+    /// normal form without explicit tagging. Each configuration is one of:
     ///     - Return(): Returns the top of the stack.
-    ///     - Rewrite(index): Updates the configuration to rewrite the top of the term stack
-    ///                       and places the result on the given index.
-    ///     - Construct(arity, index, result):
+    ///     - Rewrite(index): Rewrites the top of the term stack and places the result at the given
+    ///       index.
+    ///     - Construct(symbol, arity, index): Constructs `symbol` applied to the `arity` terms at
+    ///       the top of the stack and places the result at the given index.
     ///
     /// Free variables of `input_term` are replaced by their image under `sigma` when they are
     /// reached, which is the point where the substitution is consumed: every term that is

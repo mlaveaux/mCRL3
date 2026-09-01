@@ -21,14 +21,15 @@ impl MercIndex for () {
     fn index(&self) -> Self::Target {}
 }
 
-/// An index is an index that can only be compared with equivalent tags. Note that the constructor does
-/// not requires us to provide a tag, and as such anyone can make a tagged index. It is not a proof of a
-/// valid index. This could be extended in the future.
+/// A newtype index wrapping an inner value of type `T`, distinguished at compile time by `Tag`.
+/// Two `TagIndex` values compare, order, and hash together only when they share both `T` and
+/// `Tag`, so indices from different domains (e.g. state, action, priority) cannot be mixed up or
+/// compared with each other. `new` accepts any `T` unconditionally, so a `TagIndex` is not by
+/// itself a proof that the wrapped value is a valid index into its domain.
 ///
-/// Implement all the traits that are typically used for indices, e.g. PartialEq, Eq, PartialOrd, Ord and Hash.
-///
-/// Does not implement operations such as addition and subtraction since there are not natural. However, we do implement
-/// Index for various containers for ease of usage. Otherwise, `value()` can be used to obtain the underlying `T`.
+/// Implements the traits typically needed for indices (`PartialEq`, `Eq`, `PartialOrd`, `Ord`,
+/// `Hash`) but not arithmetic, since indices are not naturally added or subtracted. Implements
+/// `Index`/`IndexMut` on `Vec<U>`/`[U]` for direct indexing; `value()` returns the underlying `T`.
 pub struct TagIndex<T, Tag> {
     index: T,
 
@@ -112,7 +113,7 @@ impl<T, Tag> TagIndex<T, Tag> {
 }
 
 impl<T: Copy, Tag> TagIndex<T, Tag> {
-    /// Returns the underlying value of the tagged index, mostly used for indexing.
+    /// Returns the underlying index value.
     pub fn value(&self) -> T {
         self.index
     }

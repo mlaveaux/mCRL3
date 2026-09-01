@@ -1,8 +1,5 @@
-//! Debug tracing functionality for the Merc toolset
-//! This file provides debug tracing that is only active when the merc_debug-trace feature is enabled
-
-/// Macro that prints debug trace information only when the merc_debug-trace feature is enabled.
-/// When enabled, this macro delegates to the standard trace! macro from the log crate.
+/// Prints debug trace information via `log::trace!` when the `merc_debug-trace` feature is
+/// enabled; otherwise a no-op.
 ///
 /// # Examples
 ///
@@ -29,8 +26,8 @@ macro_rules! debug_trace {
     }};
 }
 
-/// Macro that conditionally uses items only when the merc_debug-trace feature is enabled.
-/// This is useful for importing items that are only needed for debug tracing.
+/// Expands to a `use` of the given item when the `merc_debug-trace` feature is enabled;
+/// otherwise a no-op, so the import doesn't trigger an unused-import warning when disabled.
 ///
 /// # Examples
 ///

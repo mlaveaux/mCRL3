@@ -15,7 +15,8 @@ use toml::map::Map;
 
 use merc_utilities::MercError;
 
-/// Apply the value from compilation_toml for every given variable as an environment variable.
+/// Sets each of `variables` as an environment variable on `builder`, reading
+/// its value from `compilation_toml`'s `[env]` table.
 fn apply_env(
     builder: Expression,
     compilation_toml: &Map<String, Value>,

@@ -61,31 +61,26 @@ mod inner {
 
     use super::*;
 
-    /// A data expression is an [merc_aterm::ATerm] with additional structure.
+    /// A data expression: a variable, a nullary function symbol, an application of a function
+    /// symbol to arguments, a machine number (a value in `[0, 2^64-1]`), a binder (lambda,
+    /// forall/exists, or a set/bag comprehension), or a where clause.
     ///
-    /// # Details
-    ///
-    /// A data expression can be any of:
-    ///     - a variable
-    ///     - a function symbol, i.e. f without arguments.
-    ///     - a term applied to a number of arguments, i.e., t_0(t1, ..., tn).
-    ///     - an abstraction lambda x: Sort . e, or forall and exists.
-    ///     - machine number, a value [0, ..., 2^64-1].
-    ///
-    /// Not supported:
-    ///     - a where clause "e where [x := f, ...]"
-    ///     - set enumeration
-    ///     - bag enumeration
-    ///
+    /// Set and bag enumeration literals are not represented. Methods that require a flat
+    /// argument list (e.g. [`DataExpression::data_arguments`], [`DataExpression::data_sort`])
+    /// panic for binders and where clauses.
     #[merc_term(is_data_expression)]
     pub struct DataExpression {
         term: ATerm,
     }
 
     impl DataExpression {
-        /// Returns the head symbol a data expression
-        ///     - function symbol                  f -> f
-        ///     - application       f(t_0, ..., t_n) -> f
+        /// Returns the head symbol of a data expression: itself for a function symbol, or the
+        /// applied symbol for an application.
+        ///
+        /// # Panics
+        ///
+        /// Panics for variables, machine numbers, binders, and where clauses, which have no
+        /// head symbol.
         pub fn data_function_symbol(&self) -> DataFunctionSymbolRef<'_> {
             if is_data_application(&self.term) {
                 self.term.arg(0).into()
@@ -103,6 +98,10 @@ mod inner {
         /// Pattern matching uses this to observe a symbol: a variable in the subject term has no
         /// head symbol and therefore matches no pattern position. The variable is only tested
         /// after the two cases that do have one, so the common path costs the same.
+        ///
+        /// # Panics
+        ///
+        /// Panics for machine numbers, binders, and where clauses.
         pub fn try_data_function_symbol(&self) -> Option<DataFunctionSymbolRef<'_>> {
             if is_data_application(&self.term) {
                 Some(self.term.arg(0).into())
@@ -120,6 +119,8 @@ mod inner {
         ///     - variable                         x -> []
         ///     - machine number                   n -> []
         ///     - application       f(t_0, ..., t_n) -> [t_0, ..., t_n]
+        ///
+        /// # Panics
         ///
         /// Panics for binders and where clauses, which have structured sub-terms that do not
         /// map cleanly to a flat argument list.

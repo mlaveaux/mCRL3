@@ -6,7 +6,7 @@ use merc_lts::StateIndex;
 /// every state. Can be used to compute the quotient labelled transition system.
 ///
 /// The invariants are that the union of all blocks is the original set, and
-/// that each block contains distinct elements
+/// that each block contains distinct elements.
 pub trait Partition {
     /// Returns the block number for the given state.
     fn block_number(&self, state_index: StateIndex) -> BlockIndex;

@@ -10,11 +10,14 @@ use crate::LtsBuilderMem;
 use crate::StateIndex;
 use crate::TransitionLabel;
 
-/// Performs a reachability analysis on the given LTS using a depth-first search
-/// from the initial state.
+/// Performs a depth-first reachability search over `lts` starting from `state`.
 ///
-/// Only follows transitions for which `filter` returns `true`.
-/// Calls `visit` for every newly reached state, including the start state.
+/// Only follows transitions for which `filter` returns `true`. Calls `visit` for
+/// every newly reached state, including `state` itself.
+///
+/// # Panics
+///
+/// `state` must be less than `lts.num_of_states()`.
 pub fn reachability<P, F, L: LTS>(lts: &L, state: StateIndex, mut filter: F, mut visit: P)
 where
     P: FnMut(StateIndex),

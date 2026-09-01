@@ -29,7 +29,7 @@ pub struct PermutedLps<P: LPS> {
     /// permutation that turns an inner state vector into one of this LPS.
     order: Arc<[usize]>,
 
-    /// The inverse of [Self::order]: `level_of[position]` is the position of this LPS that holds
+    /// The inverse of [`Self::order`]: `level_of[position]` is the position of this LPS that holds
     /// position `position` of the inner one.
     level_of: Arc<[usize]>,
 
@@ -243,6 +243,10 @@ impl<P: LPS> Summand for PermutedSummand<P> {
 }
 
 /// Checks that `permutation` is a permutation of `0..num_positions`.
+///
+/// # Errors
+///
+/// Returns an error if a position is out of range, repeated, or missing from `permutation`.
 pub fn validate_permutation(permutation: &[usize], num_positions: usize) -> Result<(), MercError> {
     let mut seen = vec![false; num_positions];
 
@@ -264,6 +268,10 @@ pub fn validate_permutation(permutation: &[usize], num_positions: usize) -> Resu
 }
 
 /// Returns the inverse of `permutation`, i.e. the index at which every position occurs in it.
+///
+/// # Panics
+///
+/// Panics if `permutation` is not a permutation of `0..permutation.len()`.
 pub fn inverse_permutation(permutation: &[usize]) -> Vec<usize> {
     let mut inverse = vec![0; permutation.len()];
     for (index, &position) in permutation.iter().enumerate() {

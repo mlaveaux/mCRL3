@@ -1,20 +1,13 @@
-//! Implementation of the [`crate::ATerm`] related data structure.
+//! Global and thread-local storage for terms.
 //!
-//! An aterm is a first-order term of the following form:
+//! A term has the form `t := c | f(t1, ..., tn) | u64`, where `f` is a function symbol with a
+//! unique name and arity `n > 0`, `c` is a constant, and `u64` is a numerical term. Terms are
+//! stored maximally shared in the global pool — structurally equal subterms are the same
+//! allocation — and are immutable. The global pool performs garbage collection to reclaim terms
+//! that are no longer reachable, tracked by each thread's local pool.
 //!
-//! t := c | f(t1, ..., tn) | u64
-//!
-//! where `f` is a function symbol with arity `n > 0` and a unique name, `c` is
-//! a constant and `u64` is a numerical term.
-//!
-//! Terms are stored maximally shared in the global aterm pool, meaning that T1,
-//! Tn are shared between all terms and the term is immutable. This global aterm
-//! pool performs garbage collection to remove terms that are no longer
-//! reachable. This is kept track of by the thread-local aterm pool.
-//!
-//! This crate does use `unsafe` for some of the more intricrate parts of the
-//! ATerm library, but every module that only uses safe Rust is marked with
-//! `#![forbid(unsafe_code)]`.
+//! This module uses `unsafe` for its lower-level parts; submodules that only use safe Rust are
+//! marked `#![forbid(unsafe_code)]`.
 
 mod aterm_storage;
 mod gc_mutex;

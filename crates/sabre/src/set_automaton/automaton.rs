@@ -84,7 +84,7 @@ pub struct MatchObligation {
 }
 
 impl MatchObligation {
-    /// Returns the pattern of the match obligation
+    /// Creates a new match obligation for `pattern` at `position`.
     pub fn new(pattern: DataExpression, position: DataPosition) -> Self {
         MatchObligation { pattern, position }
     }
@@ -93,7 +93,7 @@ impl MatchObligation {
 /// Represents either the initial state or a set of match goals in the
 /// [SetAutomaton].
 ///
-/// This is only used during construction to avoid craating all the goals for
+/// This is only used during construction to avoid creating all the goals for
 /// the initial state.
 #[derive(Debug)]
 enum GoalsOrInitial {
@@ -107,8 +107,7 @@ impl<M> SetAutomaton<M> {
     /// meaning that it only finds matches at the root position.
     ///
     /// The `annotate` function is used to create the annotation for each match
-    /// announcement. This is used to accomondate different types of annotations
-    /// for the different rewrite engines.
+    /// announcement, accommodating different annotation types across rewrite engines.
     pub fn new<F>(spec: &RewriteSpecification, annotate: F, apma: bool) -> SetAutomaton<M>
     where
         F: Fn(&Rule) -> M,
@@ -349,12 +348,9 @@ pub struct State {
 }
 
 impl State {
-    /// Derive transitions from a state given a head symbol. The resulting transition is returned as a tuple
-    /// The tuple consists of a vector of outputs and a set of destinations (which are sets of match goals).
-    /// We don't use the struct Transition as it requires that the destination is a full state, with name.
-    /// Since we don't yet know whether the state already exists we just return a set of match goals as 'state'.
-    ///
-    /// Parameter symbol is the symbol for which the transition is computed
+    /// Derives the outgoing transition for `symbol`: the match announcements it completes, and
+    /// its destinations as sets of match goals rather than full states, since it is not yet known
+    /// whether a destination state already exists.
     fn derive_transition(
         &self,
         symbol: &DataFunctionSymbol,

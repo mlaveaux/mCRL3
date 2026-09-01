@@ -1,5 +1,4 @@
-//! Suppress various warnings from the generated bindings.
-
+// Suppress various warnings from the generated BCG C bindings.
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -62,13 +61,13 @@ mod inner {
     /// Reads a labelled transition system in the BCG format, from the
     /// [CADP](https://cadp.inria.fr/man/bcg.html) toolset.
     ///
-    /// # Details
-    ///
-    /// This requires the `CADP` toolset to be installed for the target
-    /// platform, and the `CADP` environment variable to be set.
-    ///
-    /// Note that the C library can only read files from disk; reading from
+    /// The underlying C library can only read files from disk; reading from
     /// in-memory buffers is not supported.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `CADP` environment variable is not set or does not
+    /// point to an existing path.
     pub fn read_bcg(path: &Path) -> Result<LabelledTransitionSystem<String>, MercError> {
         initialize_bcg()?;
         info!("Reading LTS in BCG format...");
@@ -160,9 +159,10 @@ mod inner {
 
     /// Writes the given labelled transition system to a file in the BCG format, see [read_bcg].
     ///
-    /// # Details
+    /// # Errors
     ///
-    /// We require the label to be convertible into a `String`.
+    /// Returns an error if the `CADP` environment variable is not set or does not
+    /// point to an existing path.
     pub fn write_bcg<L: LTS>(lts: &L, path: &Path) -> Result<(), MercError>
     where
         String: From<L::Label>,

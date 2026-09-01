@@ -39,9 +39,8 @@ impl Span {
     }
 
     /// Renders this span against its `source` text as a caret-annotated
-    /// snippet, in the `-->`/`|`/`^^^` style `pest` (see
-    /// `extend_parser_error` in `parse.rs`) and `rustc` diagnostics use, so
-    /// parser errors and later-pass errors (type errors, …) read
+    /// snippet, in the `-->`/`|`/`^^^` style `pest` and `rustc` diagnostics
+    /// use, so parser errors and later-pass errors (type errors, …) read
     /// consistently:
     ///
     /// ```text

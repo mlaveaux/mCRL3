@@ -14,11 +14,8 @@ pub(crate) const NOT_IN_PARTITION: usize = usize::MAX;
 /// Defines a partition based on an explicit indexing of elements to their block
 /// number.
 ///
-/// # Details
-///
-/// This partition always stores 0..max_value elements in the partition, but it
-/// uses a special value to indicate that an element is not in the partition. So
-/// this is not memory efficient.
+/// Always stores one block number per element up to `max_value`, using a special value for
+/// elements not in the partition - not memory efficient for sparse partitions.
 #[derive(Clone, Debug)]
 pub struct IndexedPartition {
     /// Stores a mapping from element index to block number.
@@ -38,6 +35,10 @@ impl IndexedPartition {
     }
 
     /// Create a new partition where the given indices are in a single block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of `included_indices` is `>= num_of_elements`.
     pub fn with_subset<I>(num_of_elements: usize, included_indices: I) -> IndexedPartition
     where
         I: IntoIterator<Item = usize>,
@@ -84,12 +85,14 @@ impl IndexedPartition {
             .filter_map(|(element_index, &block)| (block.value() != NOT_IN_PARTITION).then_some((element_index, block)))
     }
 
-    /// Sets the block number of the given element
+    /// Sets the block number of the given element.
     ///
-    /// # Details
+    /// Assumes block numbers are dense; otherwise `num_of_blocks` overestimates the number of
+    /// blocks actually present.
     ///
-    /// This assumes that the blocks numbers are dense, otherwise the partition
-    /// overestimates the total number of blocks present returned from [Self::num_of_blocks].
+    /// # Panics
+    ///
+    /// Panics if `element_index >= len()`.
     pub fn set_block(&mut self, element_index: usize, block_number: BlockIndex) {
         debug_assert!(
             block_number.value() != NOT_IN_PARTITION,
@@ -101,6 +104,10 @@ impl IndexedPartition {
     }
 
     /// Returns the block number of the given element.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `element_index >= len()`.
     pub fn block(&self, element_index: usize) -> BlockIndex {
         self.partition[element_index]
     }

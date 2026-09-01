@@ -1,11 +1,3 @@
-//! Host-side implementation of the [`SabreRewriteVTable`].
-//!
-//! These functions are the only place where the global term pool is touched.
-//! They are compiled into the host binary; the host hands their addresses to
-//! the loaded rewriter library via [`crate::set_rewrite_vtable`]. Every
-//! function therefore runs in the host's address space, using the host's
-//! `merc_aterm` globals, regardless of which crate's code called it.
-
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
@@ -131,9 +123,10 @@ unsafe extern "C-unwind" fn host_destroy(handle: *mut c_void) {
     }
 }
 
-/// Builds the vtable of host operations. The returned function pointers refer to
-/// the host's monomorphised code, so passing this to a loaded library makes that
-/// library perform all term-pool work in the host's address space.
+/// Builds the vtable of host operations. These functions are the only place
+/// where the global term pool is touched; they run in the host's address
+/// space using the host's `merc_aterm` globals regardless of which crate's
+/// code invokes them through the vtable.
 pub fn rewrite_vtable() -> SabreRewriteVTable {
     SabreRewriteVTable {
         arity: host_arity,

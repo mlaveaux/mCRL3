@@ -84,6 +84,10 @@ pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpres
 }
 
 /// Parses a sequence of `Rule` pairs into a `SortExpression` using a Pratt parser for operator precedence.
+///
+/// # Panics
+///
+/// Panics if `pairs` were not produced by the `SortExpr` grammar rule.
 #[allow(clippy::result_large_err)]
 pub fn parse_sortexpr(pairs: Pairs<Rule>) -> ParseResult<SortExpression> {
     SORT_PRATT_PARSER
@@ -426,6 +430,10 @@ pub static ACTFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into an `ActFrm` using a Pratt parser defined in [ACTFRM_PRATT_PARSER] for operator precedence.
+///
+/// # Panics
+///
+/// Panics if `pairs` were not produced by the `ActFrm` grammar rule.
 #[allow(clippy::result_large_err)]
 pub fn parse_actfrm(pairs: Pairs<Rule>) -> ParseResult<ActFrm> {
     ACTFRM_PRATT_PARSER
@@ -506,6 +514,10 @@ pub static REGFRM_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 });
 
 /// Parses a sequence of `Rule` pairs into an [RegFrm] using a Pratt parser defined in [REGFRM_PRATT_PARSER] for operator precedence.
+///
+/// # Panics
+///
+/// Panics if `pairs` were not produced by the `RegFrm` grammar rule.
 #[allow(clippy::result_large_err)]
 pub fn parse_regfrm(pairs: Pairs<Rule>) -> ParseResult<RegFrm> {
     REGFRM_PRATT_PARSER

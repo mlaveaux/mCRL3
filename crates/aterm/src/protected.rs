@@ -133,8 +133,7 @@ pub struct ProtectedSend<C> {
     container: Arc<GcMutex<C>>,
     root: ProtectionIndex,
 
-    /// A shared handle to the protection set this container was registered in,
-    /// kept.
+    /// A shared handle to the protection set this container was registered in.
     protection_set: SendContainerProtectionSet,
 }
 

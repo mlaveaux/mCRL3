@@ -42,8 +42,9 @@ pub(crate) fn builtin_scheme_names() -> impl Iterator<Item = &'static str> {
         .map(|decl| decl.identifier.as_str())
 }
 
-/// The arithmetic operator names that take the deterministic promotion fast path
-/// during inference (see the module-level note on the numeric fast path).
+/// The arithmetic operator names that, absent a user overload, resolve by a
+/// direct numeric-promotion lookup during inference instead of a disjunction
+/// over the system-defined overloads.
 ///
 /// `+`/`-`/`*` are included even though they are *also* the Set/Bag operations,
 /// because the fast path is only taken when a name has no container meaning;

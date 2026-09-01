@@ -33,6 +33,12 @@ use crate::StateIndex;
 
 /// Loads a labelled transition system from the binary 'lts' format of the mCRL2 toolset,
 /// together with the data specification that its action arguments are typed over.
+///
+/// # Errors
+///
+/// Returns an error if the stream does not start with the LTS marker, contains a
+/// probabilistic transition (not supported), is missing its initial state, or is
+/// otherwise malformed.
 pub fn read_lts<R: Read>(
     reader: R,
     read_state_labels: bool,
@@ -128,7 +134,11 @@ pub fn read_lts<R: Read>(
     info!("Finished reading LTS.");
 
     Ok((
-        builder.finish(initial_state.ok_or("Missing initial state")?, false),
+        // Deduplicate: the binary `.lts` format is a plain transition relation and, unlike
+        // merc's own internal representation, does not guarantee that a state has no two
+        // identical outgoing `(label, to)` transitions -- e.g. mCRL2's `ltscombine` legitimately
+        // emits such duplicates for its unreduced output.
+        builder.finish(initial_state.ok_or("Missing initial state")?, true),
         data_spec,
     ))
 }
@@ -136,6 +146,11 @@ pub fn read_lts<R: Read>(
 /// Write a labelled transition system in binary 'lts' format to the given
 /// writer. Requires that the labels are ATerm streamable. Note that the writer
 /// is buffered internally using a `BufWriter`.
+///
+/// # Errors
+///
+/// Returns an error if writing to `writer` fails, or if a label cannot be
+/// converted to its mCRL2 ATerm representation.
 ///
 /// # Details
 ///

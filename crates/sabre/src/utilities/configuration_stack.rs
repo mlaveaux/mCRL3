@@ -57,13 +57,10 @@ impl AnnouncementSabre {
     }
 }
 
-/// A Configuration is part of the configuration stack/tree
-/// It contains:
-///     1. the index of a state of the set automaton
-///     2. The subterm at the position of the configuration.
-///     3. The difference of position compared to the parent configuration (None for the root).
-///         Note that it stores a reference to a position. It references the position listed on
-///         a transition of the set automaton.
+/// A node of the configuration stack/tree: the index of a set automaton state, and the position
+/// (relative to the parent configuration, `None` for the root) referencing a position listed on
+/// one of the automaton's transitions. The associated subterm is not stored here but at the same
+/// index in the [SharedTermStack].
 #[derive(Debug)]
 pub(crate) struct Configuration<'a> {
     pub state: usize,

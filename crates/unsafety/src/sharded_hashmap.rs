@@ -1,28 +1,3 @@
-//! A sharded concurrent hash table exposing a raw, hash-and-equality-closure
-//! API.
-//!
-//! Unlike a `HashMap<K, V>`, this table does not own or hash a key type: every
-//! operation is parameterised by a precomputed hash and an equality closure, so
-//! the stored element can be a compact handle (for example an index) whose hash
-//! and identity are derived from data living elsewhere. This makes it suitable
-//! as an interning index that does not duplicate the interned payload.
-//!
-//! Concurrency comes from striping the elements across a fixed, power-of-two
-//! number of shards, each a [`parking_lot::RwLock`] around a
-//! [`hashbrown::HashTable`]. The shard is selected from the hash bits just below
-//! the top seven that `hashbrown` reserves for its control byte, so shard
-//! selection does not degrade in-shard probing.
-//!
-//! Two API layers are provided:
-//!
-//! * the raw [`ShardedHashMap::find`], [`ShardedHashMap::find_or_insert_with`]
-//!   and [`ShardedHashMap::remove`], where the caller supplies the hash and the
-//!   equality (and, for insertion, the rehashing) closures; and
-//! * `DashSet`-shaped convenience methods ([`ShardedHashMap::insert`],
-//!   [`ShardedHashMap::get`], [`ShardedHashMap::contains`],
-//!   [`ShardedHashMap::remove_equiv`]) that hash through the table's own
-//!   [`BuildHasher`] for callers that store self-describing elements.
-
 use std::hash::BuildHasher;
 use std::hash::Hash;
 use std::hash::RandomState;
@@ -42,8 +17,23 @@ const MAX_DEFAULT_SHARDS: usize = 256;
 /// is selected from the bits immediately below them.
 const CONTROL_BITS: u32 = 7;
 
-/// A concurrent hash table that stores bare elements of type `T`, looked up by a
-/// caller-supplied hash and equality closure. See the module documentation.
+/// A concurrent hash table storing bare elements of type `T`, looked up by a
+/// caller-supplied hash and equality closure rather than a key type it owns —
+/// so `T` can be a compact handle (for example an index) whose hash and
+/// identity are derived from data stored elsewhere, without duplicating the
+/// interned payload.
+///
+/// Elements are striped across a fixed, power-of-two number of shards, each
+/// guarded by its own [`parking_lot::RwLock`]. The shard is selected from the
+/// hash bits just below the top seven that `hashbrown` reserves for its
+/// control byte, so shard selection does not degrade in-shard probing.
+///
+/// The raw API ([`find`](Self::find), [`find_or_insert_with`](Self::find_or_insert_with)
+/// and [`remove`](Self::remove)) takes the hash, equality and (for insertion)
+/// rehashing closures explicitly. The convenience API ([`insert`](Self::insert),
+/// [`get`](Self::get), [`contains`](Self::contains), [`remove_equiv`](Self::remove_equiv))
+/// hashes through the table's own [`BuildHasher`] for elements that describe
+/// themselves via `Hash`/`Eq`/[`Equivalent`].
 pub struct ShardedHashMap<T, S = RandomState> {
     /// Element shards, selected by a slice of the hash. Always a power of two in
     /// length so the shard index is a cheap bit extraction.

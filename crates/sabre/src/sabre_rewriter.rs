@@ -30,14 +30,16 @@ pub trait RewriteEngine {
     /// Rewrites the given term into normal form, replacing its free variables according to
     /// `sigma`.
     ///
-    /// The range of `sigma` must already be in normal form, since replacements are spliced in
-    /// without being rewritten again. Substitution happens exactly once per free variable
-    /// occurrence, but rewrite rules can still fire across the substitution boundary, so
-    /// `rewrite_with(plus(x, 0), {x -> 5})` yields `5` rather than `plus(5, 0)`.
+    /// `sigma` must map every variable in its domain to a term already in normal form, since
+    /// replacements are spliced in without being rewritten again; substitution happens exactly
+    /// once per free variable occurrence, but rewrite rules can still fire across the
+    /// substitution boundary, so `rewrite_with(plus(x, 0), {x -> 5})` yields `5` rather than
+    /// `plus(5, 0)`. Variables outside the domain of `sigma` are left unchanged.
     ///
-    /// Variables outside the domain of `sigma` are left unchanged; they have no head symbol and
-    /// therefore match no pattern position. Binders and where clauses are not supported, since
-    /// their bound variables would need capture-avoiding renaming.
+    /// # Panics
+    ///
+    /// Panics if `term` contains a binder or where clause, whose bound variables would need
+    /// capture-avoiding renaming.
     fn rewrite_with<S: RewriteSubstitution>(&mut self, term: &DataExpression, sigma: &S) -> DataExpression {
         self.rewrite(&apply_substitution(term, sigma))
     }
@@ -83,7 +85,7 @@ impl SabreRewriter {
         }
     }
 
-    /// Function to rewrite a term. See the module documentation.
+    /// Rewrites `t` to normal form.
     pub fn stack_based_normalise(&mut self, t: &DataExpression) -> DataExpression {
         self.rewrite_with_statistics(t).0
     }
@@ -113,8 +115,11 @@ impl SabreRewriter {
         (result, stats)
     }
 
-    /// The _aux function splits the [ThreadTermPool] pool and the [SetAutomaton] to make borrow checker happy.
-    /// We can now mutate the term pool and read the state and transition information at the same time
+    /// Rewrites `t` to normal form using an explicit configuration stack instead of recursion.
+    ///
+    /// `tp` and `automaton` are passed as separate parameters, rather than bundled behind
+    /// `&mut self`, so the term pool can be mutated while the automaton's state and transition
+    /// data are still borrowed.
     fn stack_based_normalise_aux(
         tp: &ThreadTermPool,
         automaton: &SetAutomaton<AnnouncementSabre>,

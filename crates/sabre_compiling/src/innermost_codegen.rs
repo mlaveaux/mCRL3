@@ -21,10 +21,12 @@ use merc_utilities::MercError;
 
 use crate::indenter::IndentFormatter;
 
-/// Generates Rust code for term rewriting based on the provided specification.
+/// Writes a self-contained `lib.rs` under `source_dir` that implements an
+/// innermost rewriter for `spec`, driven by a generated match automaton.
 ///
-/// Takes a rewrite specification and a source directory path, and generates the
-/// necessary code for term rewriting using an automaton-based approach.
+/// # Errors
+///
+/// Returns an error if the generated source cannot be written.
 pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), MercError> {
     let mut file = File::create(PathBuf::from(source_dir).join("lib.rs"))?;
 
@@ -339,13 +341,13 @@ pub fn generate(spec: &RewriteSpecification, source_dir: &Path) -> Result<(), Me
     Ok(())
 }
 
-/// Emits variable declarations and construct calls for the given TermStack into
-/// `formatter`, prefixing every variable name with `prefix`.
+/// Emits variable declarations and construct calls for `term_stack` into
+/// `formatter`, prefixing every variable name with `prefix`. Returns the name
+/// of the variable holding the final result.
 ///
-/// Uses a virtual-stack simulation that mirrors `InnermostStack::integrate` +
-/// `evaluate_with`: all non-output slots start as `[1 .. stack_size)`, and each
-/// reversed-BFS construct drains the last `arity` indices as its arguments.
-/// Returns the name of the variable that holds the final result.
+/// Simulates the runtime stack: non-output slots start as `[1 .. stack_size)`,
+/// and each reversed-BFS construct drains the last `arity` indices as its
+/// arguments.
 fn generate_rewrite_term_stack_impl(
     formatter: &mut IndentFormatter<File>,
     prefix: &str,

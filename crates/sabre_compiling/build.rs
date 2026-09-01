@@ -5,7 +5,8 @@ use std::fs::File;
 
 use std::io::Write;
 
-/// Write every environment variable in the variables array.
+/// Writes each of `variables` to `writer` as a `NAME = 'value'` line, using an
+/// empty value for any variable that is unset.
 fn write_env(writer: &mut impl Write, variables: &[&'static str]) -> Result<(), Box<dyn Error>> {
     for var in variables {
         writeln!(writer, "{} = '{}'", var, env::var(var).unwrap_or_default())?;

@@ -1,5 +1,6 @@
-//! This module contains an implementation for a compiling variant of the Sabre
-//! rewrite engine.
+//! Compiling variant of the Sabre rewrite engine: generates Rust source for a
+//! rewrite specification, compiles it into a dynamic library, and loads it
+//! back in.
 mod indenter;
 mod innermost_codegen;
 mod library;

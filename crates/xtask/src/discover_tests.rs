@@ -3,7 +3,7 @@ use std::error::Error;
 
 use glob::glob;
 
-/// Discovers test files with specific extensions and prints test cases for them
+/// Discovers test files with specific extensions and prints test cases for them.
 pub(crate) fn discover_tests() -> Result<(), Box<dyn Error>> {
     // Discover different types of test files
     discover_files_with_extension("mcrl2", "examples/mCRL2/**/*.mcrl2")?;

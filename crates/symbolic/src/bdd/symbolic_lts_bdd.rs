@@ -71,6 +71,11 @@ impl<L: TransitionLabel> SymbolicLtsBdd<L> {
     /// The resulting BDD is assumed to only be valid for the reachable states
     /// of the LDD symbolic LTS, as unreachable states may not be representable
     /// with the number of bits assigned to each state variable.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `manager_bdd` already holds variables, since a BDD manager can only hold the
+    /// variables for a single symbolic LTS.
     pub fn from_symbolic_lts<LS: SymbolicLTS<Label = L>>(
         manager: &LDDManagerRef,
         manager_bdd: &BDDManagerRef,

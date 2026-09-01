@@ -31,17 +31,11 @@ use crate::storage::Marker;
 use crate::storage::SharedTerm;
 use crate::storage::THREAD_TERM_POOL;
 
-/// The ATerm trait represents a first-order term in the ATerm library.
-/// It provides methods to manipulate and access the term's properties.
-///  
-/// # Details
+/// Represents a first-order term, implemented for both the owned `ATerm` (no lifetime) and the
+/// borrowed `ATermRef<'a>`.
 ///
-/// This trait is rather complicated with two lifetimes, but this is used
-/// to support both the [ATerm], which has no lifetimes, and [ATermRef<'a>]
-/// whose lifetime is bound by `'a`. Because now we can require that `'b: 'a`
-/// for the implementation of [Term<'a, 'b>] for [ATerm], we can safely return
-/// [ATermRef<'a>] from methods of [Term<'a, 'b>]. Further explanation can be
-/// found on the website.
+/// The two lifetimes let an implementation with `Self: 'b` require `'b: 'a`, so its methods can
+/// safely return `ATermRef<'a>` borrowed from `Self`.
 pub trait Term<'a, 'b> {
     /// Protects the term from garbage collection, returning an owned [ATerm].
     fn protect(&self) -> ATerm;
@@ -223,24 +217,17 @@ impl fmt::Debug for ATermRef<'_> {
     }
 }
 
-/// The protected version of [ATermRef], mostly derived from it.
+/// The protected counterpart of `ATermRef`: a term reference registered in the
+/// current thread's protection set, keeping it alive across garbage collection.
 ///
 /// # Safety
 ///
-/// Note that terms use thread-local state for their protection mechanism, so
-/// [ATerm] is not [Send]. Moreover, this means that terms cannot be stored in
-/// thread-local storage themselves, or at least must be destroyed before the
-/// thread exits, because the order in which thread-local destructors are called
-/// is undefined, and as such a term could be destroyed after the thread-local
-/// term pool is destroyed, leading to undefined behavior.
-///
-/// For this purpose one can use `ManuallyDrop` to simply never drop thread
-/// local terms, since exiting the thread will clean up the protection sets
-/// anyway.
-///
-/// We do not mark term access as unsafe, since that would make their use
-/// cumbersome. An alternative would be to require `THREAD_TERM_POOL.with(|tp|
-/// ...)` around every access, but that would be very verbose.
+/// Terms use thread-local state for their protection mechanism, so `ATerm` is
+/// not `Send`, and must not be stored in thread-local storage itself: the order
+/// in which thread-local destructors run is undefined, so a term could be
+/// dropped after its owning term pool. Wrap such a term in `ManuallyDrop`
+/// instead, because exiting the thread cleans up the protection sets
+/// regardless.
 pub struct ATerm {
     term: ATermRef<'static>,
 
@@ -436,11 +423,9 @@ impl Ord for ATerm {
 
 impl Eq for ATerm {}
 
-/// A sendable variant of an `ATerm`.
+/// A sendable variant of an `ATerm`, usable from a different thread than the one that created it.
 ///
-/// # Details
-///
-/// Keeps track of an internal reference to the protection set it was protected from to ensure proper cleanup.
+/// Keeps a reference to the protection set it registered with, so it can unregister itself on drop.
 pub struct ATermSend {
     term: ATermRef<'static>,
 
@@ -694,8 +679,8 @@ impl<'a> Iterator for TermIterator<'a> {
     }
 }
 
-/// Blanket implementation allowing passing borrowed terms as references.
-/// TODO: Why is this necessary.
+/// Blanket implementation so a `&T` can be passed anywhere a `T: Term` is expected, letting
+/// callers pass borrowed terms without an explicit `.copy()`.
 impl<'a, 'b, T: Term<'a, 'b>> Term<'a, 'b> for &'b T {
     fn protect(&self) -> ATerm {
         (*self).protect()

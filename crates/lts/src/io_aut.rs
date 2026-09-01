@@ -40,14 +40,16 @@ pub(crate) const AUT_TAU_LABEL: &str = "i";
 /// Loads a labelled transition system in the [Aldebaran
 /// format](https://cadp.inria.fr/man/aldebaran.html) from the given reader.
 ///
-/// Note that the reader has a buffer in the form of  `BufReader`` internally.
+/// Note that the reader is buffered internally using a `BufReader`.
 ///
-/// The Aldebaran format consists of a header: `des (<initial>: Nat,
-///     <num_of_transitions>: Nat, <num_of_states>: Nat)`
-///     
-/// And one line for every transition either one of these cases:
-///  `(<from>: Nat, "<label>": Str, <to>: Nat)`
-///  `(<from>: Nat, <label>: Str, <to>: Nat)`
+/// The format consists of a header line `des (<initial>: Nat,
+/// <num_of_transitions>: Nat, <num_of_states>: Nat)` followed by one line per
+/// transition, either `(<from>: Nat, "<label>": Str, <to>: Nat)` or
+/// `(<from>: Nat, <label>: Str, <to>: Nat)`.
+///
+/// # Errors
+///
+/// Returns an error if the header or a transition line does not match this format.
 pub fn read_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<String>, MercError> {
     read_aut_impl(reader, AUT_TAU_LABEL)
 }
@@ -59,7 +61,7 @@ pub fn read_mcrl2_aut<R: Read>(reader: R) -> Result<LabelledTransitionSystem<Str
 
 /// The implementation of [read_aut] and [read_mcrl2_aut].
 ///
-/// The `tau_label` specifics which label is considered as the internal transition.
+/// `tau_label` specifies which label is considered the internal transition.
 fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransitionSystem<String>, MercError> {
     info!("Reading LTS in .aut format...");
 
@@ -120,7 +122,11 @@ fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransiti
 
     info!("Finished reading LTS");
 
-    Ok(builder.finish(initial_state, false))
+    // Deduplicate: the Aldebaran text format is a plain transition relation and, unlike merc's
+    // own internal representation, does not guarantee that a state has no two identical outgoing
+    // `(label, to)` transitions -- e.g. mCRL2's `ltscombine` legitimately emits such duplicates
+    // for its unreduced output.
+    Ok(builder.finish(initial_state, true))
 }
 
 /// Write a labelled transition system in plain text in Aldebaran format to the
@@ -184,15 +190,8 @@ fn write_aut_impl<W: Write, L: LTS>(writer: &mut W, lts: &L, tau_label: &str) ->
     Ok(())
 }
 
-/// Dedicated function to parse the following transition formats:
-///
-/// # Details
-///
-/// One of the following formats:
-///     `(<from>: Nat, "<label>": Str, <to>: Nat)`
-///     `(<from>: Nat, <label>: Str, <to>: Nat)`
-///
-/// This was generally faster than the regex variant, since that one has to backtrack after
+/// Parses a transition line of the form `(<from>: Nat, "<label>": Str, <to>: Nat)` or
+/// `(<from>: Nat, <label>: Str, <to>: Nat)`, returning `None` if it does not match.
 fn read_transition(input: &str) -> Option<(&str, &str, &str)> {
     let start_paren = input.find('(')?;
     let start_comma = input.find(',')?;
@@ -251,6 +250,24 @@ mod tests {
 
         assert_eq!(lts.initial_state_index().value(), 0);
         assert_eq!(lts.num_of_transitions(), 92);
+    }
+
+    #[test]
+    fn test_reading_aut_with_duplicate_transitions() {
+        // The Aldebaran format is a plain transition relation and may legitimately contain
+        // duplicate `(from, label, to)` entries, e.g. as emitted by mCRL2's unreduced
+        // `ltscombine` output; `read_aut` must deduplicate rather than fail its internal
+        // "no duplicate outgoing transition" invariant.
+        let file = "des (0, 3, 2)\n(0,\"a\",1)\n(0,\"a\",1)\n(1,\"b\",0)\n";
+
+        let lts = read_aut(file.as_bytes()).unwrap();
+
+        assert_eq!(lts.initial_state_index().value(), 0);
+        assert_eq!(
+            lts.num_of_transitions(),
+            2,
+            "the duplicate (0, a, 1) transition must be merged"
+        );
     }
 
     #[test]

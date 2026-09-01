@@ -1,4 +1,3 @@
-//! Module for storing positions of terms
 #![forbid(unsafe_code)]
 
 use core::fmt;

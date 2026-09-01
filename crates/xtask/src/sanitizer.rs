@@ -28,11 +28,10 @@ fn add_target_flag(arguments: &mut Vec<String>) {
     }
 }
 
+/// Runs the given cargo command under AddressSanitizer and LeakSanitizer to detect memory
+/// issues in unsafe code.
 ///
-/// Run the tests with the address sanitizer enabled to detect memory issues in unsafe code.
-///
-/// This only works under Linux and MacOS currently and requires the nightly toolchain.
-///
+/// Requires the nightly toolchain and only works on Linux and macOS.
 pub(crate) fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     arguments.push("-Zbuild-std".to_string());
 
@@ -55,11 +54,9 @@ pub(crate) fn address_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dy
     Ok(())
 }
 
+/// Runs the given cargo command under ThreadSanitizer to detect data race conditions.
 ///
-/// Run the tests with the thread sanitizer enabled to detect data race conditions.
-///
-/// This only works under Linux and MacOS currently and requires the nightly toolchain.
-///
+/// Requires the nightly toolchain and only works on Linux and macOS.
 pub(crate) fn thread_sanitizer(mut arguments: Vec<String>) -> Result<(), Box<dyn Error>> {
     arguments.push("-Zbuild-std".to_string());
 

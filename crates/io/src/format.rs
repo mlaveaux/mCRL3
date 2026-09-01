@@ -1,8 +1,8 @@
 use std::fmt;
 
-/// Formats bytes into human-readable format using decimal units (GB, MB, KB, bytes)
+/// Displays a byte count with a `bytes`/`KB`/`MB`/`GB` suffix chosen by magnitude.
 ///
-/// Note: This uses decimal units (1 KB = 1000 bytes) rather than binary units (1 KiB = 1024 bytes).
+/// Uses decimal units (1 KB = 1000 bytes), not binary (1 KiB = 1024 bytes).
 pub struct BytesFormatter(pub usize);
 
 impl fmt::Display for BytesFormatter {

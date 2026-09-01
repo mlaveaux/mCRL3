@@ -78,9 +78,8 @@ impl From<u8> for PacketType {
     }
 }
 
-/// Resolves a `(name, arity)` pair read from a stream back into a [Symbol].
-///
-/// This is required for the marker symbols.
+/// Resolves a `(name, arity)` pair read from a stream back into a `Symbol`, returning the pool's
+/// reserved integer symbol rather than a fresh one when the pair names it.
 fn resolve_read_symbol(name: &str, arity: usize) -> Symbol {
     THREAD_TERM_POOL.with(|tp| {
         let int_symbol = tp.int_symbol();
@@ -132,19 +131,14 @@ pub trait ATermStreamable {
 
 /// Writes terms in a streamable binary aterm format to an output stream.
 ///
-/// # The streamable aterm format:
+/// # The streamable aterm format
 ///
-/// Aterms (and function symbols) are written as packets (with an identifier in
-/// the header) and their indices are derived from the number of aterms, resp.
-/// symbols, that occur before them in this stream. For each term we first
-/// ensure that its arguments and symbol are written to the stream (avoiding
-/// duplicates). Then its symbol index followed by a number of indices
-/// (depending on the arity) for its argments are written as integers. Packet
-/// headers also contain a special value to indicate that the read term should
-/// be visible as output as opposed to being only a subterm. The start of the
-/// stream is a zero followed by a header and a version and a term with function
-/// symbol index zero indicates the end of the stream.
-///
+/// Terms and function symbols are written as packets, each identified by a header, with indices
+/// derived from how many terms (resp. symbols) occurred before them in the stream. For each term,
+/// its arguments and symbol are written first (skipping ones already written), then its symbol
+/// index followed by one index per argument. A packet header also carries a flag marking the term
+/// as top-level output rather than only a subterm. The stream opens with a zero byte, the magic
+/// value and the version; a term with function symbol index zero marks the end of the stream.
 pub struct BinaryATermWriter<W: Write> {
     stream: BitStreamWriter<W>,
 
@@ -189,14 +183,11 @@ impl<W: Write> BinaryATermWriter<W> {
         })
     }
 
-    /// Peeks the entry at the back of `stack` without removing it, so it stays
-    /// inside the (`GlobalProtected`, hence GC-rooted) container for as long as
-    /// the caller keeps using it.
+    /// Peeks the entry at the back of `stack` without removing it, so it stays inside the
+    /// GC-rooted container for as long as the caller keeps using it.
     ///
-    /// # Note
-    ///
-    /// The returned `ATermRef<'static>`'s lifetime is only actually backed by
-    /// `stack` still containing this entry:.
+    /// The returned `ATermRef<'static>`'s lifetime is only actually backed by `stack` still
+    /// containing this entry.
     fn peek_stack(&self) -> Option<(ATermRef<'static>, bool)> {
         let guard = self.stack.read();
         let (term, ready) = guard.back()?;
@@ -207,7 +198,8 @@ impl<W: Write> BinaryATermWriter<W> {
         ))
     }
 
-    /// \brief Write a function symbol to the output stream.
+    /// Writes a function symbol to the output stream, or returns its existing index if it was
+    /// already written.
     fn write_function_symbol(&mut self, symbol: &SymbolRef<'_>) -> Result<usize, MercError> {
         if let Some(index) = self.function_symbols.read().index(&symbol.copy()) {
             return Ok(*index);
@@ -388,7 +380,7 @@ impl<W: Write> Drop for BinaryATermWriter<W> {
     }
 }
 
-/// The reader counterpart of [BinaryATermWriter], which reads ATerms from a binary aterm input stream.
+/// Reads ATerms from a binary aterm input stream written by `BinaryATermWriter`.
 pub struct BinaryATermReader<R: Read> {
     stream: BitStreamReader<R>,
 

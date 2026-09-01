@@ -27,7 +27,9 @@ impl DependencyGraph {
         }
     }
 
-    /// Restrict the dependency graph to the given order, and reorder vertices according to it.
+    /// Returns the graph restricted to the vertices in `order`, renumbered to their position in it.
+    ///
+    /// A relation is dropped once none of its read or write variables remain after restriction.
     pub fn reorder(&self, order: &[usize]) -> Self {
         let mut new_relations = Vec::with_capacity(self.relations.len());
 

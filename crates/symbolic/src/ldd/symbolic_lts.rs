@@ -33,6 +33,10 @@ impl<L: TransitionLabel> SymbolicLts<L> {
     ///
     /// `states` is the known state space (pass `initial_state.clone()` when the full set is not
     /// yet known, or provide the reachable set computed by [crate::reachability]).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `parameter_values` does not have exactly one entry per process parameter.
     pub fn new(
         data_specification: Mcrl2DataSpecification,
         process_parameters: Vec<DataVariable>,

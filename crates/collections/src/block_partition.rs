@@ -15,8 +15,11 @@ pub struct BlockPartition<A: Clone + fmt::Debug = ()> {
 }
 
 impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
-    /// Create an initial partition where all the states are in a single block
-    /// 0. And all the elements in the block are marked.
+    /// Creates a partition where all elements are in a single block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `num_of_elements == 0`.
     pub fn new(num_of_elements: usize) -> Self {
         debug_assert!(num_of_elements > 0, "Cannot partition the empty set");
 
@@ -67,18 +70,30 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
         Self { elements, blocks }
     }
 
-    /// Return a reference to the given block.
+    /// Returns a reference to the given block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `block_index` is out of range.
     pub fn block(&self, block_index: BlockIndex) -> &Block<A> {
         &self.blocks[block_index]
     }
 
-    /// Return a mutable reference to the block's annotation.
+    /// Returns a mutable reference to the block's annotation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `block_index` is out of range.
     pub fn block_annotation(&mut self, block_index: BlockIndex) -> &mut A {
         self.blocks[block_index].annotation_mut()
     }
 
     /// Splits a block into two blocks according to the given predicate. If the
     /// predicate holds for all or none of the elements, no split occurs.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `block_index` is out of range.
     pub fn split_block<F>(&mut self, block_index: BlockIndex, predicate: F) -> Option<BlockIndex>
     where
         F: Fn(usize) -> bool,
@@ -124,6 +139,10 @@ impl<A: Clone + fmt::Debug + Default> BlockPartition<A> {
     }
 
     /// Returns an iterator over the elements of a given block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `block_index` is out of range.
     pub fn iter_block(&self, block_index: BlockIndex) -> BlockIter<'_> {
         BlockIter {
             elements: &self.elements,
@@ -164,12 +183,7 @@ impl<B: Clone + fmt::Debug> fmt::Display for BlockPartition<B> {
         write!(f, "{{{}}}", format)
     }
 }
-/// A block that stores a subset of the elements in a partition.
-///
-/// # Details
-///
-/// It uses `start` and `end` to indicate a range start..end of elements in the
-/// partition.
+/// A block that stores a subset of the elements in a partition as a `begin..end` range.
 #[derive(Clone, Copy, Debug)]
 pub struct Block<A: Clone + fmt::Debug> {
     begin: usize,

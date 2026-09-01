@@ -1,5 +1,3 @@
-//! Defines helper types
-
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::sync::MutexGuard;

@@ -4,7 +4,11 @@ use std::process::ExitStatus;
 
 use log::trace;
 
-/// Runs the given command and logs the command line before executing it, returning the exit status.
+/// Logs the command line at trace level, then runs the command to completion.
+///
+/// # Errors
+///
+/// Returns an error if the command could not be spawned or its status could not be retrieved.
 pub fn traced_command(command: &mut Command) -> io::Result<ExitStatus> {
     trace!(
         "{} {}",

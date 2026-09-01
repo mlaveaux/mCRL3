@@ -130,6 +130,10 @@ impl LtsMultiAction<SimpleAction> {
     ///
     /// Handles labels of the form `"a(1, 2) | b | c(x)"`: each `|`-separated
     /// part is split into a label name and optional parenthesised argument list.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a `|`-separated part is empty or has unbalanced parentheses.
     pub fn from_string(input: &str) -> Result<Self, MercError> {
         let mut actions = VecBag::new();
 
@@ -180,6 +184,11 @@ impl LtsMultiAction<LtsAction> {
     }
 
     /// Constructs a MultiAction from an mCRL2 ATerm representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `term` is not a `TimedMultAct` term, or if it carries an
+    /// actual (non-`@undefined_real`) time value, since timed multi-actions are not supported.
     pub fn from_mcrl2_aterm(term: ATerm) -> Result<Self, MercError> {
         if is_mcrl2_timed_multi_action_symbol(&term.get_head_symbol()) {
             let multi_action = MCRL2TimedMultiAction::from(term);
@@ -295,17 +304,17 @@ mod inner {
 
 pub use inner::*;
 
-/// See [`is_mcrl2_timed_multi_action_symbol`]
+/// Checks if the given term's head symbol represents a TimedMultiAction in mCRL2.
 fn is_mcrl2_timed_multi_action<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     is_mcrl2_timed_multi_action_symbol(&term.get_head_symbol())
 }
 
-/// See [`is_mcrl2_action_symbol`]
+/// Checks if the given term's head symbol represents an Action in mCRL2.
 fn is_mcrl2_action<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     is_mcrl2_action_symbol(&term.get_head_symbol())
 }
 
-/// See [`is_mcrl2_action_label_symbol`]
+/// Checks if the given term's head symbol represents an ActionLabel in mCRL2.
 fn is_mcrl2_action_label<'a, 'b, T: Term<'a, 'b>>(term: &'b T) -> bool {
     is_mcrl2_action_label_symbol(&term.get_head_symbol())
 }

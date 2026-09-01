@@ -14,8 +14,8 @@ use merc_utilities::GenerationCounter;
 use merc_utilities::GenerationalIndex;
 use merc_utilities::cast;
 
-/// A type-safe index for use with [IndexedSet]. Uses generational indices in debug builds to assert
-/// correct usage of indices.
+/// A type-safe index into an `IndexedSet`, using generational indices in debug builds to catch
+/// reuse of a stale index.
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct SetIndex(GenerationalIndex<usize>);
@@ -45,7 +45,7 @@ pub struct IndexedSet<T, S = FxBuildHasher> {
     /// The table of elements, which can be either filled or empty.
     table: Vec<IndexSetEntry<T>>,
     /// Indexes of the elements in the set. Stores only the index; the hash is recomputed via the
-    /// stored `hasher` on lookup using [`HashTable`]'s explicit-hash API.
+    /// stored `hasher` on lookup using the hash table's explicit-hash API.
     index: HashTable<usize>,
     /// A list of free nodes, where the value is the first free node.
     free: Option<usize>,
@@ -111,8 +111,8 @@ impl<T, S> IndexedSet<T, S> {
     /// Returns a reference to the element at the given raw table index, if a
     /// filled entry exists there.
     ///
-    /// Unlike [Self::get] this takes a plain `usize` and performs no generation
-    /// check; it only verifies that the slot is in bounds and filled.
+    /// Takes a plain `usize` and performs no generation check, unlike `get`;
+    /// it only verifies that the slot is in bounds and filled.
     pub fn get_by_index(&self, index: usize) -> Option<&T> {
         if let Some(entry) = self.table.get(index) {
             match entry {

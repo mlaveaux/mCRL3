@@ -38,6 +38,10 @@ where
     fn initial_state_index(&self) -> StateIndex;
 
     /// Returns the set of outgoing transitions for the given state.
+    ///
+    /// # Panics
+    ///
+    /// Implementations may panic if `state_index` is not less than [`LTS::num_of_states`].
     fn outgoing_transitions(&self, state_index: StateIndex) -> impl Iterator<Item = Transition> + '_;
 
     /// Iterate over all state_index in the labelled transition system
@@ -61,8 +65,6 @@ where
     /// Consumes the current LTS and merges it with another one, returning the
     /// disjoint merged LTS and the initial state of the other LTS in the merged
     /// LTS.
-    ///
-    /// TODO: Can this be generalised to returning `Self`?
     fn merge_disjoint<L: LTS<Label = Self::Label>>(
         self,
         other: &L,

@@ -9,10 +9,7 @@ pub struct MercError {
 }
 
 impl MercError {
-    /// Attempts to downcast the internal error to the given type.
-    ///
-    /// This is useful when you need to inspect or handle a specific error type
-    /// that may have been wrapped inside a `MercError`.
+    /// Attempts to downcast the wrapped error to the given concrete type.
     ///
     /// # Examples
     ///
@@ -35,10 +32,8 @@ impl MercError {
     }
 }
 
-/// This type exists to make [`MercError`] use a "thin pointer" instead of a
-/// "fat pointer", which reduces the size of our Result by a usize. This does
-/// introduce an extra indirection, but error handling is a "cold path". We
-/// don't need to optimize it to that degree.
+/// Boxed so that `MercError`, and any `Result` containing it, is a single (thin) pointer wide
+/// rather than a fat pointer plus a backtrace.
 struct InnerMercError {
     /// The underlying error
     error: Box<dyn Error + Send + Sync + 'static>,

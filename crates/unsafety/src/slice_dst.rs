@@ -1,7 +1,4 @@
-//! Helper functions and structs to deal with dynamic sized types. In particular to deal with the `TermShared`.
-//!
-//! This code is adapted from the `slice-dst` crate, but supports the `Allocator` unstable api through the `allocator-api2` crate. Furthermore, removed all code that
-//! we are not using anyway.
+//! Adapted from the `slice-dst` crate.
 
 use std::alloc::Layout;
 use std::alloc::LayoutError;
@@ -11,19 +8,27 @@ use std::ptr::slice_from_raw_parts_mut;
 use allocator_api2::alloc::AllocError;
 use allocator_api2::alloc::Allocator;
 
-/// This trait should be implemented by dynamic sized types.
+/// Lets a dynamically sized type be constructed and dropped behind a
+/// type-erased, thin pointer by reconstructing its slice-length metadata on
+/// demand instead of storing a wide pointer.
 ///
 /// # Safety
 ///
-/// Implementing this trait requires various unsafe memory manipulations, and the layout/length must be correct. Otherwise it results in undefined behaviour.
+/// `layout_for(length)` must return the exact layout a value with that many
+/// elements was allocated with. `retype` must turn an untyped pointer of that
+/// layout into a valid `Self`, and `length` must report the element count the
+/// layout was computed from. Any mismatch causes undefined behaviour on
+/// access or deallocation.
 pub unsafe trait SliceDst {
     /// Returns the layout of the slice containing `length` elements for this DST.
     fn layout_for(length: usize) -> Result<Layout, LayoutError>;
 
-    /// Add the type on an untyped pointer
+    /// Reinterprets an untyped slice pointer, whose length is `Self`'s element
+    /// count, as a pointer to `Self`.
     fn retype(ptr: NonNull<[()]>) -> NonNull<Self>;
 
-    /// The number of elements in this dynamic sized type. This information is necessary for deallocation.
+    /// Returns the number of elements in this DST, needed to reconstruct its
+    /// layout on deallocation.
     fn length(&self) -> usize;
 }
 
@@ -45,9 +50,12 @@ unsafe impl<T> SliceDst for T {
     }
 }
 
-/// To calculate the layout of a [repr(C)] structure and the offsets of the fields from its fields’ layouts:
+/// Computes the `#[repr(C)]` layout for a struct whose fields have the given
+/// layouts, in declaration order and padded to the composite's alignment.
 ///
-/// Copied from the `Layout` documentation.
+/// # Errors
+///
+/// Returns [`LayoutError`] if the combined size would overflow `isize`.
 pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutError> {
     let mut layout = Layout::from_size_align(0, 1)?;
     for &field in fields {
@@ -59,19 +67,24 @@ pub fn repr_c<const N: usize>(fields: &[Layout; N]) -> Result<Layout, LayoutErro
     Ok(layout.pad_to_align())
 }
 
-/// A trait that can be used to extend `Allocator` implementations with the
-/// ability to allocate (and deallocate) dynamically sized slices that implement
-/// `SliceDst`.
+/// Extends an [`Allocator`] with the ability to allocate and deallocate
+/// dynamically sized slices implementing [`SliceDst`].
 ///
 /// # Safety
 ///
-/// This trait is unsafe because it relies on the correct implementation of
-/// `SliceDst` for proper memory layout and deallocation.
+/// Implementors must allocate and deallocate using the layout
+/// `T::layout_for(length)` computes, matching what [`SliceDst::retype`] and
+/// [`SliceDst::length`] expect for the returned pointer.
 pub unsafe trait AllocatorDst {
-    /// Allocate an object whose type implements `SliceDst`. The resulting memory is uninitialize.
+    /// Allocates uninitialized memory sized and aligned for `length` elements of `T`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] if the allocation fails.
     fn allocate_slice_dst<T: SliceDst + ?Sized>(&self, length: usize) -> Result<NonNull<T>, AllocError>;
 
-    /// Deallocates an allocation returned by `allocate_slice_dst`.
+    /// Deallocates memory previously returned by
+    /// [`allocate_slice_dst`](Self::allocate_slice_dst) for the same `T` and `length`.
     fn deallocate_slice_dst<T: ?Sized + SliceDst>(&self, ptr: NonNull<T>, length: usize);
 }
 

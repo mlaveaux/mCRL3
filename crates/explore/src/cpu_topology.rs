@@ -111,6 +111,10 @@ impl CpuTopology {
     }
 
     /// One-way latency, in nanoseconds, between core indices `a` and `b`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `a` or `b` is not less than [`CpuTopology::num_cores`].
     pub fn latency_ns(&self, a: usize, b: usize) -> f64 {
         self.latency_ns[a * self.cores.len() + b]
     }

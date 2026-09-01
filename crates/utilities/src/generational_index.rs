@@ -1,6 +1,3 @@
-//! Provides a generational index implementation that offers generation checking
-//! in debug builds while having zero runtime cost in release builds.
-
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -42,13 +39,13 @@ impl<I: Copy + Into<usize>> Deref for GenerationalIndex<I> {
 }
 
 impl<I: Copy + Into<usize>> GenerationalIndex<I> {
-    /// Creates a new generational index with the specified index.
+    /// Creates a new generational index with the specified index and generation.
     #[cfg(debug_assertions)]
     fn new(index: I, generation: usize) -> Self {
         Self { index, generation }
     }
 
-    /// Creates a new generational index with the specified index and generation.
+    /// Creates a new generational index with the specified index.
     #[cfg(not(debug_assertions))]
     fn new(index: I) -> Self {
         Self { index }
@@ -106,6 +103,10 @@ impl GenerationCounter {
     }
 
     /// Returns a generational index with the given index and the current generation.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `index` was never created by [`create_index`](Self::create_index) on this counter.
     pub fn recall_index<I>(&self, index: I) -> GenerationalIndex<I>
     where
         I: Copy + Into<usize>,
@@ -127,6 +128,10 @@ impl GenerationCounter {
 
     /// Returns whether the given generational index is still valid, i.e. its
     /// generation matches the current generation of the underlying slot.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `index` was never created by [`create_index`](Self::create_index) on this counter.
     pub fn is_valid<I>(&self, index: GenerationalIndex<I>) -> bool
     where
         I: Copy + Into<usize>,
@@ -147,7 +152,12 @@ impl GenerationCounter {
         }
     }
 
-    /// Returns the underlying index, checks if the generation is correct.
+    /// Returns the underlying index.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `index` was never created by [`create_index`](Self::create_index) on this
+    /// counter, or if its generation is stale (a use-after-free of a recycled index).
     pub fn get_index<I>(&self, index: GenerationalIndex<I>) -> I
     where
         I: Copy + Into<usize> + fmt::Debug,

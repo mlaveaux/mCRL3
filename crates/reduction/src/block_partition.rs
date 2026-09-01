@@ -44,14 +44,14 @@ impl BlockPartition {
         }
     }
 
-    /// Partition the elements of the given block into multiple new blocks based
-    /// on the given partitioner; which returns a number for each marked
-    /// element. Elements with the same number belong to the same block, and the
-    /// returned numbers should be dense.
+    /// Partitions the marked elements of the given block using `partitioner`,
+    /// which returns a block number for each marked element. Elements with the
+    /// same number end up in the same block; the returned numbers must be
+    /// dense (0, 1, 2, ... with no gaps).
     ///
-    /// Returns an iterator over the new block indices, where the first element
-    /// is the index of the block that was partitioned. And that block is the
-    /// largest block.
+    /// Returns an iterator over the resulting block indices. The first index
+    /// is always the block that was partitioned, and it is guaranteed to hold
+    /// the largest of the resulting blocks.
     pub(crate) fn partition_marked_with<F>(
         &mut self,
         block_index: BlockIndex,
@@ -166,7 +166,7 @@ impl BlockPartition {
             .map(BlockIndex::new)
     }
 
-    /// Split the given block into two separate block based on the splitter
+    /// Splits the given block into two blocks based on the splitter
     /// predicate.
     #[allow(dead_code)]
     pub(crate) fn split_marked<F>(&mut self, block_index: usize, mut splitter: F)
@@ -225,8 +225,8 @@ impl BlockPartition {
         self.assert_consistent();
     }
 
-    /// Makes the marked elements closed under the silent closure of incoming
-    /// tau-transitions within the current block.
+    /// Extends the marked elements to be closed under incoming tau-transitions
+    /// within this block.
     pub(crate) fn mark_backward_closure(
         &mut self,
         block_index: BlockIndex,
@@ -423,16 +423,12 @@ impl fmt::Display for BlockPartition {
     }
 }
 
-/// A block stores a subset of the elements in a partition.
+/// A block stores a contiguous subset of the elements in a partition.
 ///
-/// # Details
+/// The block spans `begin..end`; `marked_split..end` are the marked elements,
+/// which lets a block be split off cheaply.
 ///
-/// A block uses `start`, `middle` and `end` indices to indicate a range
-/// `start`..`end` of elements in the partition. The middle is used such that
-/// `marked_split`..`end` are the marked elements. This is useful to be able to
-/// split off new blocks cheaply.
-///
-/// Invariant: `start` <= `middle` <= `end` && `start` < `end`.
+/// Invariant: `begin <= marked_split <= end` and `begin < end`.
 #[derive(Clone, Copy, Debug)]
 pub struct Block {
     begin: usize,

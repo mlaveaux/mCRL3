@@ -5,30 +5,29 @@ use std::io::Write;
 use std::rc::Rc;
 use std::str::from_utf8;
 
-/// An indentation manager that maintains the current indentation level and provides
-/// methods for formatting text with proper indentation.
+/// A `Write` adapter that prefixes each line with the current indentation level.
 ///
-/// The indentation level can be increased with `indent()`, which returns an `Indent`
-/// guard that automatically decreases the indentation when dropped.
+/// The level increases with `indent()`, which returns a guard that decreases it
+/// again when dropped, so nesting follows scope.
 #[derive(Debug)]
 pub struct IndentFormatter<'a, W: Write> {
-    /// The current indentation level (number of tabs), wrapped in `Rc<RefCell>` for interior mutability
+    /// Current indentation level (number of `indent_str` repetitions per line).
     level: Rc<RefCell<usize>>,
-    /// The underlying writer to which indented content will be written
+    /// Underlying writer that indented content is forwarded to.
     writer: &'a mut W,
-    /// The string used for a single level of indentation
+    /// String repeated `level` times at the start of each line.
     indent_str: String,
-    /// Tracks whether we're at the start of a line (where indentation should be applied)
+    /// Whether the next byte written starts a new line and needs indentation.
     at_line_start: bool,
 }
 
 impl<'a, W: Write> IndentFormatter<'a, W> {
-    /// Creates a new IndentFormatter with zero indentation.
+    /// Wraps `writer` with zero indentation, using two spaces per level.
     pub fn new(writer: &'a mut W) -> Self {
         Self::with_indent_str(writer, "  ".to_string())
     }
 
-    /// Creates a new IndentFormatter with zero indentation and specified indentation string.
+    /// Wraps `writer` with zero indentation, using `indent_str` per level.
     pub fn with_indent_str(writer: &'a mut W, indent_str: String) -> Self {
         Self {
             writer,
@@ -99,18 +98,15 @@ impl<W: Write> Write for IndentFormatter<'_, W> {
     }
 }
 
-/// A guard object that decreases indentation when dropped.
-/// Created by calling `IndentFormatter::indent()`.
-///
-/// Uses interior mutability to avoid requiring a mutable reference to the IndentFormatter.
+/// Guard returned by `IndentFormatter::indent()` that decreases the
+/// indentation level again on drop.
 #[derive(Debug)]
 pub struct Indent {
-    /// Reference-counted cell containing the indentation level
+    /// Shared indentation level, decremented on drop.
     level: Rc<RefCell<usize>>,
 }
 
 impl Drop for Indent {
-    /// Decreases the indentation level when this guard is dropped.
     fn drop(&mut self) {
         let mut level_ref = self.level.borrow_mut();
         debug_assert!(*level_ref > 0, "Indentation level cannot go below zero");

@@ -390,6 +390,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_parsing_rec() {
         assert!(
             RecParser::parse(
@@ -401,6 +402,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn loading_rec() {
         let _ = parse_rec(include_str!("../../../examples/REC/rec/missionaries.rec"), None);
     }

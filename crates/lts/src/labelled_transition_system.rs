@@ -39,15 +39,19 @@ pub struct LabelledTransitionSystem<Label> {
 }
 
 impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
-    /// Creates a new labelled transition system with the given transitions,
-    /// labels, and hidden labels.
+    /// Creates a new labelled transition system from a transition iterator factory.
     ///
-    /// The initial state is the state with the given index. `num_of_states` is
-    /// the number of states in the LTS, if known. If it is not known, pass
-    /// `None`. However, in that case the number of states will be determined
-    /// based on the maximum state index in the transitions. And all states that
-    /// do not have any outgoing transitions will simply be created as deadlock
-    /// states.
+    /// `num_of_states`, when known, fixes the total state count so that states
+    /// with no outgoing transitions still exist as deadlocks; when `None` it is
+    /// inferred from the highest state index seen in the transitions. `labels[0]`
+    /// must be the tau label.
+    ///
+    /// # Panics
+    ///
+    /// `transition_iter` is called twice and must produce the same sequence of
+    /// transitions both times. Panics (in debug mode) if a transition index is
+    /// out of bounds for a given `num_of_states`, or if `labels` does not start
+    /// with the tau label.
     pub fn new<I, F>(
         initial_state: StateIndex,
         num_of_states: Option<usize>,
@@ -122,6 +126,9 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     }
 
     /// Constructs a LTS by a successor function for every state.
+    ///
+    /// `labels[0]` must be the tau label, and `successors` is called once per
+    /// state in `0..num_of_states`.
     pub fn with_successors<F, I>(
         initial_state: StateIndex,
         num_of_states: usize,
@@ -232,6 +239,11 @@ impl<Label: TransitionLabel> LabelledTransitionSystem<Label> {
     /// `permutation(old) = new`. The transition arrays are rebuilt so that
     /// transitions are contiguous per new state index, and all transition
     /// targets are updated to reference the new state indices.
+    ///
+    /// # Panics
+    ///
+    /// `permutation` must be a bijection on `0..lts.num_of_states()`; otherwise the result
+    /// violates the internal LTS invariants and panics (in debug mode) inside `assert_valid`.
     pub fn new_from_permutation<P>(lts: Self, permutation: P) -> Self
     where
         P: Fn(StateIndex) -> StateIndex + Copy,

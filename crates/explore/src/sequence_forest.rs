@@ -105,7 +105,7 @@ impl Tree {
         }
     }
 
-    /// Returns the root node index and height of this tree.
+    /// Returns the root node index of this tree.
     fn root(self) -> usize {
         (self.packed >> MAX_HEIGHT_BITS) as usize
     }
@@ -186,6 +186,8 @@ where
     S: Default,
 {
     /// Creates a new empty forest.
+    ///
+    /// `N` must be at least two; a smaller branching factor fails to compile.
     pub(crate) fn new() -> SequenceForest<V, N, S> {
         const { assert!(N >= 2, "branching factor must be at least two") };
         // One interning table per representable height. The height field is

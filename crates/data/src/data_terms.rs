@@ -55,7 +55,8 @@ pub(crate) struct DataSymbols {
     #[allow(dead_code)]
     pub data_untyped_identifier_clause: ManuallyDrop<Symbol>,
 
-    /// A data expression, not itself a data expression.
+    /// The `DataEqn` symbol, for equations `condition -> lhs = rhs`. Not itself a data
+    /// expression.
     pub data_equation_symbol: ManuallyDrop<Symbol>,
 
     /// A where-clause assignment `x := e`, used inside a `Where` term.
@@ -101,8 +102,8 @@ impl DataSymbols {
         }
     }
 
-    /// Returns true iff the given term is any of the possible data expressions.
-    /// Note that this check is relatively expensive.
+    /// Returns true iff the given term is any of the possible data expressions. This check
+    /// is relatively expensive.
     pub(crate) fn is_data_expression<'a, 'b, T: Term<'a, 'b>>(&mut self, term: &'b T) -> bool {
         self.is_data_variable(term)
             || self.is_data_function_symbol(term)

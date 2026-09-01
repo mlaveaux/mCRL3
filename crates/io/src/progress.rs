@@ -29,8 +29,8 @@ impl<T> TimeProgress<T> {
         }
     }
 
-    /// Increase the progress with the given amount, prints periodic progress
-    /// messages based on time intervals.
+    /// Passes `object` to the message closure if the interval has elapsed since
+    /// the last update, otherwise does nothing.
     ///
     /// When called concurrently from several threads, a compare-exchange ensures
     /// exactly one caller claims the interval and emits the message, so no
@@ -55,7 +55,7 @@ impl<T> TimeProgress<T> {
             >= self.interval_nanos()
     }
 
-    /// Resets the progress timer
+    /// Resets the progress timer.
     pub fn reset(&self) {
         self.last_update.store(self.elapsed_nanos(), Ordering::Relaxed);
     }
