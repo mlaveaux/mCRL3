@@ -7,6 +7,7 @@ mod data_terms;
 mod machine_word_evaluation;
 mod mcrl2_data_specification;
 mod sort_terms;
+mod undefined;
 mod visitor;
 
 // Explicit pub(crate) re-exports.
@@ -55,6 +56,9 @@ pub use sort_terms::SortArrow;
 pub use sort_terms::SortCons;
 pub use sort_terms::SortExpression;
 pub use sort_terms::SortExpressionRef;
+pub use undefined::is_undefined_real;
+pub use undefined::is_undefined_real_ref;
+pub use undefined::undefined_real;
 pub use visitor::ClosureVisitor;
 pub use visitor::DataExpressionVisitor;
 pub use visitor::try_visit_data_expr;

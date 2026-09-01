@@ -21,9 +21,8 @@ use merc_aterm::Transmutable;
 use merc_aterm::storage::Marker;
 use merc_collections::VecBag;
 use merc_data::DataExpression;
-use merc_data::DataVariable;
-use merc_data::DataVariableRef;
-use merc_data::is_data_variable;
+use merc_data::is_undefined_real;
+use merc_data::undefined_real;
 use merc_macros::merc_derive_terms;
 use merc_macros::merc_term;
 use merc_utilities::MercError;
@@ -179,7 +178,7 @@ impl LtsMultiAction<LtsAction> {
             .collect::<Result<Vec<_>, _>>()?;
 
         let actions_list = ATermList::<MCRL2Action>::from_double_iter(action_terms.into_iter());
-        let time_term: DataExpression = DataVariable::new("@undefined_real").into();
+        let time_term: DataExpression = undefined_real();
         Ok(MCRL2TimedMultiAction::new(actions_list, time_term.copy()).into())
     }
 
@@ -193,12 +192,7 @@ impl LtsMultiAction<LtsAction> {
         if is_mcrl2_timed_multi_action_symbol(&term.get_head_symbol()) {
             let multi_action = MCRL2TimedMultiAction::from(term);
 
-            if is_data_variable(&multi_action.time()) {
-                let variable: DataVariableRef = multi_action.time().into();
-                if variable.name() != "@undefined_real" {
-                    return Err("Timed multi-actions are not supported.".into());
-                }
-            } else {
+            if !is_undefined_real(&multi_action.time()) {
                 return Err("Timed multi-actions are not supported.".into());
             }
 
@@ -427,5 +421,33 @@ impl<L: Ord + fmt::Display> fmt::Debug for LtsMultiAction<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Use the debug format to print the display format
         write!(f, "{}", self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use merc_collections::VecBag;
+    use merc_data::is_undefined_real;
+
+    use super::LtsAction;
+    use super::LtsMultiAction;
+
+    #[test]
+    fn to_aterm_uses_the_mcrl2_undefined_real() {
+        let multi_action = LtsMultiAction::new(VecBag::singleton(LtsAction::new("a".to_string(), vec![])));
+        let term = multi_action.to_mcrl2_aterm().unwrap();
+
+        // The default time term must be exactly mCRL2's undefined real: we parse it back and
+        // check the time slot of the resulting TimedMultAct is that variable.
+        let timed: super::MCRL2TimedMultiAction = term.clone().into();
+        assert!(is_undefined_real(&timed.time()));
+    }
+
+    #[test]
+    fn round_trips_an_untimed_multi_action() {
+        let multi_action = LtsMultiAction::new(VecBag::singleton(LtsAction::new("a".to_string(), vec![])));
+        let term = multi_action.to_mcrl2_aterm().unwrap();
+        let back = LtsMultiAction::from_mcrl2_aterm(term).unwrap();
+        assert_eq!(back, multi_action);
     }
 }
