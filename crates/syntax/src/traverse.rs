@@ -6,7 +6,7 @@ use merc_utilities::Visit;
 
 use crate::ActFrm;
 use crate::ActFrmKind;
-use crate::Assignment;
+use crate::AssignmentData;
 use crate::BagElement;
 use crate::ConstructorDecl;
 use crate::DataExpr;
@@ -22,6 +22,7 @@ use crate::RegFrm;
 use crate::RegFrmKind;
 use crate::SortExpression;
 use crate::SortExpressionKind;
+use crate::Spanned;
 use crate::StateFrm;
 use crate::StateFrmKind;
 
@@ -368,7 +369,10 @@ define_traversal! {
         DataExprKind::Whr { expr, assignments } => {
             recurse(expr)?;
             for assignment in assignments {
-                let Assignment { expr: value, .. } = assignment;
+                let Spanned {
+                    node: AssignmentData { expr: value, .. },
+                    ..
+                } = assignment;
                 recurse(value)?;
             }
         }

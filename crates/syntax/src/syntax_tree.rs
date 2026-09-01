@@ -121,20 +121,27 @@ impl PropVarDecl {
 }
 
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
-pub struct PropVarInst {
+pub struct PropVarInstData {
     pub identifier: String,
     pub arguments: Vec<DataExpr>,
-    pub span: Span,
+}
+
+/// A propositional-variable instantiation, paired with the source [Span] it was parsed from.
+/// Equality/ordering/hashing ignore the span, per [Spanned]'s documented convention.
+pub type PropVarInst = Spanned<PropVarInstData>;
+
+impl PropVarInstData {
+    /// Wraps this data together with a source `span`.
+    pub fn spanned(self, span: Span) -> PropVarInst {
+        Spanned { node: self, span }
+    }
 }
 
 impl PropVarInst {
-    /// Creates a new instance of a propositional variable with the given identifier and arguments.
+    /// Creates a new instance of a propositional variable with the given identifier and
+    /// arguments, with a default (empty) span.
     pub fn new(identifier: String, arguments: Vec<DataExpr>) -> Self {
-        PropVarInst {
-            identifier,
-            arguments,
-            span: Span::default(),
-        }
+        PropVarInstData { identifier, arguments }.spanned(Span::default())
     }
 }
 
@@ -214,14 +221,17 @@ pub type SortExpression = Spanned<SortExpressionKind>;
 impl SortExpressionKind {
     /// Wraps this kind together with a source `span` into a [SortExpression].
     pub fn spanned(self, span: Span) -> SortExpression {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
 impl From<SortExpressionKind> for SortExpression {
     /// For synthetic expressions that have no source location.
     fn from(kind: SortExpressionKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -279,14 +289,23 @@ impl SortDecl {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct EqnSpec {
+pub struct EqnSpecData {
     pub variables: Vec<IdDecl<EqnVarId>>,
     pub equations: Vec<EqnDecl>,
-    /// The span of the whole `var ... eqn ...` block, from `var`/`eqn` (whichever comes first) to
-    /// at least the final `;`
-    pub span: Span,
     /// Unique ID assigned to this block during declaration-id resolution.
     pub id: Option<EqnSpecId>,
+}
+
+/// An equation-specification block (`var ... eqn ...`), paired with the source [Span] of the
+/// whole block, from `var`/`eqn` (whichever comes first) to at least the final `;`.
+/// Equality/ordering/hashing ignore the span, per [Spanned]'s documented convention.
+pub type EqnSpec = Spanned<EqnSpecData>;
+
+impl EqnSpecData {
+    /// Wraps this data together with a source `span`.
+    pub fn spanned(self, span: Span) -> EqnSpec {
+        Spanned { node: self, span }
+    }
 }
 
 /// Equation declaration
@@ -404,14 +423,17 @@ pub type DataExpr = Spanned<DataExprKind>;
 impl DataExprKind {
     /// Wraps this kind together with a source `span`.
     pub fn spanned(self, span: Span) -> DataExpr {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
 impl From<DataExprKind> for DataExpr {
     /// For synthetic expressions that have no source location.
     fn from(kind: DataExprKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -427,39 +449,29 @@ pub struct DataExprUpdate {
     pub update: DataExpr,
 }
 
-#[derive(Clone, Debug)]
-pub struct Assignment {
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+pub struct AssignmentData {
     pub identifier: String,
     pub expr: DataExpr,
-    pub span: Span,
 }
 
-impl PartialEq for Assignment {
-    fn eq(&self, other: &Self) -> bool {
-        self.identifier == other.identifier && self.expr == other.expr
+/// A process-instantiation assignment (`x = e`, as in `P(x = 1)`), paired with the source [Span]
+/// it was parsed from. Equality/ordering/hashing ignore the span, per [Spanned]'s documented
+/// convention.
+pub type Assignment = Spanned<AssignmentData>;
+
+impl AssignmentData {
+    /// Wraps this data together with a source `span`.
+    pub fn spanned(self, span: Span) -> Assignment {
+        Spanned { node: self, span }
     }
 }
 
-// Plain `Eq` resolves to this file's own `enum Eq` (a PBES equality-operator, unrelated), so this
-// needs the fully-qualified path.
-impl std::cmp::Eq for Assignment {}
-
-impl PartialOrd for Assignment {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Assignment {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (&self.identifier, &self.expr).cmp(&(&other.identifier, &other.expr))
-    }
-}
-
-impl Hash for Assignment {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.identifier.hash(state);
-        self.expr.hash(state);
+impl Assignment {
+    /// Creates a new assignment with the given identifier and expression, with a default (empty)
+    /// span.
+    pub fn new(identifier: String, expr: DataExpr) -> Self {
+        AssignmentData { identifier, expr }.spanned(Span::default())
     }
 }
 
@@ -535,7 +547,7 @@ pub type ProcessExpr = Spanned<ProcessExprKind>;
 impl ProcessExprKind {
     /// Wraps this kind together with a source `span` into a [ProcessExpr].
     pub fn spanned(self, span: Span) -> ProcessExpr {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
@@ -543,7 +555,10 @@ impl From<ProcessExprKind> for ProcessExpr {
     /// Wraps a kind into a [ProcessExpr] with a default (empty) span, for
     /// synthetic expressions that have no source location.
     fn from(kind: ProcessExprKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -658,7 +673,7 @@ pub type StateFrm = Spanned<StateFrmKind>;
 impl StateFrmKind {
     /// Wraps this kind together with a source `span` into a [StateFrm].
     pub fn spanned(self, span: Span) -> StateFrm {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
@@ -666,7 +681,10 @@ impl From<StateFrmKind> for StateFrm {
     /// Wraps a kind into a [StateFrm] with a default (empty) span, for
     /// synthetic formulas that have no source location.
     fn from(kind: StateFrmKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -789,7 +807,7 @@ pub type ActFrm = Spanned<ActFrmKind>;
 impl ActFrmKind {
     /// Wraps this kind together with a source `span` into an [ActFrm].
     pub fn spanned(self, span: Span) -> ActFrm {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
@@ -797,7 +815,10 @@ impl From<ActFrmKind> for ActFrm {
     /// Wraps a kind into an [ActFrm] with a default (empty) span, for
     /// synthetic formulas that have no source location.
     fn from(kind: ActFrmKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -831,7 +852,7 @@ pub type PbesExpr = Spanned<PbesExprKind>;
 impl PbesExprKind {
     /// Wraps this kind together with a source `span` into a [PbesExpr].
     pub fn spanned(self, span: Span) -> PbesExpr {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
@@ -839,7 +860,10 @@ impl From<PbesExprKind> for PbesExpr {
     /// Wraps a kind into a [PbesExpr] with a default (empty) span, for
     /// synthetic expressions that have no source location.
     fn from(kind: PbesExprKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -919,7 +943,7 @@ pub type PresExpr = Spanned<PresExprKind>;
 impl PresExprKind {
     /// Wraps this kind together with a source `span` into a [PresExpr].
     pub fn spanned(self, span: Span) -> PresExpr {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
@@ -927,7 +951,10 @@ impl From<PresExprKind> for PresExpr {
     /// Wraps a kind into a [PresExpr] with a default (empty) span, for
     /// synthetic expressions that have no source location.
     fn from(kind: PresExprKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 
@@ -985,7 +1012,7 @@ pub type RegFrm = Spanned<RegFrmKind>;
 impl RegFrmKind {
     /// Wraps this kind together with a source `span` into a [RegFrm].
     pub fn spanned(self, span: Span) -> RegFrm {
-        Spanned::new(self, span)
+        Spanned { node: self, span }
     }
 }
 
@@ -993,7 +1020,10 @@ impl From<RegFrmKind> for RegFrm {
     /// Wraps a kind into a [RegFrm] with a default (empty) span, for
     /// synthetic formulas that have no source location.
     fn from(kind: RegFrmKind) -> Self {
-        Spanned::new(kind, Span::default())
+        Spanned {
+            node: kind,
+            span: Span::default(),
+        }
     }
 }
 

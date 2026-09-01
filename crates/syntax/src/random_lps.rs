@@ -71,11 +71,10 @@ pub fn random_lps<R: Rng>(
                     rhs: Box::new(
                         ProcessExprKind::Id(
                             "P".to_string(),
-                            vec![Assignment {
-                                identifier: "s".to_string(),
-                                expr: DataExprKind::Number(to.to_string()).into(),
-                                span: Span::default(),
-                            }],
+                            vec![Assignment::new(
+                                "s".to_string(),
+                                DataExprKind::Number(to.to_string()).into(),
+                            )],
                         )
                         .into(),
                     ),
@@ -120,11 +119,10 @@ pub fn random_lps<R: Rng>(
     let init_state = rng.random_range(0..num_states);
     let init = ProcessExprKind::Id(
         "P".to_string(),
-        vec![Assignment {
-            identifier: "s".to_string(),
-            expr: DataExprKind::Number(init_state.to_string()).into(),
-            span: Span::default(),
-        }],
+        vec![Assignment::new(
+            "s".to_string(),
+            DataExprKind::Number(init_state.to_string()).into(),
+        )],
     )
     .into();
 
@@ -191,11 +189,7 @@ fn random_process_instance<R: Rng>(rng: &mut R, pv: &ProcVar, freevars: &[IdDecl
             } else {
                 random_integer_data_expression(rng, freevars)
             };
-            Assignment {
-                identifier: p.identifier.clone(),
-                expr,
-                span: Span::default(),
-            }
+            Assignment::new(p.identifier.clone(), expr)
         })
         .collect();
     ProcessExprKind::Id(pv.name.clone(), assignments).into()
@@ -473,11 +467,7 @@ pub fn make_process_specification<R: Rng>(
                     } else {
                         DataExprKind::Number(rng.random_range(0..=2u32).to_string()).into()
                     };
-                    Assignment {
-                        identifier: p.identifier.clone(),
-                        expr,
-                        span: Span::default(),
-                    }
+                    Assignment::new(p.identifier.clone(), expr)
                 })
                 .collect();
             ProcessExprKind::Id(pv.name.clone(), assignments).into()
