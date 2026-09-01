@@ -16,6 +16,7 @@ use crate::InferenceError;
 use crate::ResolvedSortId;
 use crate::Signature;
 use crate::SortInterner;
+use crate::TypingInfo;
 
 /// The context shared by all type-checking queries.
 ///
@@ -59,6 +60,15 @@ pub(crate) struct TypeCheckContext {
     /// `assign_declaration_ids` numbers each specification's ids independently
     /// from zero, so the keys would otherwise collide.
     pub(crate) system_equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Arc<EquationTyping>, InferenceError>>,
+
+    /// The memoized results of `DataSpecification::equation_typing_info`, keyed the same way as
+    /// `equation_typing`. `DataSpecification` is immutable once built, so each equation's
+    /// `TypingInfo` only ever needs computing once.
+    pub(crate) equation_typing_info: QueryCache<(EqnSpecId, EquationId), Arc<TypingInfo>>,
+    /// The memoized result of `DataSpecification::typing_info` (every equation's typing, merged) —
+    /// a single value rather than a `QueryCache`, following `signature`'s precedent: there is only
+    /// ever one whole-document typing to cache.
+    pub(crate) whole_typing_info: Option<Arc<TypingInfo>>,
 }
 
 impl TypeCheckContext {
@@ -75,6 +85,8 @@ impl TypeCheckContext {
             system_sort_ids: None,
             equation_typing: QueryCache::new(),
             system_equation_typing: QueryCache::new(),
+            equation_typing_info: QueryCache::new(),
+            whole_typing_info: None,
         }
     }
 }
@@ -215,6 +227,16 @@ impl<K: Eq + Hash, V> QueryCache<K, V> {
             QueryEntry::Done(value) => Some(value),
             QueryEntry::InProgress => None,
         })
+    }
+
+    /// Unconditionally stores `value` as the done result for `key`.
+    ///
+    /// For a caller that already has the value in hand and only needs the cache as storage —
+    /// unlike [`TypeCheckContext::get_or_compute`], this does not detect cyclic self-dependency, so
+    /// it's for a query with no risk of one (a whole-document memo whose `compute` step needs data
+    /// outside `TypeCheckContext` itself, such as `DataSpecification::equation_typing_info`).
+    pub(crate) fn insert(&mut self, key: K, value: V) {
+        self.entries.insert(key, QueryEntry::Done(value));
     }
 }
 

@@ -501,7 +501,10 @@ impl Lowering<'_> {
         let sort = self.sorts[*id];
 
         match &expr.node {
-            DataExprKind::Id(name) => self.lower_id(id, name, sort),
+            // `Resolved` never reaches this Phase-4 lowering — it only ever appears on a
+            // process/PBES-body expression, which this lowers-equations-only pass never sees —
+            // but is grouped with `Id` for exhaustiveness.
+            DataExprKind::Id(name) | DataExprKind::Resolved(name, _) => self.lower_id(id, name, sort),
             DataExprKind::Number(value) => {
                 self.literals.insert(id, value.clone());
                 self.lower_number(sort, value)

@@ -445,21 +445,56 @@ impl DataSpecification {
     ///
     /// `key` must index an equation of this specification (the `EqnSpecId`/`EquationId` on
     /// [`Self::data_specification`]); panics otherwise.
-    pub fn equation_typing_info(&self, key: (EqnSpecId, EquationId)) -> TypingInfo {
-        typing_info::build(self, self.equation_typing(key))
+    ///
+    /// Memoized in `self.context`'s `equation_typing_info` cache: `self` is immutable once built,
+    /// so a given `key`'s `TypingInfo` only ever needs building once — an LSP hovering repeatedly
+    /// over the same equation reuses the cached `Arc` rather than re-deriving its `DeclarationIndex`
+    /// and every node's sort each time. Takes `&mut self` to populate that cache; still returns an
+    /// owned `TypingInfo` (cloned out of the cached `Arc`) for API stability.
+    ///
+    /// Not built through `TypeCheckContext::get_or_compute`: that helper's `compute` closure only
+    /// gets `&mut TypeCheckContext`, but building a `TypingInfo` needs `self` as a whole (the
+    /// `DataSpecification`'s own accessors); there's also no risk of the cyclic self-dependency
+    /// `get_or_compute` guards against, since this never recurses into itself.
+    pub fn equation_typing_info(&mut self, key: (EqnSpecId, EquationId)) -> TypingInfo {
+        if let Some(cached) = self.context.equation_typing_info.get(&key) {
+            return (**cached).clone();
+        }
+        let info = Arc::new(typing_info::build(self, self.equation_typing(key)));
+        self.context.equation_typing_info.insert(key, Arc::clone(&info));
+        (*info).clone()
     }
 
     /// Every user equation's typing, merged into one table, in declaration order. See
     /// [`Self::equation_typing_info`] for the per-equation version.
-    pub fn typing_info(&self) -> TypingInfo {
-        let mut info = TypingInfo::default();
-        for eqn_spec in &self.spec.equation_declarations {
-            let eqn_spec_id = eqn_spec.id.expect("assign_declaration_ids ran during from_untyped");
-            for equation in &eqn_spec.equations {
-                let equation_id = equation.id.expect("assign_declaration_ids ran during from_untyped");
-                info.merge(self.equation_typing_info((eqn_spec_id, equation_id)));
-            }
+    ///
+    /// Memoized as `self.context`'s `whole_typing_info` singleton, the same way — a second call
+    /// reuses the cached `Arc` instead of re-merging every equation's typing again.
+    pub fn typing_info(&mut self) -> TypingInfo {
+        if let Some(cached) = &self.context.whole_typing_info {
+            return (**cached).clone();
         }
+
+        // Collected up front so the loop below can call `self.equation_typing_info` (`&mut self`)
+        // without also holding a borrow of `self.spec.equation_declarations`.
+        let keys: Vec<(EqnSpecId, EquationId)> = self
+            .spec
+            .equation_declarations
+            .iter()
+            .flat_map(|eqn_spec| {
+                let eqn_spec_id = eqn_spec.id.expect("assign_declaration_ids ran during from_untyped");
+                eqn_spec.equations.iter().map(move |equation| {
+                    let equation_id = equation.id.expect("assign_declaration_ids ran during from_untyped");
+                    (eqn_spec_id, equation_id)
+                })
+            })
+            .collect();
+
+        let mut info = TypingInfo::default();
+        for key in keys {
+            info.merge(self.equation_typing_info(key));
+        }
+        self.context.whole_typing_info = Some(Arc::new(info.clone()));
         info
     }
 
@@ -607,6 +642,54 @@ mod tests {
         );
         let again = query_equation_typing(&mut checked.context, &checked.spec, &checked.system, key).unwrap();
         assert!(Arc::ptr_eq(&first, &again));
+    }
+
+    /// A second `equation_typing_info` call for the same key must reuse the cached `Arc` rather
+    /// than re-deriving the `DeclarationIndex` and every node's sort again.
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_equation_typing_info_is_memoized() {
+        let spec = UntypedDataSpecification::parse("map f: Nat; eqn f = 1;").unwrap();
+        let mut checked = DataSpecification::from_untyped(spec).unwrap();
+        let key = (EqnSpecId::new(0), EquationId::new(0));
+
+        checked.equation_typing_info(key);
+        let first = Arc::clone(
+            checked
+                .context
+                .equation_typing_info
+                .get(&key)
+                .expect("equation_typing_info populated the cache"),
+        );
+        checked.equation_typing_info(key);
+        let again = Arc::clone(checked.context.equation_typing_info.get(&key).expect("still cached"));
+        assert!(
+            Arc::ptr_eq(&first, &again),
+            "a second call must reuse the cached TypingInfo, not rebuild it"
+        );
+    }
+
+    /// As [`test_equation_typing_info_is_memoized`], for the whole-document `typing_info` memo.
+    #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
+    fn test_typing_info_is_memoized() {
+        let spec = UntypedDataSpecification::parse("map f: Nat; eqn f = 1;").unwrap();
+        let mut checked = DataSpecification::from_untyped(spec).unwrap();
+
+        checked.typing_info();
+        let first = Arc::clone(
+            checked
+                .context
+                .whole_typing_info
+                .as_ref()
+                .expect("typing_info populated the cache"),
+        );
+        checked.typing_info();
+        let again = Arc::clone(checked.context.whole_typing_info.as_ref().expect("still cached"));
+        assert!(
+            Arc::ptr_eq(&first, &again),
+            "a second call must reuse the cached TypingInfo, not rebuild it"
+        );
     }
 
     #[test]
