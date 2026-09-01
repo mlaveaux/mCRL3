@@ -8,16 +8,11 @@ use merc_utilities::Span;
 
 /// A value of type `T` paired with the source [Span] it originates from.
 ///
-/// This mirrors rustc's `Spanned<T>` / node-struct pattern: the wrapper carries
-/// the location while the inner `node` holds the actual syntax. It is used to
-/// give every expression node a span without threading a `span` field into each
-/// enum variant.
-///
 /// Equality, ordering and hashing deliberately ignore the [Span] and consider
 /// only `node`, so two structurally identical values at different source
 /// locations compare and hash equal. Many passes rely on this structural
 /// equality (hash maps, deduplication, `assert_eq!` in tests).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Spanned<T> {
     /// The wrapped value.
     pub node: T,
@@ -26,11 +21,6 @@ pub struct Spanned<T> {
 }
 
 impl<T> Spanned<T> {
-    /// Wraps `node` together with its source `span`.
-    pub fn new(node: T, span: Span) -> Self {
-        Spanned { node, span }
-    }
-
     /// Transforms the wrapped value while preserving the span.
     pub fn map<U>(self, function: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
@@ -40,8 +30,7 @@ impl<T> Spanned<T> {
     }
 }
 
-/// Wraps `node` together with its source `span`; the free-function counterpart
-/// of [Spanned::new], mirroring rustc's `respan`.
+/// Wraps `node` together with its source `span`.
 pub fn respan<T>(span: Span, node: T) -> Spanned<T> {
     Spanned { node, span }
 }

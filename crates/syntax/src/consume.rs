@@ -14,6 +14,7 @@ use crate::ActionRHS;
 use crate::ActionRenameDecl;
 use crate::ActionRenameRule;
 use crate::Assignment;
+use crate::AssignmentData;
 use crate::BagElement;
 use crate::CommExpr;
 use crate::ComplexSort;
@@ -27,6 +28,7 @@ use crate::DataExprUpdate;
 use crate::Eq;
 use crate::EqnDecl;
 use crate::EqnSpec;
+use crate::EqnSpecData;
 use crate::EqnVarId;
 use crate::FixedPointOperator;
 use crate::IdDecl;
@@ -44,6 +46,7 @@ use crate::ProcessExpr;
 use crate::ProcessExprKind;
 use crate::PropVarDecl;
 use crate::PropVarInst;
+use crate::PropVarInstData;
 use crate::RegFrm;
 use crate::Rename;
 use crate::Rule;
@@ -271,18 +274,16 @@ impl Mcrl2Parser {
         let span = inst.as_span();
         match_nodes!(inst.into_children();
             [Id(identifier)] => {
-                Ok(PropVarInst {
+                Ok(PropVarInstData {
                     identifier,
                     arguments: Vec::new(),
-                    span: span.into(),
-                })
+                }.spanned(span.into()))
             },
             [Id(identifier), DataExprList(arguments)] => {
-                Ok(PropVarInst {
+                Ok(PropVarInstData {
                     identifier,
                     arguments,
-                    span: span.into(),
-                })
+                }.spanned(span.into()))
             }
         )
     }
@@ -723,7 +724,7 @@ impl Mcrl2Parser {
         match_nodes!(assignment.into_children();
             [IdAt(identifier), DataExpr(expr)] => {
                 let span = Span { start, end: start + identifier.len() };
-                Ok(Assignment { identifier, expr, span })
+                Ok(AssignmentData { identifier, expr }.spanned(span))
             },
         )
     }
@@ -1472,15 +1473,14 @@ impl Mcrl2Parser {
 
         match_nodes!(spec.into_children();
             [VarSpec(variables), EqnDecl(decls)..] => {
-                ids.push(EqnSpec {
+                ids.push(EqnSpecData {
                     variables: variables.into_iter().map(|v| v.retag::<EqnVarId>()).collect(),
                     equations: decls.collect(),
-                    span: span.into(),
                     id: None,
-                });
+                }.spanned(span.into()));
             },
             [EqnDecl(decls)..] => {
-                ids.push(EqnSpec { variables: Vec::new(), equations: decls.collect(), span: span.into(), id: None });
+                ids.push(EqnSpecData { variables: Vec::new(), equations: decls.collect(), id: None }.spanned(span.into()));
             },
         );
 
