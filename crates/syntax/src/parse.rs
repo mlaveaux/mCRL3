@@ -4,6 +4,7 @@ use pest_derive::Parser;
 use merc_pest_consume::Error;
 use merc_utilities::MercError;
 
+use crate::ActionName;
 use crate::CommExpr;
 use crate::DataExpr;
 use crate::DataExprBinaryOp;
@@ -117,7 +118,8 @@ pub fn parse_action_names(input: &str) -> Result<Vec<String>, MercError> {
     let mut result = Mcrl2Parser::parse(Rule::ActIdSet, input).map_err(extend_parser_error)?;
     let root = result.next().expect("Could not parse action name list");
 
-    Ok(Mcrl2Parser::ActIdSet(ParseNode::new(root))?)
+    let names: Vec<ActionName> = Mcrl2Parser::ActIdSet(ParseNode::new(root))?;
+    Ok(names.into_iter().map(|name| name.node).collect())
 }
 
 /// Parses the action names for the allow operator from the given input string.

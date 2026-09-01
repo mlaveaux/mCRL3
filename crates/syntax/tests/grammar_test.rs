@@ -308,3 +308,67 @@ fn process_declaration_span_is_precisely_the_identifier() {
         .collect();
     assert_eq!(spans, ["P", "Q"]);
 }
+
+/// `EqnSpec`/`PropVarInst`/`Assignment` are `Spanned<T>` wrappers, so equality and hashing must
+/// ignore `span` entirely (per [`merc_syntax::Spanned`]'s documented convention) — two values
+/// differing only in span compare and hash equal.
+#[test]
+fn eqn_spec_and_prop_var_inst_equality_ignores_span() {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hash;
+    use std::hash::Hasher;
+
+    use merc_syntax::AssignmentData;
+    use merc_syntax::DataExprKind;
+    use merc_syntax::EqnSpecData;
+    use merc_syntax::PropVarInstData;
+    use merc_utilities::Span;
+
+    fn hash_of<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    let eqn_spec_a = EqnSpecData {
+        variables: Vec::new(),
+        equations: Vec::new(),
+        id: None,
+    }
+    .spanned(Span { start: 0, end: 3 });
+    let eqn_spec_b = EqnSpecData {
+        variables: Vec::new(),
+        equations: Vec::new(),
+        id: None,
+    }
+    .spanned(Span { start: 10, end: 30 });
+    assert_eq!(eqn_spec_a, eqn_spec_b);
+    assert_eq!(hash_of(&eqn_spec_a), hash_of(&eqn_spec_b));
+
+    let prop_var_inst_a = PropVarInstData {
+        identifier: "X".to_string(),
+        arguments: Vec::new(),
+    }
+    .spanned(Span { start: 0, end: 1 });
+    let prop_var_inst_b = PropVarInstData {
+        identifier: "X".to_string(),
+        arguments: Vec::new(),
+    }
+    .spanned(Span { start: 5, end: 6 });
+    assert_eq!(prop_var_inst_a, prop_var_inst_b);
+    assert_eq!(hash_of(&prop_var_inst_a), hash_of(&prop_var_inst_b));
+
+    let one = DataExprKind::Number("1".to_string()).spanned(Span { start: 0, end: 1 });
+    let assignment_a = AssignmentData {
+        identifier: "x".to_string(),
+        expr: one.clone(),
+    }
+    .spanned(Span { start: 0, end: 1 });
+    let assignment_b = AssignmentData {
+        identifier: "x".to_string(),
+        expr: one,
+    }
+    .spanned(Span { start: 20, end: 21 });
+    assert_eq!(assignment_a, assignment_b);
+    assert_eq!(hash_of(&assignment_a), hash_of(&assignment_b));
+}

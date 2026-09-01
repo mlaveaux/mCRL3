@@ -5,6 +5,7 @@ use rand::seq::IndexedRandom;
 use merc_utilities::Span;
 
 use crate::ActDecl;
+use crate::ActionName;
 use crate::Assignment;
 use crate::CommExpr;
 use crate::DataExprBinaryOp;
@@ -22,6 +23,7 @@ use crate::UntypedDataSpecification;
 use crate::UntypedProcessSpecification;
 use crate::random_boolean_data_expression;
 use crate::random_integer_data_expression;
+use crate::respan;
 
 /// Generates a random linear process specification as an AST.
 ///
@@ -318,12 +320,18 @@ fn random_process_expr<R: Rng>(
     }
 }
 
+/// Wraps a synthetically-generated action name in a default (empty) [Span] — random generation
+/// has no source location to attach, unlike a name read off actual parser input.
+fn synthetic_name(name: String) -> ActionName {
+    respan(Span::default(), name)
+}
+
 fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> ProcessExpr {
     match rng.random_range(0..5usize) {
         0 => {
             let a = (*actions.choose(rng).expect("actions is non-empty")).to_string();
             ProcessExprKind::Hide {
-                actions: vec![a],
+                actions: vec![synthetic_name(a)],
                 operand: Box::new(expr),
             }
             .into()
@@ -331,7 +339,7 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
         1 => {
             let a = (*actions.choose(rng).expect("actions is non-empty")).to_string();
             ProcessExprKind::Block {
-                actions: vec![a],
+                actions: vec![synthetic_name(a)],
                 operand: Box::new(expr),
             }
             .into()
@@ -345,7 +353,10 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
                 .expect("pool has at least one element after removing from"))
             .to_string();
             ProcessExprKind::Rename {
-                renames: vec![Rename { from, to }],
+                renames: vec![Rename {
+                    from: synthetic_name(from),
+                    to: synthetic_name(to),
+                }],
                 operand: Box::new(expr),
             }
             .into()
@@ -362,7 +373,10 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
                 .expect("pool has at least one element after removing a and b")
                 .clone();
             ProcessExprKind::Comm {
-                comm: vec![CommExpr::new(MultiActionLabel::new(vec![a, b]), c)],
+                comm: vec![CommExpr::new(
+                    MultiActionLabel::new(vec![synthetic_name(a), synthetic_name(b)]),
+                    synthetic_name(c),
+                )],
                 operand: Box::new(expr),
             }
             .into()
@@ -371,8 +385,8 @@ fn apply_wrapper<R: Rng>(rng: &mut R, actions: &[&str], expr: ProcessExpr) -> Pr
             let mut labels: Vec<MultiActionLabel> = (0..5)
                 .map(|_| {
                     let size = rng.random_range(1..=2usize);
-                    let mut acts: Vec<String> = (0..size)
-                        .map(|_| (*actions.choose(rng).expect("actions is non-empty")).to_string())
+                    let mut acts: Vec<ActionName> = (0..size)
+                        .map(|_| synthetic_name((*actions.choose(rng).expect("actions is non-empty")).to_string()))
                         .collect();
                     acts.sort();
                     acts.dedup();

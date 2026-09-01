@@ -9,6 +9,7 @@ use crate::ActFrm;
 use crate::ActFrmBinaryOp;
 use crate::ActFrmKind;
 use crate::Action;
+use crate::ActionName;
 use crate::Assignment;
 use crate::Bound;
 use crate::CommExpr;
@@ -747,6 +748,12 @@ impl fmt::Display for CommExpr {
 impl fmt::Display for Rename {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} -> {}", self.from, self.to)
+    }
+}
+
+impl fmt::Display for ActionName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.node)
     }
 }
 
