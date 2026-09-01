@@ -326,7 +326,7 @@ impl fmt::Display for DataExpr {
                     .format_with(", ", |e, f| f(&format_args!("{}: {}", e.expr, e.multiplicity)))
             ),
             DataExprKind::Set(expressions) => write!(f, "{{ {} }}", expressions.iter().format(", ")),
-            DataExprKind::Id(identifier) => write!(f, "{identifier}"),
+            DataExprKind::Id(identifier) | DataExprKind::Resolved(identifier, _) => write!(f, "{identifier}"),
             DataExprKind::Binary { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             DataExprKind::Unary { op, expr } => write!(f, "({op} {expr})"),
             DataExprKind::Bool(value) => write!(f, "{value}"),
