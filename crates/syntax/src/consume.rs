@@ -1050,16 +1050,23 @@ impl Mcrl2Parser {
         parse_process_expr(input.children().as_pairs().clone())
     }
 
+    // `ProcExprId = { Id ~ "(" ~ AssignmentList? ~ ")" }`: walked by hand, rather than via
+    // `match_nodes!`, so the leading `Id` keeps its own span — see [Self::Action].
     pub(crate) fn ProcExprId(input: ParseNode) -> ParseResult<ProcessExpr> {
         let span: Span = input.as_span().into();
-        match_nodes!(input.into_children();
-            [Id(identifier)] => {
-                Ok(ProcessExprKind::Id(identifier, Vec::new()).spanned(span))
-            },
-            [Id(identifier), AssignmentList(assignments)] => {
-                Ok(ProcessExprKind::Id(identifier, assignments).spanned(span))
-            },
-        )
+        let mut children = input.into_children();
+        let id_node = children.next().expect("ProcExprId requires a leading Id");
+        let identifier = ActionName {
+            node: id_node.as_str().to_string(),
+            span: id_node.as_span().into(),
+        };
+
+        let assignments = match children.next() {
+            Some(node) => Self::AssignmentList(node)?,
+            None => Vec::new(),
+        };
+
+        Ok(ProcessExprKind::Id(identifier, assignments).spanned(span))
     }
 
     pub(crate) fn ProcExprBlock(input: ParseNode) -> ParseResult<ProcessExpr> {
@@ -1205,15 +1212,23 @@ impl Mcrl2Parser {
         )
     }
 
+    // `Action = { Id ~ ("(" ~ DataExprList ~ ")")? }`: walked by hand, rather than via
+    // `match_nodes!`, so the leading `Id` keeps its own span (see [CommExpr]) — needed for
+    // action/process goto-definition once type checking resolves which declaration it names.
     pub(crate) fn Action(input: ParseNode) -> ParseResult<Action> {
-        match_nodes!(input.into_children();
-            [Id(id), DataExprList(args)] => {
-                Ok(Action { id, args })
-            },
-            [Id(id)] => {
-                Ok(Action { id, args: Vec::new() })
-            },
-        )
+        let mut children = input.into_children();
+        let id_node = children.next().expect("Action requires a leading Id");
+        let id = ActionName {
+            node: id_node.as_str().to_string(),
+            span: id_node.as_span().into(),
+        };
+
+        let args = match children.next() {
+            Some(args_node) => Self::DataExprList(args_node)?,
+            None => Vec::new(),
+        };
+
+        Ok(Action { id, args })
     }
 
     fn RenExprSet(renames: ParseNode) -> ParseResult<Vec<Rename>> {

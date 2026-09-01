@@ -12,6 +12,12 @@
 //!   read from a declaration. It always carries [`Span::default`]: a resolved sort has no reliable
 //!   source location of its own — name resolution and alias normalization both discard or
 //!   relocate a [`SortExpression`]'s original span. Do not read source positions out of it.
+//! - `TypedNode::sort` is `None` for a node with no data sort at all — currently only an
+//!   [`ResolvedName::Action`]/[`ResolvedName::Process`] occurrence (`ProcessExprKind::Action`/
+//!   `Id`'s own name span): mCRL2 gives an action/process reference no data-expression sort to
+//!   report (its declared argument sorts are a *domain*, not a value sort), unlike every other
+//!   `TypedNode`, which is always built from a checked [`merc_syntax::DataExpr`] and so always has
+//!   one.
 
 use std::collections::HashMap;
 
@@ -48,8 +54,9 @@ pub struct TypedNode {
     /// The node's location in the original source.
     pub span: Span,
     /// The node's inferred sort, reconstructed as a [`SortExpression`] so it can be printed via
-    /// its existing [`std::fmt::Display`] impl.
-    pub sort: SortExpression,
+    /// its existing [`std::fmt::Display`] impl. `None` for a node with no data sort at all — see
+    /// this module's doc comment.
+    pub sort: Option<SortExpression>,
     /// What this node's identifier resolved to. `None` for every node that isn't an `Id`.
     pub name: Option<ResolvedName>,
 }
@@ -87,6 +94,25 @@ pub enum ResolvedName {
     /// A polymorphic built-in (`==`, `!=`, `<`, `<=`, `>`, `>=`, `if`, `in`, `#`, `|>`, …), whose
     /// concrete meaning follows from the inferred argument sorts rather than one declaration.
     Builtin { name: String },
+    /// A declared action, resolved from a `ProcessExprKind::Action` occurrence by
+    /// `check_action_or_process` once argument-sort overload resolution settles on exactly one
+    /// `act` candidate — unlike `Variable`/`Constructor`/`Mapping`, this is never produced by
+    /// [`build`] itself (an action name isn't part of any `DataExpr`), only pushed directly via
+    /// [`TypingInfo::push`].
+    Action {
+        name: String,
+        /// The winning `act` declaration's own span. `None` only for a declaration with no real
+        /// span, which should not arise in practice — see [`ResolvedName::Constructor::declaration`].
+        declaration: Option<Span>,
+    },
+    /// A declared process, resolved from a `ProcessExprKind::Action`/`Id` occurrence (a positional
+    /// or assignment-form instantiation) the same way as [`ResolvedName::Action`], by
+    /// `check_action_or_process`/`check_instantiation`.
+    Process {
+        name: String,
+        /// See [`ResolvedName::Action::declaration`].
+        declaration: Option<Span>,
+    },
 }
 
 impl TypingInfo {
@@ -129,6 +155,17 @@ impl TypingInfo {
     pub(crate) fn merge(&mut self, mut other: TypingInfo) {
         self.nodes.append(&mut other.nodes);
     }
+
+    /// Records a single resolved name at `span` directly, with no backing `DataExpr`/sort — the
+    /// only way a [`ResolvedName::Action`]/[`ResolvedName::Process`] node is ever added, since
+    /// [`build`] only ever sees the `DataExpr` half of a specification.
+    pub(crate) fn push(&mut self, span: Span, name: ResolvedName) {
+        self.nodes.push(TypedNode {
+            span,
+            sort: None,
+            name: Some(name),
+        });
+    }
 }
 
 /// Builds the [`TypingInfo`] for `typing`, the already-computed Phase-3 result of one equation or
@@ -165,7 +202,7 @@ pub(crate) fn build(spec: &DataSpecification, typing: &EquationTyping) -> Typing
             });
             TypedNode {
                 span: span.clone(),
-                sort: sort_expression(ctx, user_spec, system_spec, sort),
+                sort: Some(sort_expression(ctx, user_spec, system_spec, sort)),
                 name,
             }
         })
@@ -247,7 +284,7 @@ impl<'a> DeclarationIndex<'a> {
 /// struct-desugared constructors, projections and recognisers) rather than a real position at the
 /// start of the file; normalize it to `None` so a consumer doesn't render a misleading
 /// declaration site.
-fn declared_span(span: &Span) -> Option<Span> {
+pub(crate) fn declared_span(span: &Span) -> Option<Span> {
     (*span != Span::default()).then(|| span.clone())
 }
 

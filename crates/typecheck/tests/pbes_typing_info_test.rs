@@ -12,7 +12,7 @@ use merc_typecheck::TypingInfo;
 #[track_caller]
 fn typing_for(text: &str) -> TypingInfo {
     let spec = UntypedPbes::parse(text).expect("the specification should parse");
-    let spec = PbesSpecification::from_untyped(spec).expect("the specification should type check");
+    let mut spec = PbesSpecification::from_untyped(spec).expect("the specification should type check");
     spec.typing_info()
 }
 
@@ -27,6 +27,8 @@ fn hover(text: &str, needle: &str) -> String {
         .at_offset(offset)
         .unwrap_or_else(|| panic!("no typed node at offset {offset} in '{text}'"))
         .sort
+        .as_ref()
+        .unwrap_or_else(|| panic!("node at offset {offset} in '{text}' has no sort"))
         .to_string()
 }
 
@@ -104,4 +106,14 @@ fn test_every_branch_of_a_conjunction_chain_contributes_typing() {
     assert_eq!(hover(text, "a == a"), "Nat");
     assert_eq!(hover(text, "b == b"), "Nat");
     assert_eq!(hover(text, "c == c"), "Nat");
+}
+
+/// `typing_info` merges in the data specification's own `eqn` typing, not just the PBES
+/// expressions' — mirrors [`crate::ProcessSpecification::typing_info`]'s equivalent regression
+/// test (a data-`eqn` right-hand side has no PBES formula wrapping it, so only the merge itself
+/// can surface it here).
+#[test]
+fn test_typing_info_merges_the_data_specification_eqn_typing() {
+    let text = "map f: Nat; eqn f = 1; pbes mu X = val(f == f); init X;";
+    assert_eq!(hover(text, "1;"), "Pos");
 }
