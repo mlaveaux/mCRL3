@@ -134,10 +134,7 @@ pub fn read_lts<R: Read>(
     info!("Finished reading LTS.");
 
     Ok((
-        // Deduplicate: the binary `.lts` format is a plain transition relation and, unlike
-        // merc's own internal representation, does not guarantee that a state has no two
-        // identical outgoing `(label, to)` transitions -- e.g. mCRL2's `ltscombine` legitimately
-        // emits such duplicates for its unreduced output.
+        // Untrusted input can always contain duplicates.
         builder.finish(initial_state.ok_or("Missing initial state")?, true),
         data_spec,
     ))

@@ -122,10 +122,7 @@ fn read_aut_impl<R: Read>(reader: R, tau_label: &str) -> Result<LabelledTransiti
 
     info!("Finished reading LTS");
 
-    // Deduplicate: the Aldebaran text format is a plain transition relation and, unlike merc's
-    // own internal representation, does not guarantee that a state has no two identical outgoing
-    // `(label, to)` transitions -- e.g. mCRL2's `ltscombine` legitimately emits such duplicates
-    // for its unreduced output.
+    // Untrusted input can always contain duplicates.
     Ok(builder.finish(initial_state, true))
 }
 
