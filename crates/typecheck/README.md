@@ -49,7 +49,35 @@ needing to know anything about how inference numbers its nodes internally.
 `typecheck_expression_with_typing` returns the same information for a single
 standalone expression. Note that a resolved *sort* embedded in a `TypedNode`
 carries no reliable source span of its own — only spans on the original
-specification's declarations and expressions are meaningful.
+specification's declarations and expressions are meaningful. Both methods take
+`&mut self` and memoize their result on `DataSpecification` (once per equation,
+once for the whole document): a `DataSpecification` is immutable once built, so
+a second call reuses the cached result instead of re-deriving it.
+
+### Process and PBES specifications
+
+`ProcessSpecification::from_untyped` extends `DataSpecification` to also check
+a whole `UntypedProcessSpecification`: `act`/`glob`/`proc` declarations and
+every `proc` body and `init`, resolving action/process-instantiation
+overloads and checking conditions against `Bool`. Before checking runs,
+`ProcessSpecification` reparses the specification to undo a handful of
+grammar-level ambiguities mCRL2's concrete syntax has between the process
+algebra and the data language — `.`, `+`, and `||` all lex the same in both,
+and a single-action `hide`/`block`/`allow` application can appear in the same
+ambiguous position. See `crates/typecheck/src/process/reparse.rs`'s module
+doc comment for the exact shapes, or the [Process
+Specification](https://MERCorg.github.io/merc/developer/typechecking/process-specification/)
+page for a worked example with parse trees and the known limitations.
+`ProcessSpecification::typing_info` exposes the same span-keyed `TypingInfo`
+as `DataSpecification`, merged over every checked process-body expression.
+
+`PbesSpecification::from_untyped` similarly extends `DataSpecification` to
+check a whole PBES: `glob` declarations, each propositional-variable
+equation's parameters, and every equation's formula and `init` — resolving
+each `PropVarInst` by name and arity, checking `val(...)` expressions against
+`Bool`, and scoping quantifier binders. This covers *sorts and names* only;
+PBES well-formedness properties such as monotonicity or alternation depth are
+a separate semantic analysis and are out of scope here.
 
 ## Safety
 

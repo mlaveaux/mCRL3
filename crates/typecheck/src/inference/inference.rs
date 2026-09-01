@@ -91,6 +91,12 @@ pub(crate) struct EquationTyping {
     /// The identifier text of every `Id` node, keyed the same way as `names`.
     /// Only filled for [EquationRole::User], like `spans`.
     pub(crate) identifier_names: HashMap<ExprId, String>,
+    /// The declaration span of every `Resolved` node (a variable the upstream
+    /// resolution pass already tied to its binder), keyed the same way as `names`.
+    /// Only filled for [EquationRole::User], like `spans`. Absent for a plain `Id`
+    /// node resolving to [NameTarget::Variable] — e.g. a data specification's own
+    /// equation variable, which this pass doesn't (yet) resolve.
+    pub(crate) declarations: HashMap<ExprId, Span>,
 }
 
 /// The errors of Phase-3 sort inference. `Clone` so a failure can be stored in
@@ -508,6 +514,7 @@ fn infer<'a>(
         log_texts: log::log_enabled!(log::Level::Debug),
         expr_spans: Vec::new(),
         expr_names: HashMap::new(),
+        expr_declarations: HashMap::new(),
         collect_typing_info: matches!(role, EquationRole::User),
         names: HashMap::new(),
         constraints: Vec::new(),
@@ -547,6 +554,7 @@ fn infer<'a>(
         expr_texts,
         expr_spans,
         expr_names,
+        expr_declarations,
         names,
         constraints,
         ..
@@ -654,6 +662,7 @@ fn infer<'a>(
                     spans: expr_spans,
                     names,
                     identifier_names: expr_names,
+                    declarations: expr_declarations,
                 })
             }
         },
@@ -879,6 +888,11 @@ struct ConstraintGenerator<'a> {
     /// filled when [Self::collect_typing_info]. Becomes
     /// [EquationTyping::identifier_names].
     expr_names: HashMap<ExprId, String>,
+    /// The declaration span of every `Resolved` node (a variable the upstream
+    /// resolution pass already tied to its binder — see `docs/name_resolution.md`),
+    /// keyed by its [ExprId]; only filled when [Self::collect_typing_info]. Becomes
+    /// [EquationTyping::declarations].
+    expr_declarations: HashMap<ExprId, Span>,
     /// Whether [Self::expr_spans]/[Self::expr_names] should be filled — i.e.
     /// whether `role` is [EquationRole::User]. Sampled once at construction.
     collect_typing_info: bool,
@@ -965,7 +979,10 @@ impl<'a> ConstraintGenerator<'a> {
         }
 
         match &expr.node {
-            DataExprKind::Id(name) => self.gen_name(id, node, name, &expr.span)?,
+            DataExprKind::Id(name) => self.gen_name(id, node, name, None, &expr.span)?,
+            DataExprKind::Resolved(name, declaration) => {
+                self.gen_name(id, node, name, Some(declaration), &expr.span)?
+            }
             DataExprKind::Number(value) => {
                 let kind = if value == "0" {
                     LitKind::Natural
@@ -1206,11 +1223,27 @@ impl<'a> ConstraintGenerator<'a> {
     /// overloads and the polymorphic built-in schemes (the container and
     /// function-update operations, the comparison operators and `if`), each
     /// instantiated fresh per occurrence.
-    fn gen_name(&mut self, id: ExprId, node: InferSortId, name: &'a str, span: &Span) -> Result<(), GenFailure> {
+    ///
+    /// `declaration` is `Some` when this occurrence is a `Resolved` node: the upstream
+    /// variable-resolution pass already tied it to its binder's own span (see
+    /// `docs/name_resolution.md`). It plays no role in resolving `name` here — that still goes
+    /// through the same by-name lookup as a plain `Id` node below — it is only recorded, for
+    /// `typing_info` to later report as `ResolvedName::Variable`'s `declaration`.
+    fn gen_name(
+        &mut self,
+        id: ExprId,
+        node: InferSortId,
+        name: &'a str,
+        declaration: Option<&Span>,
+        span: &Span,
+    ) -> Result<(), GenFailure> {
         // Recorded before resolving which candidate `name` refers to; the disjunction case is
         // resolved later by the solver, not here.
         if self.collect_typing_info {
             self.expr_names.insert(id, name.to_string());
+            if let Some(declaration) = declaration {
+                self.expr_declarations.insert(id, declaration.clone());
+            }
         }
 
         if let Some(&sort) = self.variables.get(name) {

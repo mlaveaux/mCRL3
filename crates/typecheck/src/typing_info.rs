@@ -41,8 +41,8 @@ pub struct TypingInfo {
     nodes: Vec<TypedNode>,
 }
 
-/// The typing of a single expression node. See the [module docs](self) for the caveats on `span`
-/// and `sort`.
+/// The typing of a single expression node. See this module's doc comment for the caveats on
+/// `span` and `sort`.
 #[derive(Debug, Clone)]
 pub struct TypedNode {
     /// The node's location in the original source.
