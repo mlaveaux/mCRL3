@@ -58,8 +58,15 @@ pub struct TypedNode {
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum ResolvedName {
-    /// An equation variable of the enclosing `var` block.
-    Variable { name: String },
+    /// An equation variable, a process/PBES parameter, or a `sum`/`dist`/quantifier binder.
+    Variable {
+        name: String,
+        /// The binder's own declaration span, when the upstream variable-resolution pass
+        /// (`docs/name_resolution.md`) tied this occurrence to it — `sum`/`dist`, a process's
+        /// own parameters, a PBES quantifier/equation parameter. `None` for a data
+        /// specification's own equation variable, which that pass doesn't (yet) cover.
+        declaration: Option<Span>,
+    },
     /// A user-declared constructor.
     Constructor {
         name: String,
@@ -153,7 +160,8 @@ pub(crate) fn build(spec: &DataSpecification, typing: &EquationTyping) -> Typing
                     .get(&id)
                     .cloned()
                     .unwrap_or_else(|| unreachable!("every named node has a recorded identifier"));
-                resolved_name(&index, target, name)
+                let declaration = typing.declarations.get(&id).cloned();
+                resolved_name(&index, target, name, declaration)
             });
             TypedNode {
                 span: span.clone(),
@@ -166,9 +174,14 @@ pub(crate) fn build(spec: &DataSpecification, typing: &EquationTyping) -> Typing
     TypingInfo { nodes }
 }
 
-fn resolved_name(index: &DeclarationIndex<'_>, target: NameTarget, name: String) -> ResolvedName {
+fn resolved_name(
+    index: &DeclarationIndex<'_>,
+    target: NameTarget,
+    name: String,
+    declaration: Option<Span>,
+) -> ResolvedName {
     match target {
-        NameTarget::Variable => ResolvedName::Variable { name },
+        NameTarget::Variable => ResolvedName::Variable { name, declaration },
         NameTarget::Builtin => ResolvedName::Builtin { name },
         NameTarget::Op { sort } => {
             let constructor = index.constructors.get(&(name.as_str(), sort)).cloned();

@@ -56,9 +56,35 @@ fn test_prop_var_inst_self_recursive_argument_goto_def_resolves_to_parameter() {
     let text = "pbes nu X(n: Nat) = val(n == 0) || X(n); init X(0);";
     let name = resolved_name_at(text, "n);");
     assert!(
-        matches!(&name, ResolvedName::Variable { name } if name == "n"),
+        matches!(&name, ResolvedName::Variable { name, .. } if name == "n"),
         "expected a Variable resolution to 'n', got {name:?}"
     );
+}
+
+/// The declaration span carried by a `Variable` resolution points at the equation's own
+/// parameter declaration, not the (self-recursive) occurrence.
+#[test]
+fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_parameter() {
+    let text = "pbes nu X(n: Nat) = val(n == 0) || X(n); init X(0);";
+    let name = resolved_name_at(text, "n);");
+    let ResolvedName::Variable { declaration, .. } = &name else {
+        panic!("expected a Variable resolution, got {name:?}");
+    };
+    let declaration = declaration.clone().expect("an equation parameter has a real declaration span");
+    assert_eq!(&text[declaration.start..declaration.end], "n");
+}
+
+/// A quantifier-bound variable's declaration span points at the `forall`/`exists` binder
+/// itself, not the equation's own parameter list.
+#[test]
+fn test_quantifier_bound_variable_goto_def_declaration_points_at_binder() {
+    let text = "pbes mu X = forall n: Nat . val(n == n); init X;";
+    let name = resolved_name_at(text, "n == n");
+    let ResolvedName::Variable { declaration, .. } = &name else {
+        panic!("expected a Variable resolution, got {name:?}");
+    };
+    let declaration = declaration.clone().expect("a quantifier-bound variable has a real declaration span");
+    assert_eq!(&text[declaration.start..declaration.end], "n");
 }
 
 /// A quantifier's bound variable is checked (and its typing recorded) inside its own body.

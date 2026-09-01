@@ -54,9 +54,35 @@ fn test_action_argument_hover_reports_declared_sort() {
 fn test_action_argument_goto_def_resolves_to_process_parameter() {
     let name = resolved_name_at("act a: Nat; proc P(n: Nat) = a(n); init P(1);", "n);");
     assert!(
-        matches!(&name, ResolvedName::Variable { name } if name == "n"),
+        matches!(&name, ResolvedName::Variable { name, .. } if name == "n"),
         "expected a Variable resolution to 'n', got {name:?}"
     );
+}
+
+/// The declaration span carried by a `Variable` resolution points at the process's own
+/// parameter declaration, not the occurrence — the actual goto-definition target.
+#[test]
+fn test_action_argument_goto_def_declaration_points_at_process_parameter() {
+    let text = "act a: Nat; proc P(n: Nat) = a(n); init P(1);";
+    let name = resolved_name_at(text, "n);");
+    let ResolvedName::Variable { declaration, .. } = &name else {
+        panic!("expected a Variable resolution, got {name:?}");
+    };
+    let declaration = declaration.clone().expect("a process parameter has a real declaration span");
+    assert_eq!(&text[declaration.start..declaration.end], "n");
+}
+
+/// A `sum`-bound variable's declaration span points at the `sum` binder itself, not the
+/// process's parameter list.
+#[test]
+fn test_sum_bound_variable_goto_def_declaration_points_at_binder() {
+    let text = "act a: Nat; proc P = sum x: Nat . a(x); init P;";
+    let name = resolved_name_at(text, "x);");
+    let ResolvedName::Variable { declaration, .. } = &name else {
+        panic!("expected a Variable resolution, got {name:?}");
+    };
+    let declaration = declaration.clone().expect("a sum-bound variable has a real declaration span");
+    assert_eq!(&text[declaration.start..declaration.end], "x");
 }
 
 /// A condition's guard is checked (and its typing recorded) too, not just action arguments.
@@ -77,9 +103,9 @@ fn test_every_branch_of_a_choice_chain_contributes_typing() {
     assert_eq!(hover(text, "y)"), "Nat");
     assert_eq!(hover(text, "z)"), "Nat");
 
-    assert!(matches!(&resolved_name_at(text, "x)"), ResolvedName::Variable { name } if name == "x"));
-    assert!(matches!(&resolved_name_at(text, "y)"), ResolvedName::Variable { name } if name == "y"));
-    assert!(matches!(&resolved_name_at(text, "z)"), ResolvedName::Variable { name } if name == "z"));
+    assert!(matches!(&resolved_name_at(text, "x)"), ResolvedName::Variable { name, .. } if name == "x"));
+    assert!(matches!(&resolved_name_at(text, "y)"), ResolvedName::Variable { name, .. } if name == "y"));
+    assert!(matches!(&resolved_name_at(text, "z)"), ResolvedName::Variable { name, .. } if name == "z"));
 }
 
 /// As [`test_every_branch_of_a_choice_chain_contributes_typing`], for a chain of guarded
