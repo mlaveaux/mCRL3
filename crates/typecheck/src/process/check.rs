@@ -1,11 +1,13 @@
 //! The scoped walk over every process body (`proc` declarations and `init`), checking each
 //! `DataExpr` it contains — action arguments, process-instantiation arguments, conditions, time
-//! bounds, `dist` weights — against its own expected sort and its own enclosing variable scope.
+//! bounds, `dist` weights — against its own expected sort and its own enclosing variable scope,
+//! and accumulating each checked expression's [`TypingInfo`].
 //!
 //! By the time this runs, [`super::reparse`] has already fixed up every `Condition` the grammar
 //! misparsed because of mCRL2's `.`/`+` ambiguity (see its module doc comment and the crate
 //! README); this walk assumes every `Condition` it sees is already correctly shaped.
 
+use merc_syntax::ActionName;
 use merc_syntax::Assignment;
 use merc_syntax::DataExpr;
 use merc_syntax::IdDecl;
@@ -16,33 +18,25 @@ use merc_syntax::UntypedProcessSpecification;
 
 use crate::DataSpecification;
 use crate::ResolvedSortId;
-use crate::infer_expression_in_scope;
-use crate::lower_data_expr;
+use crate::TypingInfo;
+use crate::checking::Scope;
+use crate::checking::check_expression_against;
 
 use super::ProcessError;
 use super::process_specification::DeclarationTables;
 use super::process_specification::resolve_declared_sort;
 
-/// A shadowing stack of in-scope variable sorts: global variables, then (for a `proc` body) that
-/// process's own parameters, then any `sum`/`dist` binders entered so far.
-pub(super) struct Scope<'a> {
-    variables: Vec<(&'a str, ResolvedSortId)>,
-}
-
-impl<'a> Scope<'a> {
-    pub(super) fn new(base: Vec<(&'a str, ResolvedSortId)>) -> Self {
-        Scope { variables: base }
-    }
-}
-
 /// Checks every `proc` body and `init` in `spec` against `tables` (already built by
 /// [`super::process_specification::DeclarationTables::build`], which resolved every declared
-/// sort — actions' argument sorts, processes' parameter sorts, and global variables').
+/// sort — actions' argument sorts, processes' parameter sorts, and global variables'), returning
+/// every checked expression's merged [`TypingInfo`] in declaration order.
 pub(super) fn check_process_specification(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
     spec: &UntypedProcessSpecification,
-) -> Result<(), ProcessError> {
+) -> Result<TypingInfo, ProcessError> {
+    let mut typing = TypingInfo::default();
+
     let globals: Vec<(&str, ResolvedSortId)> = spec
         .global_variables
         .iter()
@@ -56,15 +50,15 @@ pub(super) fn check_process_specification(
         scope
             .variables
             .extend(params.iter().map(|(name, sort)| (name.as_str(), *sort)));
-        check_process_expr(data, tables, &mut scope, &proc_decl.body)?;
+        check_process_expr(data, tables, &mut scope, &proc_decl.body, &mut typing)?;
     }
 
     if let Some(init) = &spec.init {
         let mut scope = Scope::new(globals.clone());
-        check_process_expr(data, tables, &mut scope, init)?;
+        check_process_expr(data, tables, &mut scope, init, &mut typing)?;
     }
 
-    Ok(())
+    Ok(typing)
 }
 
 fn check_process_expr<'a>(
@@ -72,18 +66,21 @@ fn check_process_expr<'a>(
     tables: &DeclarationTables,
     scope: &mut Scope<'a>,
     expr: &'a ProcessExpr,
+    typing: &mut TypingInfo,
 ) -> Result<(), ProcessError> {
     match &expr.node {
         ProcessExprKind::Delta | ProcessExprKind::Tau => Ok(()),
 
-        ProcessExprKind::Action(name, args) => check_action_or_process(data, tables, scope, name, args, &expr.span),
+        ProcessExprKind::Action(name, args) => {
+            check_action_or_process(data, tables, scope, name, args, &expr.span, typing)
+        }
         ProcessExprKind::Id(name, assignments) => {
-            check_instantiation(data, tables, scope, name, assignments, &expr.span)
+            check_instantiation(data, tables, scope, name, assignments, &expr.span, typing)
         }
 
         ProcessExprKind::Sum { variables, operand } => {
             let pushed = push_binders(data, scope, variables)?;
-            let result = check_process_expr(data, tables, scope, operand);
+            let result = check_process_expr(data, tables, scope, operand, typing);
             scope.variables.truncate(scope.variables.len() - pushed);
             result
         }
@@ -96,23 +93,23 @@ fn check_process_expr<'a>(
             // Checked against `Real` *with* the bound variables already in scope: `dist`'s weight
             // is the distribution's density over them.
             let real_sort = data.context().sorts.real_sort();
-            let result = check_expression_against(data, scope, weight, real_sort)
-                .and_then(|()| check_process_expr(data, tables, scope, operand));
+            let result = check_expression_against::<ProcessError>(data, scope, weight, real_sort, typing)
+                .and_then(|()| check_process_expr(data, tables, scope, operand, typing));
             scope.variables.truncate(scope.variables.len() - pushed);
             result
         }
 
         ProcessExprKind::Binary { lhs, rhs, .. } => {
-            check_process_expr(data, tables, scope, lhs)?;
-            check_process_expr(data, tables, scope, rhs)
+            check_process_expr(data, tables, scope, lhs, typing)?;
+            check_process_expr(data, tables, scope, rhs, typing)
         }
 
         ProcessExprKind::Condition { condition, then, else_ } => {
             let bool_sort = data.context().sorts.bool_sort();
-            check_expression_against(data, scope, condition, bool_sort)?;
-            check_process_expr(data, tables, scope, then)?;
+            check_expression_against::<ProcessError>(data, scope, condition, bool_sort, typing)?;
+            check_process_expr(data, tables, scope, then, typing)?;
             if let Some(else_) = else_ {
-                check_process_expr(data, tables, scope, else_)?;
+                check_process_expr(data, tables, scope, else_, typing)?;
             }
             Ok(())
         }
@@ -122,37 +119,37 @@ fn check_process_expr<'a>(
             operand: time,
         } => {
             let real_sort = data.context().sorts.real_sort();
-            check_expression_against(data, scope, time, real_sort)?;
-            check_process_expr(data, tables, scope, inner)
+            check_expression_against::<ProcessError>(data, scope, time, real_sort, typing)?;
+            check_process_expr(data, tables, scope, inner, typing)
         }
 
         ProcessExprKind::Hide { actions, operand } => {
-            check_action_names(tables, actions, &expr.span)?;
-            check_process_expr(data, tables, scope, operand)
+            check_action_names(tables, actions)?;
+            check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Block { actions, operand } => {
-            check_action_names(tables, actions, &expr.span)?;
-            check_process_expr(data, tables, scope, operand)
+            check_action_names(tables, actions)?;
+            check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Allow { actions, operand } => {
             for label in actions {
-                check_action_names(tables, &label.actions, &expr.span)?;
+                check_action_names(tables, &label.actions)?;
             }
-            check_process_expr(data, tables, scope, operand)
+            check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Comm { comm, operand } => {
             for c in comm {
-                check_action_names(tables, &c.from.actions, &expr.span)?;
-                check_action_names(tables, std::slice::from_ref(&c.to), &expr.span)?;
+                check_action_names(tables, &c.from.actions)?;
+                check_action_names(tables, std::slice::from_ref(&c.to))?;
             }
-            check_process_expr(data, tables, scope, operand)
+            check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Rename { renames, operand } => {
             for r in renames {
-                check_action_names(tables, std::slice::from_ref(&r.from), &expr.span)?;
-                check_action_names(tables, std::slice::from_ref(&r.to), &expr.span)?;
+                check_action_names(tables, std::slice::from_ref(&r.from))?;
+                check_action_names(tables, std::slice::from_ref(&r.to))?;
             }
-            check_process_expr(data, tables, scope, operand)
+            check_process_expr(data, tables, scope, operand, typing)
         }
     }
 }
@@ -172,32 +169,14 @@ fn push_binders<'a>(
     Ok(variables.len())
 }
 
-/// Prepares a raw process-body expression for inference: resolves its embedded binder sorts (see
-/// [`DataSpecification::resolve_expression_binder_sorts`]) and lowers it, exactly as
-/// [`crate::DataSpecification::typecheck_expression`] does for a standalone expression.
-fn prepare_expression(data: &mut DataSpecification, expr: &DataExpr) -> Result<DataExpr, ProcessError> {
-    let mut expr = expr.clone();
-    data.resolve_expression_binder_sorts(&mut expr)?;
-    Ok(lower_data_expr(expr))
-}
-
-/// Checks `expr` (a `sum`/`dist` condition or time bound, an assignment-form instantiation
-/// argument, …) against `expected`.
-fn check_expression_against(
-    data: &mut DataSpecification,
-    scope: &Scope<'_>,
-    expr: &DataExpr,
-    expected: ResolvedSortId,
-) -> Result<(), ProcessError> {
-    let lowered = prepare_expression(data, expr)?;
-    let (ctx, spec, system) = data.context_and_specs_mut();
-    infer_expression_in_scope(ctx, spec, system, &lowered, &scope.variables, Some(expected))?;
-    Ok(())
-}
-
 /// Resolves `name(args)` (an action instance or a positional process instantiation — the grammar
 /// makes these ambiguous, see the crate README) against both declaration tables, trying every
 /// candidate of the right arity and requiring exactly one to succeed.
+///
+/// Each candidate is checked against its own scratch `TypingInfo`, merged into `typing` only once
+/// the single successful candidate is known — a failed or ultimately-ambiguous candidate's typing
+/// must never reach `typing`, since it would otherwise misreport a sort for the wrong overload at
+/// the same span.
 fn check_action_or_process(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
@@ -205,6 +184,7 @@ fn check_action_or_process(
     name: &str,
     args: &[DataExpr],
     span: &Span,
+    typing: &mut TypingInfo,
 ) -> Result<(), ProcessError> {
     let candidates: Vec<Vec<ResolvedSortId>> = tables
         .actions_by_name
@@ -233,9 +213,14 @@ fn check_action_or_process(
 
     let mut successes = 0usize;
     let mut first_error = None;
+    let mut matched_typing = TypingInfo::default();
     for expected in &candidates {
-        match check_arguments(data, scope, args, expected) {
-            Ok(()) => successes += 1,
+        let mut candidate_typing = TypingInfo::default();
+        match check_arguments(data, scope, args, expected, &mut candidate_typing) {
+            Ok(()) => {
+                successes += 1;
+                matched_typing = candidate_typing;
+            }
             Err(error) => drop(first_error.get_or_insert(error)),
         }
     }
@@ -248,7 +233,10 @@ fn check_action_or_process(
                 first_error.expect("at least one candidate, so at least one recorded error when none succeed"),
             ),
         }),
-        1 => Ok(()),
+        1 => {
+            typing.merge(matched_typing);
+            Ok(())
+        }
         count => Err(ProcessError::AmbiguousActionOrProcess {
             name: name.to_string(),
             count,
@@ -262,9 +250,10 @@ fn check_arguments(
     scope: &Scope<'_>,
     args: &[DataExpr],
     expected: &[ResolvedSortId],
+    typing: &mut TypingInfo,
 ) -> Result<(), ProcessError> {
     for (arg, &sort) in args.iter().zip(expected) {
-        check_expression_against(data, scope, arg, sort)?;
+        check_expression_against::<ProcessError>(data, scope, arg, sort, typing)?;
     }
     Ok(())
 }
@@ -273,6 +262,9 @@ fn check_arguments(
 /// same-named process declaration whose parameters cover every assigned identifier, requiring
 /// exactly one to succeed. Unlike [`check_action_or_process`], this is not arity-filtered: an
 /// assignment list may legally leave some parameters unassigned.
+///
+/// Merges only the single successful candidate's `TypingInfo` into `typing` — see
+/// [`check_action_or_process`]'s doc comment.
 fn check_instantiation(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
@@ -280,6 +272,7 @@ fn check_instantiation(
     name: &str,
     assignments: &[Assignment],
     span: &Span,
+    typing: &mut TypingInfo,
 ) -> Result<(), ProcessError> {
     let indices: &[usize] = tables.processes_by_name.get(name).map_or(&[], Vec::as_slice);
     if indices.is_empty() {
@@ -292,16 +285,31 @@ fn check_instantiation(
 
     let mut successes = 0usize;
     let mut first_error = None;
+    let mut matched_typing = TypingInfo::default();
     for &index in indices {
-        match check_one_instantiation(data, scope, &tables.process_params[index], assignments, name) {
-            Ok(()) => successes += 1,
+        let mut candidate_typing = TypingInfo::default();
+        match check_one_instantiation(
+            data,
+            scope,
+            &tables.process_params[index],
+            assignments,
+            name,
+            &mut candidate_typing,
+        ) {
+            Ok(()) => {
+                successes += 1;
+                matched_typing = candidate_typing;
+            }
             Err(error) => drop(first_error.get_or_insert(error)),
         }
     }
 
     match successes {
         0 => Err(first_error.expect("at least one candidate, so at least one recorded error when none succeed")),
-        1 => Ok(()),
+        1 => {
+            typing.merge(matched_typing);
+            Ok(())
+        }
         count => Err(ProcessError::AmbiguousActionOrProcess {
             name: name.to_string(),
             count,
@@ -316,6 +324,7 @@ fn check_one_instantiation(
     params: &[(String, ResolvedSortId)],
     assignments: &[Assignment],
     process: &str,
+    typing: &mut TypingInfo,
 ) -> Result<(), ProcessError> {
     for assignment in assignments {
         let Some(&(_, sort)) = params.iter().find(|(param, _)| *param == assignment.identifier) else {
@@ -325,17 +334,19 @@ fn check_one_instantiation(
                 span: assignment.span.clone(),
             });
         };
-        check_expression_against(data, scope, &assignment.expr, sort)?;
+        check_expression_against::<ProcessError>(data, scope, &assignment.expr, sort, typing)?;
     }
     Ok(())
 }
 
-fn check_action_names(tables: &DeclarationTables, names: &[String], span: &Span) -> Result<(), ProcessError> {
+/// Checks that every `names` entry is a declared action, reporting the offending name's own
+/// [Span] (rather than the enclosing expression's) since each [ActionName] now carries one.
+fn check_action_names(tables: &DeclarationTables, names: &[ActionName]) -> Result<(), ProcessError> {
     for name in names {
-        if !tables.actions_by_name.contains_key(name) {
+        if !tables.actions_by_name.contains_key(name.as_str()) {
             return Err(ProcessError::UndeclaredAction {
-                name: name.clone(),
-                span: span.clone(),
+                name: name.node.clone(),
+                span: name.span.clone(),
             });
         }
     }
