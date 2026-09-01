@@ -372,7 +372,8 @@ pub enum DataExprBinaryOp {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub enum DataExprKind {
     Id(String),
-    /// A variable reference already resolved to its declaring binder.
+    /// A variable reference paired with its declaring binder's own span: not this
+    /// occurrence's span.
     Resolved(String, Span),
     Number(String), // Is string because the number can be any size.
     Bool(bool),

@@ -199,9 +199,8 @@ impl Checker<'_> {
         used: &mut HashSet<&'e str>,
     ) -> Result<(), WellTypedError> {
         match &expr.node {
-            // `Resolved` never appears in the system-defined specification's own equations —
-            // this pass never runs the variable-resolution pass over them — but is treated like
-            // `Id` for exhaustiveness, consistent with every other consumer of `DataExprKind`.
+            // `Resolved` never occurs in the system-defined specification's own equations, but is
+            // grouped with `Id` for exhaustiveness.
             DataExprKind::Id(name) | DataExprKind::Resolved(name, _) => {
                 if scope.iter().any(|bound| bound == name) {
                     Ok(())
