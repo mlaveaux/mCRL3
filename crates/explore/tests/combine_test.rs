@@ -21,6 +21,8 @@ use merc_reduction::Equivalence;
 use merc_reduction::compare_lts;
 use merc_syntax::CommExpr;
 use merc_syntax::MultiActionLabel;
+use merc_syntax::Span;
+use merc_syntax::respan;
 use merc_utilities::Timing;
 use merc_utilities::random_test;
 use rand::RngExt;
@@ -33,7 +35,10 @@ use merc_explore::combine_lts;
 fn random_multi_action<R: rand::Rng>(rng: &mut R, actions: &[String], max_size: usize) -> MultiActionLabel {
     let max_size = usize::min(actions.len(), max_size);
     let size = rng.random_range(0..=max_size);
-    let selected_actions = actions.sample(rng, size).cloned().collect::<Vec<_>>();
+    let selected_actions = actions
+        .sample(rng, size)
+        .map(|name| respan(Span::default(), name.clone()))
+        .collect::<Vec<_>>();
     MultiActionLabel::new(selected_actions)
 }
 
@@ -127,7 +132,7 @@ fn test_mcrl2_ltscombine() {
             .map(|_| {
                 let size = rng.random_range(2..=3);
                 let actions = random_multi_action(rng, &labels, size);
-                let to = labels.choose(rng).unwrap().clone();
+                let to = respan(Span::default(), labels.choose(rng).unwrap().clone());
                 CommExpr::new(actions, to)
             })
             .filter(|comm| {
