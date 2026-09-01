@@ -299,7 +299,7 @@ fn find_communication_match<L: CombineLabel>(actions: &[L], expr: &CommExpr) -> 
             .map(|(_, a)| a.clone())
             .collect();
 
-        result.push(L::from_comm(expr.to.clone(), &actions[first_idx]));
+        result.push(L::from_comm(expr.to.node.clone(), &actions[first_idx]));
         return Some(result);
     }
 
@@ -390,7 +390,7 @@ struct SortedMultiActionLabel {
 
 impl SortedMultiActionLabel {
     fn new(label: &MultiActionLabel) -> Self {
-        let mut actions = label.actions.clone();
+        let mut actions: Vec<String> = label.actions.iter().map(|name| name.node.clone()).collect();
         actions.sort();
         SortedMultiActionLabel { actions }
     }
@@ -676,6 +676,8 @@ mod tests {
     use merc_lts::SimpleAction;
     use merc_syntax::CommExpr;
     use merc_syntax::MultiActionLabel;
+    use merc_syntax::Span;
+    use merc_syntax::respan;
 
     use super::SortedLtsMultiAction;
     use super::SortedMultiActionLabel;
@@ -688,8 +690,8 @@ mod tests {
 
     fn comm(from: &[&str], to: &str) -> CommExpr {
         CommExpr::new(
-            MultiActionLabel::new(from.iter().map(|s| s.to_string()).collect()),
-            to.to_owned(),
+            MultiActionLabel::new(from.iter().map(|s| respan(Span::default(), s.to_string())).collect()),
+            respan(Span::default(), to.to_owned()),
         )
     }
 
@@ -698,7 +700,9 @@ mod tests {
         entries
             .iter()
             .map(|names| {
-                SortedMultiActionLabel::new(&MultiActionLabel::new(names.iter().map(|s| s.to_string()).collect()))
+                SortedMultiActionLabel::new(&MultiActionLabel::new(
+                    names.iter().map(|s| respan(Span::default(), s.to_string())).collect(),
+                ))
             })
             .collect()
     }
