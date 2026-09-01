@@ -52,6 +52,10 @@ impl PbesSpecification {
     /// propositional-variable equations' parameters, and every equation's formula and `init`
     /// against them.
     pub fn from_untyped_with(mut spec: UntypedPbes, encoding: NumberEncoding) -> Result<Self, PbesError> {
+        // A pure syntactic pass, before anything else needs `spec` — see
+        // `resolution::variable_resolution`.
+        crate::resolve_pbes_variables(&mut spec);
+
         let data_spec = std::mem::take(&mut spec.data_specification);
         let mut data = DataSpecification::from_untyped_with(data_spec, encoding)?;
 

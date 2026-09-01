@@ -54,6 +54,10 @@ impl ProcessSpecification {
         // Semantic-aware reparsing first.
         reparse::reparse_process_specification(&mut spec);
 
+        // A pure syntactic pass, before anything else needs `spec` — see
+        // `resolution::variable_resolution`.
+        crate::resolve_process_variables(&mut spec);
+
         let data_spec = std::mem::take(&mut spec.data_specification);
         let mut data = DataSpecification::from_untyped_with(data_spec, encoding)?;
 
