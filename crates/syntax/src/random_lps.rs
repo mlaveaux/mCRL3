@@ -69,10 +69,10 @@ pub fn random_lps<R: Rng>(
                 .into();
                 let seq = ProcessExprKind::Binary {
                     op: ProcExprBinaryOp::Sequence,
-                    lhs: Box::new(ProcessExprKind::Action(act.clone(), Vec::new()).into()),
+                    lhs: Box::new(ProcessExprKind::Action(respan(Span::default(), act.clone()), Vec::new()).into()),
                     rhs: Box::new(
                         ProcessExprKind::Id(
-                            "P".to_string(),
+                            respan(Span::default(), "P".to_string()),
                             vec![Assignment::new(
                                 "s".to_string(),
                                 DataExprKind::Number(to.to_string()).into(),
@@ -120,7 +120,7 @@ pub fn random_lps<R: Rng>(
 
     let init_state = rng.random_range(0..num_states);
     let init = ProcessExprKind::Id(
-        "P".to_string(),
+        respan(Span::default(), "P".to_string()),
         vec![Assignment::new(
             "s".to_string(),
             DataExprKind::Number(init_state.to_string()).into(),
@@ -194,7 +194,7 @@ fn random_process_instance<R: Rng>(rng: &mut R, pv: &ProcVar, freevars: &[IdDecl
             Assignment::new(p.identifier.clone(), expr)
         })
         .collect();
-    ProcessExprKind::Id(pv.name.clone(), assignments).into()
+    ProcessExprKind::Id(respan(Span::default(), pv.name.clone()), assignments).into()
 }
 
 fn random_leaf<R: Rng>(
@@ -218,7 +218,7 @@ fn random_leaf<R: Rng>(
         0 => ProcessExprKind::Delta.into(),
         1 => ProcessExprKind::Tau.into(),
         2 => ProcessExprKind::Action(
-            (*actions.choose(rng).expect("actions is non-empty")).to_string(),
+            respan(Span::default(), (*actions.choose(rng).expect("actions is non-empty")).to_string()),
             Vec::new(),
         )
         .into(),
@@ -307,7 +307,7 @@ fn random_process_expr<R: Rng>(
             // Seq: emit an action first, then an (unguarded) continuation.
             // The explicit action satisfies the guard, so the rhs may reference proc instances.
             let action = (*actions.choose(rng).expect("actions is non-empty")).to_string();
-            let lhs = ProcessExprKind::Action(action, Vec::new()).into();
+            let lhs = ProcessExprKind::Action(respan(Span::default(), action), Vec::new()).into();
             let rhs = random_process_expr(rng, depth - 1, freevars, actions, proc_vars, false);
             ProcessExprKind::Binary {
                 op: ProcExprBinaryOp::Sequence,
@@ -484,7 +484,7 @@ pub fn make_process_specification<R: Rng>(
                     Assignment::new(p.identifier.clone(), expr)
                 })
                 .collect();
-            ProcessExprKind::Id(pv.name.clone(), assignments).into()
+            ProcessExprKind::Id(respan(Span::default(), pv.name.clone()), assignments).into()
         })
         .collect();
 

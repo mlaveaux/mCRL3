@@ -26,10 +26,9 @@ use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedProcessSpecification;
 
-/// Resolves every context-free variable reference in `spec`'s own `var`-block equations —
-/// the one case `docs/name_resolution.md` originally left uncovered. Each `EqnSpec`'s
-/// `variables` are in scope for that block's own equations only; an equation's `lhs` is
-/// resolved exactly like its `rhs`/`condition` — mCRL2 equations don't bind new variables in
+/// Resolves every context-free variable reference in `spec`'s own `var`-block equations. Each
+/// `EqnSpec`'s `variables` are in scope for that block's own equations only; an equation's `lhs`
+/// is resolved exactly like its `rhs`/`condition` — mCRL2 equations don't bind new variables in
 /// their left-hand side, `lhs` is just another read of the block's declared variables.
 pub(crate) fn resolve_data_specification_variables(spec: &mut UntypedDataSpecification) {
     for eqn_spec in &mut spec.equation_declarations {

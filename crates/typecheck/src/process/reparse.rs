@@ -470,18 +470,24 @@ fn reinterpret_as_process(names: &Names, expr: DataExpr) -> ProcessExpr {
             .spanned(span)
         }
         DataExprKind::Application { function, arguments } => {
+            // The identifier's own span, not the whole `name(args)` application's — captured
+            // before `function.node` is destructured below.
+            let name_span = function.span.clone();
             let DataExprKind::Id(name) = function.node else {
                 unreachable!("is_fully_process_content only accepts an Id-headed application");
             };
             match (ProcessOperator::from_name(&name), <[DataExpr; 2]>::try_from(arguments)) {
                 (Some(operator), Ok([set, operand])) => build_process_operator(names, operator, set, operand, span),
-                (_, Ok(pair)) => ProcessExprKind::Action(name, pair.into()).spanned(span),
-                (_, Err(arguments)) => ProcessExprKind::Action(name, arguments).spanned(span),
+                (_, Ok(pair)) => ProcessExprKind::Action(respan(name_span, name), pair.into()).spanned(span),
+                (_, Err(arguments)) => {
+                    ProcessExprKind::Action(respan(name_span, name), arguments).spanned(span)
+                }
             }
         }
         DataExprKind::Id(name) if name == "delta" => ProcessExprKind::Delta.spanned(span),
         DataExprKind::Id(name) if name == "tau" => ProcessExprKind::Tau.spanned(span),
-        DataExprKind::Id(name) => ProcessExprKind::Action(name, Vec::new()).spanned(span),
+        // A bare `Id` leaf's own span *is* the whole expression's span.
+        DataExprKind::Id(name) => ProcessExprKind::Action(respan(span.clone(), name), Vec::new()).spanned(span),
         _ => unreachable!(
             "is_fully_process_content only accepts At/Add/Disj chains, hide/block/allow, or Id/Application leaves"
         ),
@@ -574,7 +580,7 @@ mod tests {
         else {
             panic!("expected a Sequence, got {body:?}");
         };
-        assert!(matches!(&lhs.node, ProcessExprKind::Action(name, _) if name == "a"));
+        assert!(matches!(&lhs.node, ProcessExprKind::Action(name, _) if name.node == "a"));
         assert!(matches!(&rhs.node, ProcessExprKind::Condition { .. }));
     }
 
@@ -594,11 +600,11 @@ mod tests {
         let ProcessExprKind::Condition { then: lhs_then, .. } = &lhs.node else {
             panic!("expected a Condition, got {lhs:?}");
         };
-        assert!(matches!(&lhs_then.node, ProcessExprKind::Action(name, _) if name == "a"));
+        assert!(matches!(&lhs_then.node, ProcessExprKind::Action(name, _) if name.node == "a"));
         let ProcessExprKind::Condition { then: rhs_then, .. } = &rhs.node else {
             panic!("expected a Condition, got {rhs:?}");
         };
-        assert!(matches!(&rhs_then.node, ProcessExprKind::Action(name, _) if name == "b"));
+        assert!(matches!(&rhs_then.node, ProcessExprKind::Action(name, _) if name.node == "b"));
     }
 
     /// The same bug with `||` (`Parallel`) in place of `+` (`Choice`): `P || (true) -> a` parses
@@ -615,12 +621,12 @@ mod tests {
         else {
             panic!("expected a Parallel, got {body:?}");
         };
-        assert!(matches!(&lhs.node, ProcessExprKind::Action(name, _) if name == "P"));
+        assert!(matches!(&lhs.node, ProcessExprKind::Action(name, _) if name.node == "P"));
         let ProcessExprKind::Condition { condition, then, .. } = &rhs.node else {
             panic!("expected a Condition, got {rhs:?}");
         };
         assert!(matches!(&condition.node, DataExprKind::Bool(true)));
-        assert!(matches!(&then.node, ProcessExprKind::Action(name, _) if name == "a"));
+        assert!(matches!(&then.node, ProcessExprKind::Action(name, _) if name.node == "a"));
     }
 
     /// A three-way `+`-chain, each clause's action itself preceded by a `.`-sequence — combines
@@ -670,7 +676,7 @@ mod tests {
         let ProcessExprKind::Condition { then: third_then, .. } = &third.node else {
             panic!("expected a Condition, got {third:?}");
         };
-        assert!(matches!(&third_then.node, ProcessExprKind::Action(name, _) if name == "c"));
+        assert!(matches!(&third_then.node, ProcessExprKind::Action(name, _) if name.node == "c"));
     }
 
     /// A `+`-separated chain in `else_` position — `cond -> then <> a + cond2 -> then2 <> else2`,
@@ -733,7 +739,7 @@ mod tests {
         let Some(second_else) = second_else else {
             panic!("expected `<> b(9)` to survive on the clause the grammar actually attaches it to");
         };
-        assert!(matches!(&second_else.node, ProcessExprKind::Action(name, _) if name == "b"));
+        assert!(matches!(&second_else.node, ProcessExprKind::Action(name, _) if name.node == "b"));
     }
 
     /// The minimal shape of the same bug class as [`choice_directly_in_else_position_is_left_alone`],
@@ -759,7 +765,7 @@ mod tests {
         let Some(else_) = else_ else {
             panic!("expected `<> c(3)` to survive, got None");
         };
-        assert!(matches!(&else_.node, ProcessExprKind::Action(name, _) if name == "c"));
+        assert!(matches!(&else_.node, ProcessExprKind::Action(name, _) if name.node == "c"));
     }
 
     /// Leading, wholly *unconditional* `+`-branches (no `->` of their own at all) swallowed
@@ -856,11 +862,11 @@ mod tests {
             panic!("expected a Hide, got {lhs:?}");
         };
         assert_eq!(actions.iter().map(|name| name.as_str()).collect::<Vec<_>>(), vec!["a"]);
-        assert!(matches!(&operand.node, ProcessExprKind::Action(name, _) if name == "P"));
+        assert!(matches!(&operand.node, ProcessExprKind::Action(name, _) if name.node == "P"));
         let ProcessExprKind::Condition { then, .. } = &rhs.node else {
             panic!("expected a Condition, got {rhs:?}");
         };
-        assert!(matches!(&then.node, ProcessExprKind::Action(name, _) if name == "b"));
+        assert!(matches!(&then.node, ProcessExprKind::Action(name, _) if name.node == "b"));
     }
 
     /// `comm` uses `from -> to` pairs inside its set argument, and `->` isn't a valid `DataExpr`

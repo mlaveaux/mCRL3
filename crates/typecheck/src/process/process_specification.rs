@@ -126,11 +126,18 @@ pub(super) struct DeclarationTables {
     /// Resolved `(name, sort)` parameters of each process declaration, parallel to
     /// `spec.process_declarations`.
     pub(super) process_params: Vec<Vec<(String, ResolvedSortId)>>,
+    /// `spec.process_declarations[i].span`, parallel to `process_params` — so a resolved
+    /// `Action`/`Id` occurrence can report its winning candidate's declaration span (see
+    /// `check::check_action_or_process`/`check_instantiation`) without holding onto `spec` itself.
+    pub(super) process_decl_spans: Vec<Span>,
     /// name -> indices into `spec.process_declarations`/`process_params` declaring it.
     pub(super) processes_by_name: HashMap<String, Vec<usize>>,
     /// Resolved argument-sort domain of each action declaration, parallel to
     /// `spec.action_declarations`.
     pub(super) action_domains: Vec<Vec<ResolvedSortId>>,
+    /// `spec.action_declarations[i].span`, parallel to `action_domains` — see
+    /// `process_decl_spans`.
+    pub(super) action_decl_spans: Vec<Span>,
     /// name -> indices into `spec.action_declarations`/`action_domains` declaring it.
     pub(super) actions_by_name: HashMap<String, Vec<usize>>,
 }
@@ -138,6 +145,7 @@ pub(super) struct DeclarationTables {
 impl DeclarationTables {
     fn build(data: &mut DataSpecification, spec: &UntypedProcessSpecification) -> Result<Self, ProcessError> {
         let mut action_domains = Vec::with_capacity(spec.action_declarations.len());
+        let mut action_decl_spans = Vec::with_capacity(spec.action_declarations.len());
         let mut actions_by_name: HashMap<String, Vec<usize>> = HashMap::new();
         for (index, decl) in spec.action_declarations.iter().enumerate() {
             let domain = decl
@@ -147,9 +155,11 @@ impl DeclarationTables {
                 .collect::<Result<Vec<_>, _>>()?;
             actions_by_name.entry(decl.identifier.clone()).or_default().push(index);
             action_domains.push(domain);
+            action_decl_spans.push(decl.span.clone());
         }
 
         let mut process_params = Vec::with_capacity(spec.process_declarations.len());
+        let mut process_decl_spans = Vec::with_capacity(spec.process_declarations.len());
         let mut processes_by_name: HashMap<String, Vec<usize>> = HashMap::new();
         for (index, decl) in spec.process_declarations.iter().enumerate() {
             let mut params = Vec::with_capacity(decl.params.len());
@@ -170,6 +180,7 @@ impl DeclarationTables {
                 .or_default()
                 .push(index);
             process_params.push(params);
+            process_decl_spans.push(decl.span.clone());
         }
 
         // A name declared as both an action and a process would make `Action(name, args)`
@@ -201,8 +212,10 @@ impl DeclarationTables {
         Ok(DeclarationTables {
             global_sorts,
             process_params,
+            process_decl_spans,
             processes_by_name,
             action_domains,
+            action_decl_spans,
             actions_by_name,
         })
     }

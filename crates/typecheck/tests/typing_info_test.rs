@@ -26,6 +26,8 @@ fn hover(text: &str, needle: &str) -> String {
         .at_offset(offset)
         .unwrap_or_else(|| panic!("no typed node at offset {offset} in '{text}'"))
         .sort
+        .as_ref()
+        .unwrap_or_else(|| panic!("node at offset {offset} in '{text}' has no sort"))
         .to_string()
 }
 

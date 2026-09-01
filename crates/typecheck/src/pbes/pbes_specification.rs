@@ -90,14 +90,21 @@ impl PbesSpecification {
         &self.spec.init
     }
 
-    /// Every checked expression's typing (a `val(...)` expression, a `PropVarInst` argument, …),
-    /// span-keyed so hover/go-to-definition can look up a sub-expression by source position (see
-    /// [`TypingInfo::at_offset`]).
+    /// Every checked expression's typing across the *whole* specification — every `eqn` (via
+    /// [`DataSpecification::typing_info`]) plus every PBES expression (a `val(...)` expression, a
+    /// `PropVarInst` argument, …), span-keyed so hover/go-to-definition can look up a
+    /// sub-expression by source position anywhere in the document (see [`TypingInfo::at_offset`])
+    /// without caring which half of the grammar it came from.
     ///
-    /// Like [`crate::ProcessSpecification::typing_info`], this needs no separate memoization: it
-    /// was already computed once, during the construction walk `from_untyped_with` runs anyway.
-    pub fn typing_info(&self) -> TypingInfo {
-        self.typing.clone()
+    /// The PBES-expression half needs no separate memoization: it was already computed once,
+    /// during the construction walk `from_untyped_with` runs anyway, and is just cloned out of the
+    /// stored value here. The `eqn` half *is* memoized, one level down — see
+    /// [`DataSpecification::typing_info`] — so a repeated call is cheap either way. Mirrors
+    /// [`crate::ProcessSpecification::typing_info`].
+    pub fn typing_info(&mut self) -> TypingInfo {
+        let mut info = self.data.typing_info();
+        info.merge(self.typing.clone());
+        info
     }
 }
 

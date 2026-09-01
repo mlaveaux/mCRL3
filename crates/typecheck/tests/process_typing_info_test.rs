@@ -27,6 +27,8 @@ fn hover(text: &str, needle: &str) -> String {
         .at_offset(offset)
         .unwrap_or_else(|| panic!("no typed node at offset {offset} in '{text}'"))
         .sort
+        .as_ref()
+        .unwrap_or_else(|| panic!("node at offset {offset} in '{text}' has no sort (e.g. an action/process name)"))
         .to_string()
 }
 
@@ -122,4 +124,78 @@ fn test_every_guard_of_a_condition_chain_contributes_typing() {
     assert_eq!(hover(text, "(state) -> a"), "Bool");
     assert_eq!(hover(text, "(state) -> b"), "Bool");
     assert_eq!(hover(text, "(state) -> c"), "Bool");
+}
+
+// ─── goto-def: action and process names ─────────────────────────────────────
+//
+// Unlike a variable occurrence, resolving *which* `act`/`proc` declaration a name refers to is
+// overload/arity-based (`check_action_or_process`/`check_instantiation`, see
+// `docs/name_resolution.md`), so it can only happen once type checking has picked the single
+// matching candidate — these `ResolvedName::Action`/`Process` nodes are pushed directly at that
+// point, not built from any `DataExpr` the way `Variable`/`Constructor`/`Mapping` are.
+
+/// `a(n)`'s own name — not its argument — resolves to an `Action`, pointing at its `act`
+/// declaration.
+#[test]
+fn test_action_name_goto_def_resolves_to_its_declaration() {
+    let text = "act a: Nat; proc P(n: Nat) = a(n); init P(1);";
+    let name = resolved_name_at(text, "a(n)");
+    let ResolvedName::Action { name, declaration } = &name else {
+        panic!("expected an Action resolution, got {name:?}");
+    };
+    assert_eq!(name, "a");
+    let declaration = declaration.clone().expect("a plain `act` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "a");
+    assert_eq!(declaration.start, text.find("a: Nat").expect("'a: Nat' not found"));
+}
+
+/// A positional process instantiation (`P(1)`, parsed as the same `ProcessExprKind::Action` node
+/// an action instance is) resolves to a `Process`, not an `Action`.
+#[test]
+fn test_positional_process_instantiation_name_goto_def_resolves_to_its_declaration() {
+    let text = "proc P(n: Nat) = delta; init P(1);";
+    let name = resolved_name_at(text, "P(1)");
+    let ResolvedName::Process { name, declaration } = &name else {
+        panic!("expected a Process resolution, got {name:?}");
+    };
+    assert_eq!(name, "P");
+    let declaration = declaration.clone().expect("a plain `proc` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "P");
+    assert_eq!(declaration.start, text.find("P(n: Nat)").expect("'P(n: Nat)' not found"));
+}
+
+/// The assignment form of instantiation (`P(n = 1)`, a `ProcessExprKind::Id` node) resolves to a
+/// `Process` the same way the positional form does.
+#[test]
+fn test_assignment_form_instantiation_name_goto_def_resolves_to_its_declaration() {
+    let text = "proc P(n: Nat) = delta; init P(n = 1);";
+    let name = resolved_name_at(text, "P(n = 1)");
+    let ResolvedName::Process { name, declaration } = &name else {
+        panic!("expected a Process resolution, got {name:?}");
+    };
+    assert_eq!(name, "P");
+    let declaration = declaration.clone().expect("a plain `proc` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "P");
+}
+
+/// An action overloaded by argument sort (mirroring `abp.mcrl2`'s style) resolves each *use* to
+/// the specific declaration its arguments actually match — the same disambiguation
+/// `test_overloaded_name_resolves_to_the_matching_declaration_by_sort` (data crate) exercises for
+/// constructors/mappings.
+#[test]
+fn test_overloaded_action_resolves_to_the_matching_declaration_by_arity() {
+    let text = "act a: Nat; a: Bool; proc P = a(1) + a(true); init P;";
+    let nat_decl = resolved_name_at(text, "a(1)");
+    let ResolvedName::Action { declaration, .. } = &nat_decl else {
+        panic!("expected an Action resolution, got {nat_decl:?}");
+    };
+    let declaration = declaration.clone().expect("a real declaration span");
+    assert_eq!(declaration.start, text.find("a: Nat").expect("'a: Nat' not found"));
+
+    let bool_decl = resolved_name_at(text, "a(true)");
+    let ResolvedName::Action { declaration, .. } = &bool_decl else {
+        panic!("expected an Action resolution, got {bool_decl:?}");
+    };
+    let declaration = declaration.clone().expect("a real declaration span");
+    assert_eq!(declaration.start, text.find("a: Bool").expect("'a: Bool' not found"));
 }

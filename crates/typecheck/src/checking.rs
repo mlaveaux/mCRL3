@@ -1,9 +1,19 @@
-//! Shared building blocks for a scoped, `TypingInfo`-accumulating walk over an expression tree
-//! that lives *outside* the data specification proper — a process body ([`crate::process::check`])
-//! or a PBES equation ([`crate::pbes::check`]) — each with its own variable scope. Crate-private:
-//! both callers reach this via `crate::checking::...`.
+//! Shared building blocks for a `TypingInfo`-accumulating walk over an expression tree that lives
+//! *outside* the data specification proper — a process body ([`crate::process::check`]) or a PBES
+//! equation ([`crate::pbes::check`]). Crate-private: both callers reach this via
+//! `crate::checking::...`.
+//!
+//! Neither caller threads its own name-shadowing scope through this walk: every variable
+//! occurrence in the expression being checked is already a `Resolved` node carrying its own
+//! declaration's span (`crate::resolve_process_variables`/`crate::resolve_pbes_variables`, see
+//! `docs/name_resolution.md`), so a flat [`Scope`] — every declaration reachable from the current
+//! `proc` body/PBES equation, keyed by its own span — is enough; there is no shadowing to resolve
+//! here, since two different declarations never share a span.
 
 use merc_syntax::DataExpr;
+use merc_syntax::IdDecl;
+use merc_syntax::SortExpression;
+use merc_syntax::Span;
 
 use crate::DataSpecification;
 use crate::InferenceError;
@@ -14,18 +24,10 @@ use crate::infer_expression_in_scope;
 use crate::lower_data_expr;
 use crate::typing_info;
 
-/// A shadowing stack of in-scope variable sorts: global variables, then (for a `proc` body, a
-/// PBES equation, …) that declaration's own parameters, then any binder pushed so far
-/// (`sum`/`dist`, a quantifier).
-pub(crate) struct Scope<'a> {
-    pub(crate) variables: Vec<(&'a str, ResolvedSortId)>,
-}
-
-impl<'a> Scope<'a> {
-    pub(crate) fn new(base: Vec<(&'a str, ResolvedSortId)>) -> Self {
-        Scope { variables: base }
-    }
-}
+/// Every declaration reachable from the `proc` body/PBES equation currently being checked —
+/// global variables, that declaration's own parameters, and every `sum`/`dist`/quantifier binder
+/// anywhere in it — keyed by each declaration's own span.
+pub(crate) type Scope = [(Span, ResolvedSortId)];
 
 /// Prepares a raw expression for inference: resolves its embedded binder sorts (see
 /// [`DataSpecification::resolve_expression_binder_sorts`]) and lowers it, exactly as
@@ -48,7 +50,7 @@ where
 /// [`InferenceError`] via `#[from]`, so there is nothing this module needs of its own.
 pub(crate) fn check_expression_against<E>(
     data: &mut DataSpecification,
-    scope: &Scope<'_>,
+    scope: &Scope,
     expr: &DataExpr,
     expected: ResolvedSortId,
     typing: &mut TypingInfo,
@@ -58,7 +60,23 @@ where
 {
     let lowered = prepare_expression::<E>(data, expr)?;
     let (ctx, spec, system) = data.context_and_specs_mut();
-    let equation_typing = infer_expression_in_scope(ctx, spec, system, &lowered, &scope.variables, Some(expected))?;
+    let equation_typing = infer_expression_in_scope(ctx, spec, system, &lowered, scope, Some(expected))?;
     typing.merge(typing_info::build(data, &equation_typing));
+    Ok(())
+}
+
+/// Resolves each of `variables`' declared sorts, extending `scope` with `(declaration span,
+/// resolved sort)` for each — the shared leaf [`crate::process::check`]'s `Sum`/`Dist` and
+/// [`crate::pbes::check`]'s `Quantifier` scope collection calls into.
+pub(crate) fn collect_binder_sorts<E>(
+    data: &mut DataSpecification,
+    scope: &mut Vec<(Span, ResolvedSortId)>,
+    variables: &[IdDecl],
+    mut resolve: impl FnMut(&mut DataSpecification, &SortExpression) -> Result<ResolvedSortId, E>,
+) -> Result<(), E> {
+    for var in variables {
+        let sort = resolve(data, &var.sort)?;
+        scope.push((var.span.clone(), sort));
+    }
     Ok(())
 }

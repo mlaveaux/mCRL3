@@ -493,8 +493,9 @@ pub enum ProcExprBinaryOp {
 /// location.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum ProcessExprKind {
-    Id(String, Vec<Assignment>),
-    Action(String, Vec<DataExpr>),
+    // Both `Id`'s and `Action`'s own name keep the [Span] they were parsed from.
+    Id(ActionName, Vec<Assignment>),
+    Action(ActionName, Vec<DataExpr>),
     Delta,
     Tau,
     Sum {
@@ -694,10 +695,11 @@ impl From<StateFrmKind> for StateFrm {
     }
 }
 
-/// An action name occurring inside a `hide`/`block`/`allow`/`comm`/`rename` set, paired with the
-/// [Span] it was parsed from — so later passes (e.g. goto-def) can point at the individual name
-/// rather than the whole enclosing expression. Equality, ordering and hashing ignore the span
-/// (see [Spanned]).
+/// An identifier occurrence naming an action or process, paired with the [Span] it was parsed
+/// from — so later passes (e.g. goto-def) can point at the individual name rather than the whole
+/// enclosing expression. Used both for a name inside a `hide`/`block`/`allow`/`comm`/`rename` set
+/// and for `ProcessExprKind::Action`/`Id`'s own name. Equality, ordering and hashing ignore the
+/// span (see [Spanned]).
 pub type ActionName = Spanned<String>;
 
 /// Represents a multi action label `a | b | c ...`.
@@ -720,14 +722,22 @@ impl MultiActionLabel {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct Action {
-    pub id: String,
+    pub id: ActionName,
     pub args: Vec<DataExpr>,
 }
 
 impl Action {
-    /// Creates a new action from an identifier and a list of arguments.
+    /// Creates a new action from an identifier and a list of arguments. `id` gets
+    /// [Span::default] — for a synthetic action with no real source location; the parser builds
+    /// `id`'s real span directly (see `consume::Mcrl2Parser::Action`).
     pub fn new(id: String, args: Vec<DataExpr>) -> Self {
-        Action { id, args }
+        Action {
+            id: ActionName {
+                node: id,
+                span: Span::default(),
+            },
+            args,
+        }
     }
 }
 

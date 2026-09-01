@@ -3,10 +3,10 @@
 //! and each argument's sort), and pushes/pops quantifier binders — accumulating each checked
 //! expression's [`TypingInfo`] along the way.
 
-use merc_syntax::IdDecl;
 use merc_syntax::PbesExpr;
 use merc_syntax::PbesExprKind;
 use merc_syntax::PropVarInst;
+use merc_syntax::Span;
 use merc_syntax::UntypedPbes;
 
 use crate::DataSpecification;
@@ -14,6 +14,7 @@ use crate::ResolvedSortId;
 use crate::TypingInfo;
 use crate::checking::Scope;
 use crate::checking::check_expression_against;
+use crate::checking::collect_binder_sorts;
 
 use super::PbesError;
 use super::pbes_specification::DeclarationTables;
@@ -30,35 +31,58 @@ pub(super) fn check_pbes_specification(
 ) -> Result<TypingInfo, PbesError> {
     let mut typing = TypingInfo::default();
 
-    let globals: Vec<(&str, ResolvedSortId)> = spec
+    let globals: Vec<(Span, ResolvedSortId)> = spec
         .global_variables
         .iter()
         .zip(&tables.global_sorts)
-        .map(|(decl, &sort)| (decl.identifier.as_str(), sort))
+        .map(|(decl, &sort)| (decl.span.clone(), sort))
         .collect();
 
     for (eqn, params) in spec.equations.iter().zip(&tables.equation_params) {
-        let mut scope = Scope::new(globals.clone());
-        // An equation's own parameters shadow a global variable of the same name.
-        scope
-            .variables
-            .extend(params.iter().map(|(name, sort)| (name.as_str(), *sort)));
-        check_pbes_expr(data, tables, &mut scope, &eqn.formula, &mut typing)?;
+        let mut scope = globals.clone();
+        // An equation's own parameters are in scope throughout its formula.
+        scope.extend(
+            eqn.variable
+                .parameters
+                .iter()
+                .zip(params)
+                .map(|(decl, &(_, sort))| (decl.span.clone(), sort)),
+        );
+        collect_scope(data, &eqn.formula, &mut scope)?;
+        check_pbes_expr(data, tables, &scope, &eqn.formula, &mut typing)?;
     }
 
     // `init` is a bare `PropVarInst`, checked the same way as one appearing inside a formula —
     // scope = globals only, since it sits outside every equation's own parameter scope.
-    let scope = Scope::new(globals);
-    check_prop_var_inst(data, tables, &scope, &spec.init, &mut typing)?;
+    check_prop_var_inst(data, tables, &globals, &spec.init, &mut typing)?;
 
     Ok(typing)
 }
 
-fn check_pbes_expr<'a>(
+/// Resolves the declared sort of every `Quantifier` binder in `expr`, extending `scope` with each
+/// — every variable occurrence in `expr` already names its own declaration's span
+/// (`crate::resolve_pbes_variables`), so this only needs to run once, before checking any of
+/// `expr`'s leaves, not interleaved with the check walk itself.
+fn collect_scope(data: &mut DataSpecification, expr: &PbesExpr, scope: &mut Vec<(Span, ResolvedSortId)>) -> Result<(), PbesError> {
+    match &expr.node {
+        PbesExprKind::True | PbesExprKind::False | PbesExprKind::DataValExpr(_) | PbesExprKind::PropVarInst(_) => Ok(()),
+        PbesExprKind::Negation(inner) => collect_scope(data, inner, scope),
+        PbesExprKind::Binary { lhs, rhs, .. } => {
+            collect_scope(data, lhs, scope)?;
+            collect_scope(data, rhs, scope)
+        }
+        PbesExprKind::Quantifier { variables, body, .. } => {
+            collect_binder_sorts(data, scope, variables, resolve_declared_sort)?;
+            collect_scope(data, body, scope)
+        }
+    }
+}
+
+fn check_pbes_expr(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
-    scope: &mut Scope<'a>,
-    expr: &'a PbesExpr,
+    scope: &Scope,
+    expr: &PbesExpr,
     typing: &mut TypingInfo,
 ) -> Result<(), PbesError> {
     match &expr.node {
@@ -78,28 +102,8 @@ fn check_pbes_expr<'a>(
             check_pbes_expr(data, tables, scope, rhs, typing)
         }
 
-        PbesExprKind::Quantifier { variables, body, .. } => {
-            let pushed = push_binders(data, scope, variables)?;
-            let result = check_pbes_expr(data, tables, scope, body, typing);
-            scope.variables.truncate(scope.variables.len() - pushed);
-            result
-        }
+        PbesExprKind::Quantifier { body, .. } => check_pbes_expr(data, tables, scope, body, typing),
     }
-}
-
-/// Resolves each of `variables`' declared sorts and pushes them onto `scope`, returning how many
-/// were pushed so the caller can `truncate` them back off once it's done with them — mirrors
-/// `crate::process::check`'s `Sum`/`Dist` binder handling, for a quantifier here instead.
-fn push_binders<'a>(
-    data: &mut DataSpecification,
-    scope: &mut Scope<'a>,
-    variables: &'a [IdDecl],
-) -> Result<usize, PbesError> {
-    for var in variables {
-        let sort = resolve_declared_sort(data, &var.sort)?;
-        scope.variables.push((var.identifier.as_str(), sort));
-    }
-    Ok(variables.len())
 }
 
 /// Resolves `inst.identifier` against the equation table (`UndeclaredPropositionalVariable` if
@@ -108,7 +112,7 @@ fn push_binders<'a>(
 fn check_prop_var_inst(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
-    scope: &Scope<'_>,
+    scope: &Scope,
     inst: &PropVarInst,
     typing: &mut TypingInfo,
 ) -> Result<(), PbesError> {
