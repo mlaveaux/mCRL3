@@ -1,18 +1,17 @@
-//! Resolves *variable* references (as opposed to constructor/mapping/action/process names, which
-//! are not context-free — see `docs/name_resolution.md`) in a process specification's `proc`
-//! bodies/`init`, and a PBES's equation bodies/`init`, ahead of type checking.
+//! Resolves *variable* references — as opposed to constructor/mapping/action/process names, which
+//! are not context-free (see `docs/name_resolution.md`) — in a process specification's `proc`
+//! bodies/`init` and a PBES's equation bodies/`init`, before type checking runs.
 //!
 //! A variable occurrence's binder — `sum`/`dist`, a process's own parameters, a PBES
 //! quantifier/equation parameter — is decided purely by lexical scoping over the untyped syntax
-//! tree, with no dependency on inferred sorts at all (unlike overloaded constructor/mapping
-//! resolution, or the arity-based action-vs-process disambiguation `check_action_or_process`
-//! performs). So this pass needs no [`crate::DataSpecification`] and cannot fail: a name that
-//! isn't found in scope is left as a plain `Id`, exactly as an undeclared/constructor/mapping name
-//! is today, and the existing overload/`UndeclaredName` machinery in `inference.rs` still owns
-//! that error unchanged.
+//! tree, with no dependency on inferred sorts (unlike overloaded constructor/mapping resolution,
+//! or the arity-based action-vs-process disambiguation `check_action_or_process` performs). This
+//! pass therefore needs no [`crate::DataSpecification`] and cannot fail: a name not found in
+//! scope is left as a plain `Id`, and `inference.rs`'s overload/`UndeclaredName` machinery is
+//! responsible for rejecting it if it turns out to be undeclared.
 //!
-//! Mirrors `resolution::name_resolution::resolve_sort_id`'s `Reference` -> `Resolved` shape, for
-//! [`DataExprKind::Id`] -> [`DataExprKind::Resolved`] instead.
+//! [`DataExprKind::Id`] resolves to [`DataExprKind::Resolved`] the same way a sort's
+//! `Reference` resolves to `Resolved` in `resolution::name_resolution::resolve_sort_id`.
 
 use merc_syntax::DataExpr;
 use merc_syntax::DataExprKind;
@@ -23,16 +22,34 @@ use merc_syntax::ProcessExpr;
 use merc_syntax::ProcessExprKind;
 use merc_syntax::PropVarInst;
 use merc_syntax::Span;
+use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedProcessSpecification;
+
+/// Resolves every context-free variable reference in `spec`'s own `var`-block equations —
+/// the one case `docs/name_resolution.md` originally left uncovered. Each `EqnSpec`'s
+/// `variables` are in scope for that block's own equations only; an equation's `lhs` is
+/// resolved exactly like its `rhs`/`condition` — mCRL2 equations don't bind new variables in
+/// their left-hand side, `lhs` is just another read of the block's declared variables.
+pub(crate) fn resolve_data_specification_variables(spec: &mut UntypedDataSpecification) {
+    for eqn_spec in &mut spec.equation_declarations {
+        let mut scope = binder_scope(&eqn_spec.variables);
+        for equation in &mut eqn_spec.equations {
+            if let Some(condition) = &mut equation.condition {
+                resolve_in_data_expr(condition, &mut scope);
+            }
+            resolve_in_data_expr(&mut equation.lhs, &mut scope);
+            resolve_in_data_expr(&mut equation.rhs, &mut scope);
+        }
+    }
+}
 
 /// Resolves every context-free variable reference in `spec`'s `proc` bodies and `init`.
 pub(crate) fn resolve_process_variables(spec: &mut UntypedProcessSpecification) {
     let globals = binder_scope(&spec.global_variables);
 
     for proc_decl in &mut spec.process_declarations {
-        // A process's own parameters shadow a global variable of the same name, matching
-        // `process::check`'s `DeclarationTables`/`check_process_specification`.
+        // A process's own parameters shadow a global variable of the same name.
         let mut scope = globals.clone();
         push_binder(&mut scope, &proc_decl.params);
         resolve_in_process_expr(&mut proc_decl.body, &mut scope);
@@ -55,8 +72,7 @@ pub(crate) fn resolve_pbes_variables(pbes: &mut UntypedPbes) {
         resolve_in_pbes_expr(&mut equation.formula, &mut scope);
     }
 
-    // `init` sits outside every equation's own parameter scope, mirroring `pbes::check`'s direct
-    // `check_prop_var_inst` call for it.
+    // `init` sits outside every equation's own parameter scope — only globals apply.
     let mut scope = globals.clone();
     resolve_in_prop_var_inst(&mut pbes.init, &mut scope);
 }
@@ -110,8 +126,7 @@ fn resolve_in_process_expr(expr: &mut ProcessExpr, scope: &mut Scope) {
             operand,
         } => {
             let pushed = push_binder(scope, variables);
-            // `dist`'s weight is resolved with the bound variables already in scope, mirroring
-            // `process::check`'s own `Dist` handling.
+            // `dist`'s weight is resolved with its own bound variables already in scope.
             resolve_in_data_expr(weight, scope);
             resolve_in_process_expr(operand, scope);
             scope.truncate(scope.len() - pushed);
@@ -164,9 +179,8 @@ fn resolve_in_prop_var_inst(inst: &mut PropVarInst, scope: &mut Scope) {
 }
 
 /// Rewrites every `Id(name)` in `expr` found in `scope` into `Resolved(name, declaration span)`,
-/// extending `scope` for the data-level binders (`lambda`, a quantifier, a set/bag comprehension,
-/// `whr`) it descends through — mirrors
-/// `resolution::name_resolution::apply_sorts_in_data_expr`'s binder shapes.
+/// extending `scope` for the data-level binders it descends through (`lambda`, a quantifier, a
+/// set/bag comprehension, `whr`).
 fn resolve_in_data_expr(expr: &mut DataExpr, scope: &mut Scope) {
     match &mut expr.node {
         DataExprKind::Id(name) => {
@@ -219,8 +233,7 @@ fn resolve_in_data_expr(expr: &mut DataExpr, scope: &mut Scope) {
         }
         DataExprKind::Whr { expr, assignments } => {
             // Each assignment's right-hand side is resolved in the *outer* scope — bindings
-            // don't see each other, only the body does — mirroring `inference.rs`'s own `Whr`
-            // handling.
+            // don't see each other, only the body does.
             for assignment in assignments.iter_mut() {
                 resolve_in_data_expr(&mut assignment.expr, scope);
             }
@@ -239,9 +252,11 @@ mod tests {
     use merc_syntax::DataExprKind;
     use merc_syntax::PbesExprKind;
     use merc_syntax::ProcessExprKind;
+    use merc_syntax::UntypedDataSpecification;
     use merc_syntax::UntypedPbes;
     use merc_syntax::UntypedProcessSpecification;
 
+    use super::resolve_data_specification_variables;
     use super::resolve_pbes_variables;
     use super::resolve_process_variables;
 
@@ -429,6 +444,57 @@ mod tests {
         assert!(matches!(
             &pbes.init.arguments[0].node,
             DataExprKind::Resolved(name, span) if name == "g" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_data_specification_equation_variable_resolves_to_its_var_block_declaration() {
+        let text = "map f: Nat -> Nat; var x: Nat; eqn f(x) = x;";
+        let mut spec = UntypedDataSpecification::parse(text).unwrap();
+        resolve_data_specification_variables(&mut spec);
+
+        let equation = &spec.equation_declarations[0].equations[0];
+        let (start, end) = decl_span(text, "x: Nat", "x");
+        assert!(matches!(
+            &equation.lhs.node,
+            DataExprKind::Application { arguments, .. }
+                if matches!(&arguments[0].node, DataExprKind::Resolved(name, span) if name == "x" && span.start == start && span.end == end)
+        ));
+        assert!(matches!(
+            &equation.rhs.node,
+            DataExprKind::Resolved(name, span) if name == "x" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_data_specification_equation_condition_resolves_too() {
+        let text = "map f: Bool -> Nat; var x: Bool; eqn x -> f(x) = 0;";
+        let mut spec = UntypedDataSpecification::parse(text).unwrap();
+        resolve_data_specification_variables(&mut spec);
+
+        let equation = &spec.equation_declarations[0].equations[0];
+        let (start, end) = decl_span(text, "x: Bool", "x");
+        let condition = equation.condition.as_ref().expect("expected a condition");
+        assert!(matches!(
+            &condition.node,
+            DataExprKind::Resolved(name, span) if name == "x" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_data_specification_variable_scope_does_not_leak_across_var_blocks() {
+        let text = "map f: Nat -> Nat; g: Bool -> Nat; var x: Nat; eqn f(x) = x; var y: Bool; eqn g(y) = y;";
+        let mut spec = UntypedDataSpecification::parse(text).unwrap();
+        resolve_data_specification_variables(&mut spec);
+
+        // `y` isn't declared in the first block; it's a separate `var` block's own variable, so
+        // this pass leaves it as-is when scoped to the first block. Only checking the second
+        // block resolves correctly is the interesting assertion here.
+        let second = &spec.equation_declarations[1].equations[0];
+        let (start, end) = decl_span(text, "y: Bool", "y");
+        assert!(matches!(
+            &second.rhs.node,
+            DataExprKind::Resolved(name, span) if name == "y" && span.start == start && span.end == end
         ));
     }
 }

@@ -163,9 +163,8 @@ fn validate_system_binder_sorts(
     expr: &DataExpr,
 ) -> Result<(), WellTypedError> {
     match &expr.node {
-        // `Resolved` never appears here — the variable-resolution pass never runs over the
-        // system-defined specification's own equations — but is grouped with `Id` for
-        // exhaustiveness.
+        // `Resolved` never occurs in the system-defined specification's own equations, but is
+        // grouped with `Id` for exhaustiveness.
         DataExprKind::Id(_)
         | DataExprKind::Resolved(_, _)
         | DataExprKind::Number(_)

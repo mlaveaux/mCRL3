@@ -91,11 +91,11 @@ pub(crate) struct EquationTyping {
     /// The identifier text of every `Id` node, keyed the same way as `names`.
     /// Only filled for [EquationRole::User], like `spans`.
     pub(crate) identifier_names: HashMap<ExprId, String>,
-    /// The declaration span of every `Resolved` node (a variable the upstream
-    /// resolution pass already tied to its binder), keyed the same way as `names`.
-    /// Only filled for [EquationRole::User], like `spans`. Absent for a plain `Id`
-    /// node resolving to [NameTarget::Variable] — e.g. a data specification's own
-    /// equation variable, which this pass doesn't (yet) resolve.
+    /// The declaration span of every `Resolved` node (a variable reference that names its own
+    /// binder), keyed the same way as `names`. Only filled for [EquationRole::User], like
+    /// `spans`. Absent for a plain `Id` node resolving to [NameTarget::Variable] — e.g. an
+    /// occurrence the upstream variable-resolution pass left unresolved because it names no
+    /// binder in scope (rejected separately by [`NameTarget::Variable`]'s own lookup below).
     pub(crate) declarations: HashMap<ExprId, Span>,
 }
 
@@ -346,6 +346,7 @@ fn infer_equation(
         role,
         eqn_spec_id,
         &scope,
+        &[],
         Roots::Equation {
             condition: equation.condition.as_ref(),
             lhs: &equation.lhs,
@@ -379,21 +380,22 @@ pub(crate) fn infer_expression(
     infer_expression_in_scope(ctx, spec, system, expr, &[], None)
 }
 
-/// As [`infer_expression`], but against an externally-supplied variable `scope` (rather than
+/// As [`infer_expression`], but against an externally-supplied `declared_scope` (rather than
 /// none) and, when `expected` is given, additionally constrained to be a subsort of it (rather
 /// than typed purely from the expression's own structure) — see [`Roots::ExpressionAgainst`].
 ///
-/// Used by [`crate::process`] to check an action argument, a process-instantiation argument, a
-/// `sum`/`dist` condition or time bound, or similar, each against its own already-known expected
-/// sort and its own enclosing variable scope (global variables, process parameters, `sum`/`dist`
-/// binders) — none of which is an equation's `var` block, so [`infer_expression`]'s own closed-
-/// expression restriction doesn't apply here.
+/// Used by [`crate::process`]/[`crate::pbes`] to check an action argument, a process-instantiation
+/// argument, a `sum`/`dist` condition or time bound, a `PropVarInst` argument, or similar, each
+/// against its own already-known expected sort. `declared_scope` covers every global variable,
+/// process/PBES parameter, and `sum`/`dist`/quantifier binder in scope, keyed by each one's own
+/// declaration span (see [`infer`]'s doc comment) — none of which is an equation's `var` block, so
+/// [`infer_expression`]'s own closed-expression restriction doesn't apply here.
 pub(crate) fn infer_expression_in_scope(
     ctx: &mut TypeCheckContext,
     spec: &UntypedDataSpecification,
     system: &UntypedDataSpecification,
     expr: &DataExpr,
-    scope: &[(&str, ResolvedSortId)],
+    declared_scope: &[(Span, ResolvedSortId)],
     expected: Option<ResolvedSortId>,
 ) -> Result<EquationTyping, InferenceError> {
     let roots = match expected {
@@ -408,7 +410,8 @@ pub(crate) fn infer_expression_in_scope(
         // Unused: the `User` role reads no per-group state, and a scope here is never an
         // equation's `var` block.
         EqnSpecId::new(0),
-        scope,
+        &[],
+        declared_scope,
         roots,
         &|| expr.to_string(),
         &expr.span,
@@ -441,8 +444,13 @@ enum Roots<'a> {
 /// diagnostics and `span` locates it in the source.
 ///
 /// `scope` is a pre-resolved `(name, sort)` list, resolved by the caller before this is called —
-/// see [infer_equation] for an equation's own variables, or [crate::process] for a process-level
-/// scope.
+/// used for an equation's own variables (see [infer_equation]), looked up by name.
+///
+/// `declared_scope` is a pre-resolved `(declaration span, sort)` list — used for a process/PBES
+/// scope (see [infer_expression_in_scope]/[crate::process]), looked up by a `Resolved` node's own
+/// declaration span rather than by name, since [`crate::resolve_process_variables`]/
+/// [`crate::resolve_pbes_variables`] already tie each such occurrence to its declaration. A caller
+/// supplies one of `scope`/`declared_scope` and leaves the other empty.
 #[allow(clippy::too_many_arguments)]
 fn infer<'a>(
     ctx: &mut TypeCheckContext,
@@ -451,6 +459,7 @@ fn infer<'a>(
     role: EquationRole,
     eqn_spec_id: EqnSpecId,
     scope: &'a [(&'a str, ResolvedSortId)],
+    declared_scope: &[(Span, ResolvedSortId)],
     roots: Roots<'a>,
     equation_text: &dyn Fn() -> String,
     equation_span: &Span,
@@ -465,6 +474,14 @@ fn infer<'a>(
     for &(name, sort) in scope {
         let node = unifier.resolved_node(sort);
         variables.insert(name, node);
+    }
+
+    // A `Resolved` node's own declaration span looks itself up here directly, without going
+    // through `variables` at all.
+    let mut declared_sorts = HashMap::new();
+    for (declaration, sort) in declared_scope {
+        let node = unifier.resolved_node(*sort);
+        declared_sorts.insert(declaration.clone(), node);
     }
 
     // The signatures are cloned out of the context (cheaply, behind `Arc`)
@@ -508,6 +525,7 @@ fn infer<'a>(
         system_signature,
         polymorphic,
         variables,
+        declared_sorts,
         unifier: &mut unifier,
         expr_sorts: Vec::new(),
         expr_texts: Vec::new(),
@@ -871,6 +889,9 @@ struct ConstraintGenerator<'a> {
     system_signature: Arc<Signature>,
     polymorphic: &'static PolymorphicSignature,
     variables: HashMap<&'a str, InferSortId>,
+    /// A `Resolved` node's declaration span, mapped to its sort — the process/PBES counterpart of
+    /// `variables`, looked up directly instead of by name; see [`infer`]'s doc comment.
+    declared_sorts: HashMap<Span, InferSortId>,
     unifier: &'a mut Unifier,
     /// The sort node of every expression, indexed by [ExprId].
     expr_sorts: Vec<InferSortId>,
@@ -888,10 +909,9 @@ struct ConstraintGenerator<'a> {
     /// filled when [Self::collect_typing_info]. Becomes
     /// [EquationTyping::identifier_names].
     expr_names: HashMap<ExprId, String>,
-    /// The declaration span of every `Resolved` node (a variable the upstream
-    /// resolution pass already tied to its binder — see `docs/name_resolution.md`),
-    /// keyed by its [ExprId]; only filled when [Self::collect_typing_info]. Becomes
-    /// [EquationTyping::declarations].
+    /// The declaration span of every `Resolved` node — a variable reference that names its own
+    /// binder (see `docs/name_resolution.md`) — keyed by its [ExprId]; only filled when
+    /// [Self::collect_typing_info]. Becomes [EquationTyping::declarations].
     expr_declarations: HashMap<ExprId, Span>,
     /// Whether [Self::expr_spans]/[Self::expr_names] should be filled — i.e.
     /// whether `role` is [EquationRole::User]. Sampled once at construction.
@@ -1218,17 +1238,18 @@ impl<'a> ConstraintGenerator<'a> {
         })
     }
 
-    /// Resolves the candidates of a name: the equation variables shadow
-    /// everything, then the user overloads joined by the system-defined
-    /// overloads and the polymorphic built-in schemes (the container and
-    /// function-update operations, the comparison operators and `if`), each
+    /// Resolves the candidates of a name: a `Resolved` node's own declaration (`declaration`, in
+    /// `self.declared_sorts`) shadows everything, then an in-scope binder introduced elsewhere in
+    /// this same expression (`self.variables`, by name — a `lambda`/`forall`/`exists`/
+    /// comprehension/`whr` binder, or an equation's own `var`-block variable), then the user
+    /// overloads joined by the system-defined overloads and the polymorphic built-in schemes (the
+    /// container and function-update operations, the comparison operators and `if`), each
     /// instantiated fresh per occurrence.
     ///
-    /// `declaration` is `Some` when this occurrence is a `Resolved` node: the upstream
-    /// variable-resolution pass already tied it to its binder's own span (see
-    /// `docs/name_resolution.md`). It plays no role in resolving `name` here — that still goes
-    /// through the same by-name lookup as a plain `Id` node below — it is only recorded, for
-    /// `typing_info` to later report as `ResolvedName::Variable`'s `declaration`.
+    /// `declaration` is `Some` exactly when this occurrence is a `Resolved` node, carrying its
+    /// binder's own span (see `docs/name_resolution.md`); it is also always recorded (when
+    /// `Some`, regardless of which candidate `name` resolves to), becoming
+    /// `ResolvedName::Variable`'s `declaration` in `typing_info`.
     fn gen_name(
         &mut self,
         id: ExprId,
@@ -1244,6 +1265,12 @@ impl<'a> ConstraintGenerator<'a> {
             if let Some(declaration) = declaration {
                 self.expr_declarations.insert(id, declaration.clone());
             }
+        }
+
+        if let Some(sort) = declaration.and_then(|declaration| self.declared_sorts.get(declaration)) {
+            self.names.insert(id, NameTarget::Variable);
+            self.bind_fresh(node, *sort);
+            return Ok(());
         }
 
         if let Some(&sort) = self.variables.get(name) {

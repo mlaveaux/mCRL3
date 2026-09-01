@@ -61,10 +61,10 @@ pub enum ResolvedName {
     /// An equation variable, a process/PBES parameter, or a `sum`/`dist`/quantifier binder.
     Variable {
         name: String,
-        /// The binder's own declaration span, when the upstream variable-resolution pass
-        /// (`docs/name_resolution.md`) tied this occurrence to it — `sum`/`dist`, a process's
-        /// own parameters, a PBES quantifier/equation parameter. `None` for a data
-        /// specification's own equation variable, which that pass doesn't (yet) cover.
+        /// The binder's own declaration span — `sum`/`dist`, a process's own parameters, a PBES
+        /// quantifier/equation parameter, or a data specification's own `var`-block declaration
+        /// (see `docs/name_resolution.md`). `None` only for a binder that itself has no real
+        /// span, which should not arise in practice.
         declaration: Option<Span>,
     },
     /// A user-declared constructor.

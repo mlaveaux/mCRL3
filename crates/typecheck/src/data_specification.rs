@@ -52,6 +52,7 @@ use crate::lower_data_specification;
 use crate::lower_expression;
 use crate::merge_signatures;
 use crate::normalize_sorts;
+use crate::resolve_data_specification_variables;
 use crate::resolve_sort;
 use crate::resolve_sort_id;
 use crate::resolve_sort_ids;
@@ -93,6 +94,12 @@ impl DataSpecification {
             spec.map_declarations.len(),
             spec.equation_declarations.len()
         );
+
+        // A pure syntactic pass, before anything else needs `spec` — see
+        // `resolution::variable_resolution`. Ties every equation-variable occurrence to its own
+        // `var`-block declaration span, the same way `resolve_process_variables`/
+        // `resolve_pbes_variables` already do for a process/PBES body.
+        resolve_data_specification_variables(&mut spec);
 
         // Hoist anonymous structured sorts into fresh named declarations, so
         // name resolution, the alias checks and the desugaring below only ever
