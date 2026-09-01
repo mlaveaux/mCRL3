@@ -10,6 +10,7 @@ use merc_utilities::Span;
 use crate::ActDecl;
 use crate::ActFrm;
 use crate::Action;
+use crate::ActionName;
 use crate::ActionRHS;
 use crate::ActionRenameDecl;
 use crate::ActionRenameRule;
@@ -1003,20 +1004,26 @@ impl Mcrl2Parser {
         parse_actfrm(input.children().as_pairs().clone())
     }
 
-    pub(crate) fn ActIdSet(actions: ParseNode) -> ParseResult<Vec<String>> {
+    pub(crate) fn ActIdSet(actions: ParseNode) -> ParseResult<Vec<ActionName>> {
         match_nodes!(actions.into_children();
             [IdList(list)] => {
-                Ok(list.into_iter().map(|(name, _)| name).collect())
+                Ok(list.into_iter().map(|(node, span)| ActionName { node, span }).collect())
             },
         )
     }
 
+    // `MultActId = { Id ~ ( "|" ~ Id )* }`: every child is a plain `Id` leaf, so its span is read
+    // directly off the raw node (as [IdList] does) rather than via the `Id` production, which
+    // only returns the name.
     fn MultActId(actions: ParseNode) -> ParseResult<MultiActionLabel> {
-        match_nodes!(actions.into_children();
-            [Id(action), Id(actions)..] => {
-                Ok(MultiActionLabel { actions: iter::once(action).chain(actions).collect() })
-            },
-        )
+        let actions = actions
+            .into_children()
+            .map(|id| ActionName {
+                node: id.as_str().to_string(),
+                span: id.as_span().into(),
+            })
+            .collect();
+        Ok(MultiActionLabel { actions })
     }
 
     fn MultActIdList(actions: ParseNode) -> ParseResult<Vec<MultiActionLabel>> {
@@ -1134,18 +1141,28 @@ impl Mcrl2Parser {
         )
     }
 
+    // `CommExpr = { Id ~ "|" ~ MultActId ~ "->" ~ Id }`: walked by hand, rather than via
+    // `match_nodes!`, so the two bare `Id` leaves keep their span (see [MultActId]) alongside the
+    // recursively-parsed `MultActId` in between.
     fn CommExpr(action: ParseNode) -> ParseResult<CommExpr> {
-        match_nodes!(action.into_children();
-            [Id(id), MultActId(multiact), Id(to)] => {
-                let mut actions = vec![id];
-                actions.extend(multiact.actions);
+        let mut children = action.into_children();
+        let first = children.next().expect("CommExpr requires a leading Id");
+        let first = ActionName {
+            node: first.as_str().to_string(),
+            span: first.as_span().into(),
+        };
 
-                Ok(CommExpr {
-                    from: MultiActionLabel { actions },
-                    to
-                })
-            },
-        )
+        let multiact_node = children.next().expect("CommExpr requires a MultActId");
+        let mut multiact = Self::MultActId(multiact_node)?;
+        multiact.actions.insert(0, first);
+
+        let to_node = children.next().expect("CommExpr requires a trailing Id");
+        let to = ActionName {
+            node: to_node.as_str().to_string(),
+            span: to_node.as_span().into(),
+        };
+
+        Ok(CommExpr { from: multiact, to })
     }
 
     fn CommExprList(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
@@ -1215,12 +1232,22 @@ impl Mcrl2Parser {
         )
     }
 
+    // `RenExpr = { Id ~ "->" ~ Id }`: both children are plain `Id` leaves, so spans are read
+    // directly off the raw nodes (see [MultActId]) rather than via the `Id` production.
     fn RenExpr(renames: ParseNode) -> ParseResult<Rename> {
-        match_nodes!(renames.into_children();
-            [Id(from), Id(to)] => {
-                Ok(Rename { from, to })
+        let mut children = renames.into_children();
+        let from = children.next().expect("RenExpr requires a from Id");
+        let to = children.next().expect("RenExpr requires a to Id");
+        Ok(Rename {
+            from: ActionName {
+                node: from.as_str().to_string(),
+                span: from.as_span().into(),
             },
-        )
+            to: ActionName {
+                node: to.as_str().to_string(),
+                span: to.as_span().into(),
+            },
+        })
     }
 
     pub(crate) fn ProcExprSum(input: ParseNode) -> ParseResult<Vec<IdDecl>> {

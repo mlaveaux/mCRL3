@@ -509,7 +509,9 @@ pub enum ProcessExprKind {
         rhs: Box<ProcessExpr>,
     },
     Hide {
-        actions: Vec<String>,
+        // Each action name keeps the [Span] it was parsed from, so later passes (e.g. goto-def)
+        // can point at the individual name rather than the whole `hide(...)` expression.
+        actions: Vec<ActionName>,
         operand: Box<ProcessExpr>,
     },
     Rename {
@@ -521,7 +523,8 @@ pub enum ProcessExprKind {
         operand: Box<ProcessExpr>,
     },
     Block {
-        actions: Vec<String>,
+        // See [ProcessExprKind::Hide] for why each name carries its own [Span].
+        actions: Vec<ActionName>,
         operand: Box<ProcessExpr>,
     },
     Comm {
@@ -688,15 +691,21 @@ impl From<StateFrmKind> for StateFrm {
     }
 }
 
+/// An action name occurring inside a `hide`/`block`/`allow`/`comm`/`rename` set, paired with the
+/// [Span] it was parsed from — so later passes (e.g. goto-def) can point at the individual name
+/// rather than the whole enclosing expression. Equality, ordering and hashing ignore the span
+/// (see [Spanned]).
+pub type ActionName = Spanned<String>;
+
 /// Represents a multi action label `a | b | c ...`.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct MultiActionLabel {
-    pub actions: Vec<String>,
+    pub actions: Vec<ActionName>,
 }
 
 impl MultiActionLabel {
     /// Creates a new multi-action label from a list of action identifiers.
-    pub fn new(actions: Vec<String>) -> Self {
+    pub fn new(actions: Vec<ActionName>) -> Self {
         MultiActionLabel { actions }
     }
 
@@ -1029,19 +1038,19 @@ impl From<RegFrmKind> for RegFrm {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Rename {
-    pub from: String,
-    pub to: String,
+    pub from: ActionName,
+    pub to: ActionName,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct CommExpr {
     pub from: MultiActionLabel,
-    pub to: String,
+    pub to: ActionName,
 }
 
 impl CommExpr {
     /// Creates a new communication expression from a multi-action label and a target action identifier.
-    pub fn new(from: MultiActionLabel, to: String) -> Self {
+    pub fn new(from: MultiActionLabel, to: ActionName) -> Self {
         CommExpr { from, to }
     }
 }

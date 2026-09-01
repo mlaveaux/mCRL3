@@ -38,6 +38,7 @@ pub use syntax_tree::ActFrm;
 pub use syntax_tree::ActFrmBinaryOp;
 pub use syntax_tree::ActFrmKind;
 pub use syntax_tree::Action;
+pub use syntax_tree::ActionName;
 pub use syntax_tree::Assignment;
 pub use syntax_tree::AssignmentData;
 pub use syntax_tree::BagElement;
