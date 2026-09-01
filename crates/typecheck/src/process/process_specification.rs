@@ -18,6 +18,7 @@ use merc_syntax::UntypedProcessSpecification;
 use crate::DataSpecification;
 use crate::NumberEncoding;
 use crate::ResolvedSortId;
+use crate::TypingInfo;
 
 use super::ProcessError;
 use super::check;
@@ -32,6 +33,9 @@ pub struct ProcessSpecification {
     /// The original specification, *minus* its data specification.
     spec: UntypedProcessSpecification,
     data: DataSpecification,
+    /// Every process-body expression's `TypingInfo`, merged during the construction walk (see
+    /// [`Self::typing_info`]).
+    typing: TypingInfo,
 }
 
 impl ProcessSpecification {
@@ -54,9 +58,9 @@ impl ProcessSpecification {
         let mut data = DataSpecification::from_untyped_with(data_spec, encoding)?;
 
         let tables = DeclarationTables::build(&mut data, &spec)?;
-        check::check_process_specification(&mut data, &tables, &spec)?;
+        let typing = check::check_process_specification(&mut data, &tables, &spec)?;
 
-        Ok(ProcessSpecification { spec, data })
+        Ok(ProcessSpecification { spec, data, typing })
     }
 
     /// The checked data specification.
@@ -88,6 +92,23 @@ impl ProcessSpecification {
     /// library-only specification with no `init` is legitimate.
     pub fn init(&self) -> Option<&ProcessExpr> {
         self.spec.init.as_ref()
+    }
+
+    /// Every checked expression's typing across the *whole* specification — every `eqn` (via
+    /// [`DataSpecification::typing_info`]) plus every process-body expression (action arguments,
+    /// process-instantiation arguments, conditions, time bounds, `dist` weights), span-keyed so
+    /// hover/go-to-definition/inlay-hints can look up a sub-expression by source position anywhere
+    /// in the document (see [`TypingInfo::at_offset`]) without caring which half of the grammar it
+    /// came from.
+    ///
+    /// The process-body half needs no separate memoization: it was already computed once, during
+    /// the construction walk `from_untyped_with` runs anyway, and is just cloned out of the stored
+    /// value here. The `eqn` half *is* memoized, one level down — see
+    /// [`DataSpecification::typing_info`] — so a repeated call is cheap either way.
+    pub fn typing_info(&mut self) -> TypingInfo {
+        let mut info = self.data.typing_info();
+        info.merge(self.typing.clone());
+        info
     }
 }
 
