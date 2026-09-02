@@ -144,10 +144,10 @@ fn check_pres_expr(
 /// Resolves `inst.identifier` against the equation table (`UndeclaredPropositionalVariable` if
 /// missing), checks its argument count against the declared parameter count (`ArityMismatch`), and
 /// checks each argument against its parameter's sort. On success, also pushes a
-/// [`ResolvedName::PropositionalVariable`] at `inst`'s own span — see
-/// [`docs/name_resolution.md`](../../../../docs/name_resolution.md): unlike an action/process name,
-/// a PRES equation is never overloaded, so the equation table's single match is the answer. Mirrors
-/// [`crate::pbes::check::check_prop_var_inst`].
+/// [`ResolvedName::PropositionalVariable`] at `inst.identifier`'s own span (not `inst.span`, the
+/// whole `name(args)` node) — see [`docs/name_resolution.md`](../../../../docs/name_resolution.md):
+/// unlike an action/process name, a PRES equation is never overloaded, so the equation table's
+/// single match is the answer. Mirrors [`crate::pbes::check::check_prop_var_inst`].
 fn check_prop_var_inst(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
@@ -155,16 +155,16 @@ fn check_prop_var_inst(
     inst: &PropVarInst,
     typing: &mut TypingInfo,
 ) -> Result<(), PresError> {
-    let Some(&index) = tables.equations_by_name.get(&inst.identifier) else {
+    let Some(&index) = tables.equations_by_name.get(&inst.identifier.node) else {
         return Err(PresError::UndeclaredPropositionalVariable {
-            name: inst.identifier.clone(),
+            name: inst.identifier.node.clone(),
             span: inst.span.clone(),
         });
     };
     typing.push(
-        inst.span.clone(),
+        inst.identifier.span.clone(),
         ResolvedName::PropositionalVariable {
-            name: inst.identifier.clone(),
+            name: inst.identifier.node.clone(),
             declaration: declared_span(&tables.equation_decl_spans[index]),
         },
     );
@@ -172,7 +172,7 @@ fn check_prop_var_inst(
     let params = &tables.equation_params[index];
     if inst.arguments.len() != params.len() {
         return Err(PresError::ArityMismatch {
-            name: inst.identifier.clone(),
+            name: inst.identifier.node.clone(),
             expected: params.len(),
             found: inst.arguments.len(),
             span: inst.span.clone(),

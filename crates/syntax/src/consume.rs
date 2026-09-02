@@ -277,13 +277,13 @@ impl Mcrl2Parser {
         match_nodes!(inst.into_children();
             [Id(identifier)] => {
                 Ok(PropVarInstData {
-                    identifier: identifier.node,
+                    identifier,
                     arguments: Vec::new(),
                 }.spanned(span.into()))
             },
             [Id(identifier), DataExprList(arguments)] => {
                 Ok(PropVarInstData {
-                    identifier: identifier.node,
+                    identifier,
                     arguments,
                 }.spanned(span.into()))
             }

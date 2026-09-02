@@ -334,3 +334,17 @@ fn process_declaration_span_is_precisely_the_identifier() {
         .collect();
     assert_eq!(spans, ["P", "Q"]);
 }
+
+/// `PropVarInst` (`X(0)`) carries both its own span, covering `Id(args)` in full, and its
+/// `identifier`'s own span, covering only `Id` — mirroring `ActionName`, so a later pass (hover,
+/// go-to-definition) can point at just the name rather than the whole instantiation.
+#[test]
+fn prop_var_inst_identifier_span_is_precisely_the_identifier() {
+    let text = "pbes mu X(n: Nat) = val(n == n); init X(0);";
+    let pbes = merc_syntax::UntypedPbes::parse(text).expect("the specification should parse");
+    assert_eq!(&text[pbes.init.span.start..pbes.init.span.end], "X(0)");
+    assert_eq!(
+        &text[pbes.init.identifier.span.start..pbes.init.identifier.span.end],
+        "X"
+    );
+}

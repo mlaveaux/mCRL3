@@ -744,7 +744,7 @@ mod tests {
 
         // `X` is only reachable through the bound and the addition below it.
         let found = pres.equations[0].formula.visit(|expr| match &expr.node {
-            PresExprKind::PropVarInst(instantiation) => ControlFlow::Break(instantiation.identifier.clone()),
+            PresExprKind::PropVarInst(instantiation) => ControlFlow::Break(instantiation.identifier.node.clone()),
             _ => ControlFlow::Continue(()),
         });
 

@@ -4,7 +4,7 @@
 //! can misparse a [`ProcessExprKind::Condition`]'s `condition` field — the one `DataExpr` slot in
 //! the process grammar with no delimiter bounding how far it extends — swallowing what should
 //! have been the rest of the process expression into it. See the [Process
-//! Specification](https://MERCorg.github.io/merc/developer/typechecking/process-specification/)
+//! Specification](https://MERCorg.github.io/merc-website/developer/typechecking/process-specification/)
 //! page for the exact shapes (with parse-tree diagrams) and the known limitations.
 //!
 //! [`super::process_specification::ProcessSpecification::from_untyped_with`] runs this first,

@@ -77,6 +77,7 @@ pub use syntax_tree::ProcessExpr;
 pub use syntax_tree::ProcessExprKind;
 pub use syntax_tree::PropVarInst;
 pub use syntax_tree::PropVarInstData;
+pub use syntax_tree::PropVarName;
 pub use syntax_tree::Quantifier;
 pub use syntax_tree::RegFrm;
 pub use syntax_tree::RegFrmKind;

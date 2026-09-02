@@ -121,7 +121,8 @@ pub enum ResolvedName {
     },
     /// A PBES/PRES propositional-variable instantiation (`X(e1, e2)`.
     ///
-    /// Pushed at the whole `PropVarInst`'s own span, not just its identifier prefix.
+    /// Pushed at the identifier's own span, not the whole `PropVarInst` (`X(e1, e2)`) — see
+    /// [`ResolvedName::Action::declaration`]'s counterpart in `check_action_or_process`.
     PropositionalVariable {
         name: String,
         /// The equation's own declaration span (`X(n: Nat)`, not just `X`) — see

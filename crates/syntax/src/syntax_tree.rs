@@ -120,9 +120,12 @@ impl PropVarDecl {
     }
 }
 
+/// A propositional-variable identifier occurrence.
+pub type PropVarName = Spanned<String>;
+
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct PropVarInstData {
-    pub identifier: String,
+    pub identifier: PropVarName,
     pub arguments: Vec<DataExpr>,
 }
 
@@ -139,9 +142,17 @@ impl PropVarInstData {
 
 impl PropVarInst {
     /// Creates a new instance of a propositional variable with the given identifier and
-    /// arguments, with a default (empty) span.
+    /// arguments. Both the instantiation and the identifier itself get [Span::default], for a
+    /// synthetic instantiation with no source location.
     pub fn new(identifier: String, arguments: Vec<DataExpr>) -> Self {
-        PropVarInstData { identifier, arguments }.spanned(Span::default())
+        PropVarInstData {
+            identifier: PropVarName {
+                node: identifier,
+                span: Span::default(),
+            },
+            arguments,
+        }
+        .spanned(Span::default())
     }
 }
 
