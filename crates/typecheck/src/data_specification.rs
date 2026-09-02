@@ -188,7 +188,7 @@ impl DataSpecification {
             let start = system.equation_declarations.len();
             system.merge(&structured_sort_equations(constructors).map_err(WellTypedError::Custom)?);
             let end = system.equation_declarations.len();
-            let constructor_names: HashSet<String> = constructors.iter().map(|c| c.name.clone()).collect();
+            let constructor_names: HashSet<String> = constructors.iter().map(|c| c.name.node.clone()).collect();
             let mapping_names: HashSet<String> = constructors
                 .iter()
                 .flat_map(|c| {
@@ -196,6 +196,7 @@ impl DataSpecification {
                         .clone()
                         .into_iter()
                         .chain(c.args.iter().filter_map(|(name, _)| name.clone()))
+                        .map(|spanned| spanned.node)
                 })
                 .collect();
             struct_ranges.push((start..end, constructor_names, mapping_names));

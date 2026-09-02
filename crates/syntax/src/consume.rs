@@ -54,6 +54,7 @@ use crate::Rule;
 use crate::SortDecl;
 use crate::SortExpression;
 use crate::SortExpressionKind;
+use crate::Spanned;
 use crate::StateFrm;
 use crate::StateFrmKind;
 use crate::StateVarAssignment;
@@ -873,7 +874,7 @@ impl Mcrl2Parser {
         )
     }
 
-    pub(crate) fn ProjDeclList(input: ParseNode) -> ParseResult<Vec<(Option<String>, SortExpression)>> {
+    pub(crate) fn ProjDeclList(input: ParseNode) -> ParseResult<Vec<(Option<Spanned<String>>, SortExpression)>> {
         match_nodes!(input.into_children();
             [ProjDecl(decl)..] => {
                 Ok(decl.collect())
@@ -881,32 +882,59 @@ impl Mcrl2Parser {
         )
     }
 
+    // `ConstrDecl = { IdAt ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ IdAt )? }`: the trailing
+    // `IdAt` (the recogniser) is only distinguishable from the leading one (the constructor's own
+    // name) by position, not by rule, so this walks the children by hand — as `ProjDecl` below
+    // does for the same reason — rather than through `match_nodes!`, so the name/recogniser spans
+    // (used for semantic tokens and goto-definition on the constructor/accessor names a `struct`
+    // sort implicitly declares) can be captured directly off the raw nodes.
     pub(crate) fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
-        match_nodes!(input.into_children();
-            [IdAt(name)] => {
-                Ok(ConstructorDecl { name, args: Vec::new(), projection: None })
-            },
-            [IdAt(name), IdAt(projection)] => {
-                Ok(ConstructorDecl { name, args: Vec::new(), projection: Some(projection)  })
-            },
-            [IdAt(name), ProjDeclList(args)] => {
-                Ok(ConstructorDecl { name, args, projection: None })
-            },
-            [IdAt(name), ProjDeclList(args), IdAt(projection)] => {
-                Ok(ConstructorDecl { name, args, projection: Some(projection) })
-            },
-        )
+        let mut children = input.into_children();
+        let name_node = children.next().expect("ConstrDecl always starts with its own name");
+        let name = Spanned {
+            node: name_node.as_str().to_string(),
+            span: name_node.as_span().into(),
+        };
+
+        let mut args = Vec::new();
+        let mut projection = None;
+        for child in children {
+            match child.as_rule() {
+                Rule::ProjDeclList => {
+                    args = Mcrl2Parser::ProjDeclList(child)?;
+                }
+                Rule::IdAt => {
+                    projection = Some(Spanned {
+                        node: child.as_str().to_string(),
+                        span: child.as_span().into(),
+                    });
+                }
+                rule => unimplemented!("Unexpected rule in ConstrDecl: {rule:?}"),
+            }
+        }
+
+        Ok(ConstructorDecl { name, args, projection })
     }
 
-    pub(crate) fn ProjDecl(input: ParseNode) -> ParseResult<(Option<String>, SortExpression)> {
-        match_nodes!(input.into_children();
-            [SortExpr(sort)] => {
-                Ok((None, sort))
-            },
-            [Id(name), SortExpr(sort)] => {
-                Ok((Some(name), sort))
-            },
-        )
+    pub(crate) fn ProjDecl(input: ParseNode) -> ParseResult<(Option<Spanned<String>>, SortExpression)> {
+        let mut name = None;
+        let mut sort = None;
+        for child in input.into_children() {
+            match child.as_rule() {
+                Rule::Id => {
+                    name = Some(Spanned {
+                        node: child.as_str().to_string(),
+                        span: child.as_span().into(),
+                    });
+                }
+                Rule::SortExpr => {
+                    sort = Some(Mcrl2Parser::SortExpr(child)?);
+                }
+                rule => unimplemented!("Unexpected rule in ProjDecl: {rule:?}"),
+            }
+        }
+
+        Ok((name, sort.expect("ProjDecl always has a sort expression")))
     }
 
     pub(crate) fn DataExprListEnum(input: ParseNode) -> ParseResult<DataExpr> {
