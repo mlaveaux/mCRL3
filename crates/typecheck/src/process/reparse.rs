@@ -479,9 +479,7 @@ fn reinterpret_as_process(names: &Names, expr: DataExpr) -> ProcessExpr {
             match (ProcessOperator::from_name(&name), <[DataExpr; 2]>::try_from(arguments)) {
                 (Some(operator), Ok([set, operand])) => build_process_operator(names, operator, set, operand, span),
                 (_, Ok(pair)) => ProcessExprKind::Action(respan(name_span, name), pair.into()).spanned(span),
-                (_, Err(arguments)) => {
-                    ProcessExprKind::Action(respan(name_span, name), arguments).spanned(span)
-                }
+                (_, Err(arguments)) => ProcessExprKind::Action(respan(name_span, name), arguments).spanned(span),
             }
         }
         DataExprKind::Id(name) if name == "delta" => ProcessExprKind::Delta.spanned(span),

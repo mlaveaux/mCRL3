@@ -218,7 +218,10 @@ fn random_leaf<R: Rng>(
         0 => ProcessExprKind::Delta.into(),
         1 => ProcessExprKind::Tau.into(),
         2 => ProcessExprKind::Action(
-            respan(Span::default(), (*actions.choose(rng).expect("actions is non-empty")).to_string()),
+            respan(
+                Span::default(),
+                (*actions.choose(rng).expect("actions is non-empty")).to_string(),
+            ),
             Vec::new(),
         )
         .into(),

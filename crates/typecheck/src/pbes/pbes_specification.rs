@@ -115,6 +115,9 @@ pub(super) struct DeclarationTables {
     pub(super) global_sorts: Vec<ResolvedSortId>,
     /// Resolved `(name, sort)` parameters of each equation, parallel to `spec.equations`.
     pub(super) equation_params: Vec<Vec<(String, ResolvedSortId)>>,
+    /// `spec.equations[i].variable.span`, parallel to `equation_params` — mirrors
+    /// `crate::process::process_specification::DeclarationTables::action_decl_spans`.
+    pub(super) equation_decl_spans: Vec<Span>,
     /// Propositional-variable name -> index into `spec.equations`/`equation_params`. A single
     /// slot per name, not a `Vec<usize>`: unlike the process crate's actions/processes, PBES
     /// equations are declared once each — no overloading.
@@ -136,6 +139,7 @@ impl DeclarationTables {
         }
 
         let mut equation_params = Vec::with_capacity(spec.equations.len());
+        let mut equation_decl_spans = Vec::with_capacity(spec.equations.len());
         let mut equations_by_name: HashMap<String, usize> = HashMap::new();
         for (index, eqn) in spec.equations.iter().enumerate() {
             let mut params = Vec::with_capacity(eqn.variable.parameters.len());
@@ -162,11 +166,13 @@ impl DeclarationTables {
                 });
             }
             equation_params.push(params);
+            equation_decl_spans.push(eqn.variable.span.clone());
         }
 
         Ok(DeclarationTables {
             global_sorts,
             equation_params,
+            equation_decl_spans,
             equations_by_name,
         })
     }
