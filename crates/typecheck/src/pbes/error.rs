@@ -9,8 +9,8 @@ use crate::WellTypedError;
 /// declaration that doesn't type check, on top of everything [`WellTypedError`]/[`InferenceError`]
 /// already cover for the data-specification subtree.
 ///
-/// `#[non_exhaustive]`: mirrors [`crate::ProcessError`] — new, additive surface expected to grow
-/// without that being a breaking change for a caller who matches on it.
+/// `#[non_exhaustive]`, as [`crate::ProcessError`]: more variants may be added, so a caller
+/// matching on this needs a catch-all arm.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum PbesError {

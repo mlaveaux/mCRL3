@@ -331,8 +331,8 @@ fn function_sort(domain: Vec<SortExpression>, range: SortExpression) -> SortExpr
 }
 
 /// Appends `mapping` unless a declaration with the same name and sort is already present, so a
-/// projection shared by several constructors is generated only once — kept at the *first*
-/// constructor's own span, which is now where goto-definition lands for every shared use.
+/// projection shared by several constructors is generated only once, at the *first* constructor's
+/// own span.
 fn push_unique(mappings: &mut Vec<IdDecl<MapId>>, mapping: IdDecl<MapId>) {
     if !mappings
         .iter()

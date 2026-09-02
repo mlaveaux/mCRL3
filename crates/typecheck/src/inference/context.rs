@@ -65,9 +65,8 @@ pub(crate) struct TypeCheckContext {
     /// `equation_typing`. `DataSpecification` is immutable once built, so each equation's
     /// `TypingInfo` only ever needs computing once.
     pub(crate) equation_typing_info: QueryCache<(EqnSpecId, EquationId), Arc<TypingInfo>>,
-    /// The memoized result of `DataSpecification::typing_info` (every equation's typing, merged) —
-    /// a single value rather than a `QueryCache`, following `signature`'s precedent: there is only
-    /// ever one whole-document typing to cache.
+    /// The memoized result of `DataSpecification::typing_info` (every equation's typing, merged).
+    /// A single value rather than a `QueryCache`: there is only ever one whole-document typing.
     pub(crate) whole_typing_info: Option<Arc<TypingInfo>>,
 }
 
@@ -231,10 +230,9 @@ impl<K: Eq + Hash, V> QueryCache<K, V> {
 
     /// Unconditionally stores `value` as the done result for `key`.
     ///
-    /// For a caller that already has the value in hand and only needs the cache as storage —
-    /// unlike [`TypeCheckContext::get_or_compute`], this does not detect cyclic self-dependency, so
-    /// it's for a query with no risk of one (a whole-document memo whose `compute` step needs data
-    /// outside `TypeCheckContext` itself, such as `DataSpecification::equation_typing_info`).
+    /// For a caller that already has the value in hand and only needs the cache as storage.
+    /// Unlike [`TypeCheckContext::get_or_compute`], this does not detect cyclic self-dependency,
+    /// so it requires a query that cannot recurse into itself.
     pub(crate) fn insert(&mut self, key: K, value: V) {
         self.entries.insert(key, QueryEntry::Done(value));
     }

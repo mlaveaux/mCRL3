@@ -46,21 +46,10 @@ fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
         .unwrap_or_else(|| panic!("node at offset {offset} in '{text}' has no resolved name"))
 }
 
-/// The reviewer's shape for the process crate, carried over to PBES: a `PropVarInst` argument
-/// yields a non-empty, resolvable `TypingInfo`.
+/// A `PropVarInst` argument yields a non-empty, resolvable `TypingInfo`.
 #[test]
 fn test_prop_var_inst_argument_hover_reports_declared_sort() {
     assert_eq!(hover("pbes mu X(n: Nat) = val(n == n); init X(1);", "1);"), "Pos");
-}
-
-#[test]
-fn test_prop_var_inst_self_recursive_argument_goto_def_resolves_to_parameter() {
-    let text = "pbes nu X(n: Nat) = val(n == 0) || X(n); init X(0);";
-    let name = resolved_name_at(text, "n);");
-    assert!(
-        matches!(&name, ResolvedName::Variable { name, .. } if name == "n"),
-        "expected a Variable resolution to 'n', got {name:?}"
-    );
 }
 
 /// The declaration span carried by a `Variable` resolution points at the equation's own
@@ -69,9 +58,10 @@ fn test_prop_var_inst_self_recursive_argument_goto_def_resolves_to_parameter() {
 fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_parameter() {
     let text = "pbes nu X(n: Nat) = val(n == 0) || X(n); init X(0);";
     let name = resolved_name_at(text, "n);");
-    let ResolvedName::Variable { declaration, .. } = &name else {
+    let ResolvedName::Variable { name, declaration } = &name else {
         panic!("expected a Variable resolution, got {name:?}");
     };
+    assert_eq!(name, "n");
     let declaration = declaration
         .clone()
         .expect("an equation parameter has a real declaration span");
@@ -102,8 +92,8 @@ fn test_quantifier_bound_variable_hover_reports_declared_sort() {
     );
 }
 
-/// Every branch of a conjunction/disjunction chain contributes its own `val(...)` typing — not
-/// just the last one (mirrors the process crate's analogous choice-chain regression test).
+/// Every branch of a conjunction/disjunction chain contributes its own `val(...)` typing, not
+/// just the last one.
 #[test]
 fn test_every_branch_of_a_conjunction_chain_contributes_typing() {
     let text = "pbes mu X(a: Nat, b: Nat, c: Nat) = val(a == a) && val(b == b) && val(c == c); init X(0, 0, 0);";
@@ -113,9 +103,8 @@ fn test_every_branch_of_a_conjunction_chain_contributes_typing() {
 }
 
 /// `typing_info` merges in the data specification's own `eqn` typing, not just the PBES
-/// expressions' — mirrors [`crate::ProcessSpecification::typing_info`]'s equivalent regression
-/// test (a data-`eqn` right-hand side has no PBES formula wrapping it, so only the merge itself
-/// can surface it here).
+/// expressions': a data-`eqn` right-hand side has no PBES formula wrapping it, so only the merge
+/// itself can surface it here.
 #[test]
 fn test_typing_info_merges_the_data_specification_eqn_typing() {
     let text = "map f: Nat; eqn f = 1; pbes mu X = val(f == f); init X;";
@@ -125,9 +114,8 @@ fn test_typing_info_merges_the_data_specification_eqn_typing() {
 // ─── goto-def: propositional-variable names ─────────────────────────────────
 //
 // Unlike an action/process name, a PBES equation is never overloaded (a second `pbes` equation of
-// the same name is rejected outright, see `DuplicatePropositionalVariable`), so `check_prop_var_inst`
-// resolves every `PropVarInst` to exactly one declaration, unconditionally — see
-// `docs/name_resolution.md`.
+// the same name is rejected outright, see `DuplicatePropositionalVariable`), so
+// `check_prop_var_inst` resolves every `PropVarInst` to exactly one declaration.
 
 /// `init X(1);`'s own name resolves to a `PropositionalVariable`, pointing at its `pbes`
 /// declaration.

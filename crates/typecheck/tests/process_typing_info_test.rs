@@ -47,19 +47,10 @@ fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
         .unwrap_or_else(|| panic!("node at offset {offset} in '{text}' has no resolved name"))
 }
 
-/// The reviewer's original repro: `a(n)`'s argument yields a non-empty, resolvable `TypingInfo`.
+/// An action argument yields a non-empty, resolvable `TypingInfo`.
 #[test]
 fn test_action_argument_hover_reports_declared_sort() {
     assert_eq!(hover("act a: Nat; proc P(n: Nat) = a(n); init P(1);", "n);"), "Nat");
-}
-
-#[test]
-fn test_action_argument_goto_def_resolves_to_process_parameter() {
-    let name = resolved_name_at("act a: Nat; proc P(n: Nat) = a(n); init P(1);", "n);");
-    assert!(
-        matches!(&name, ResolvedName::Variable { name, .. } if name == "n"),
-        "expected a Variable resolution to 'n', got {name:?}"
-    );
 }
 
 /// The declaration span carried by a `Variable` resolution points at the process's own
@@ -68,9 +59,10 @@ fn test_action_argument_goto_def_resolves_to_process_parameter() {
 fn test_action_argument_goto_def_declaration_points_at_process_parameter() {
     let text = "act a: Nat; proc P(n: Nat) = a(n); init P(1);";
     let name = resolved_name_at(text, "n);");
-    let ResolvedName::Variable { declaration, .. } = &name else {
+    let ResolvedName::Variable { name, declaration } = &name else {
         panic!("expected a Variable resolution, got {name:?}");
     };
+    assert_eq!(name, "n");
     let declaration = declaration
         .clone()
         .expect("a process parameter has a real declaration span");
@@ -98,9 +90,8 @@ fn test_condition_guard_hover_reports_bool() {
     assert_eq!(hover("act a; proc P(b: Bool) = b -> a; init P(true);", "b ->"), "Bool");
 }
 
-/// A real-world-shaped repro: a `+`-joined chain of guarded `sum`-actions (mirroring a reported
-/// LSP symptom where only the *final* branch's actions showed up in hover/goto-def). Every
-/// branch's own bound variable must resolve, not just the last one.
+/// In a `+`-joined chain of guarded `sum`-actions, every branch's own bound variable must
+/// resolve, not just the last one.
 #[test]
 fn test_every_branch_of_a_choice_chain_contributes_typing() {
     let text = "act a: Nat; b: Nat; c: Nat; \
@@ -116,8 +107,8 @@ fn test_every_branch_of_a_choice_chain_contributes_typing() {
 }
 
 /// As [`test_every_branch_of_a_choice_chain_contributes_typing`], for a chain of guarded
-/// conditions (`is_x(state) -> ... + is_y(state) -> ... + ...`, the other real-world-shaped
-/// repro): every guard's own condition must be checked and typed, not just the last.
+/// conditions (`is_x(state) -> ... + is_y(state) -> ... + ...`): every guard's own condition must
+/// be checked and typed, not just the last.
 #[test]
 fn test_every_guard_of_a_condition_chain_contributes_typing() {
     let text = "act a, b, c; \
@@ -131,14 +122,20 @@ fn test_every_guard_of_a_condition_chain_contributes_typing() {
     let info = typing_for(text);
     for guard in ["is_a(state)", "is_b(state)", "is_c(state)"] {
         let start = text.find(guard).expect("guard text should occur verbatim");
-        let span = Span { start, end: start + guard.len() };
+        let span = Span {
+            start,
+            end: start + guard.len(),
+        };
         let node = info
             .nodes()
             .iter()
             .find(|node| node.span == span)
             .unwrap_or_else(|| panic!("no typed node spanning '{guard}'"));
         assert_eq!(
-            node.sort.as_ref().expect("the guard is a Bool-checked application").to_string(),
+            node.sort
+                .as_ref()
+                .expect("the guard is a Bool-checked application")
+                .to_string(),
             "Bool"
         );
     }
@@ -199,10 +196,8 @@ fn test_assignment_form_instantiation_name_goto_def_resolves_to_its_declaration(
     assert_eq!(&text[declaration.start..declaration.end], "P");
 }
 
-/// An action overloaded by argument sort (mirroring `abp.mcrl2`'s style) resolves each *use* to
-/// the specific declaration its arguments actually match — the same disambiguation
-/// `test_overloaded_name_resolves_to_the_matching_declaration_by_sort` (data crate) exercises for
-/// constructors/mappings.
+/// An action overloaded by argument sort resolves each *use* to the specific declaration its
+/// arguments actually match.
 #[test]
 fn test_overloaded_action_resolves_to_the_matching_declaration_by_arity() {
     let text = "act a: Nat; a: Bool; proc P = a(1) + a(true); init P;";
@@ -225,9 +220,8 @@ fn test_overloaded_action_resolves_to_the_matching_declaration_by_arity() {
 //
 // These name an action with no argument list to disambiguate an overload by, so
 // `check_action_names` offers every same-named declaration as a `ResolvedName::ActionSet` instead
-// of picking one — see `docs/action-name-set-goto-def-plan.md`. One test per construct/position
-// covers that `typing` is actually threaded through every `check_action_names` call site, not just
-// the first.
+// of picking one. One test per construct/position, since each is a separate `check_action_names`
+// call site.
 
 #[track_caller]
 fn action_set_at(name: ResolvedName) -> (String, Vec<Span>) {

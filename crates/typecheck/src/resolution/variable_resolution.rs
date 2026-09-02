@@ -395,17 +395,6 @@ mod tests {
     }
 
     #[test]
-    fn test_inner_binder_shadows_outer_one() {
-        let text = "act a: Nat; proc P = sum x: Nat . sum x: Bool . a(1); init P;";
-        let mut spec = UntypedProcessSpecification::parse(text).unwrap();
-        resolve_process_variables(&mut spec);
-        // No occurrence of `x` here to check directly, but this at least proves shadowing
-        // doesn't panic/mis-truncate the scope stack; see the data-level test below for the
-        // actual shadowing assertion.
-        let _ = spec;
-    }
-
-    #[test]
     fn test_nested_data_binder_inside_process_action_argument_resolves() {
         let text = "act a: Bool; proc P(n: Nat) = a(exists x: Nat . x == n); init P(0);";
         let mut spec = UntypedProcessSpecification::parse(text).unwrap();

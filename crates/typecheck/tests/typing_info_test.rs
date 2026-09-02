@@ -153,13 +153,13 @@ fn test_mapping_goto_def_points_at_its_declaration() {
 #[test]
 fn test_struct_constructor_goto_def_points_at_its_own_name_in_the_struct_declaration() {
     // Unlike a plain `cons` declaration, a struct's `c1`/`c2` have no declaration of their own to
-    // point at other than the `struct` sort expression itself — this confirms `ConstructorDecl`'s
-    // own span (see `merc_syntax`) reaches goto-definition rather than falling back to `None`.
+    // point at other than the `struct` sort expression itself, so goto-definition lands on
+    // `ConstructorDecl`'s own span (see `merc_syntax`).
     let text = "sort D = struct c1(a: Bool) | c2; map f: D -> Bool; eqn f(c1(true)) = true;";
     match resolved_name_at(text, "c1(true)") {
         ResolvedName::Constructor { name, declaration, .. } => {
             assert_eq!(name, "c1");
-            let span = declaration.expect("a struct constructor now has a real declaration span");
+            let span = declaration.expect("a struct constructor has a real declaration span");
             assert_eq!(
                 &text[span.start..span.end],
                 "c1",
@@ -177,7 +177,7 @@ fn test_struct_projection_and_recogniser_goto_def_point_at_their_own_names() {
     match resolved_name_at(text, "is_c1(c1(true))") {
         ResolvedName::Mapping { name, declaration, .. } => {
             assert_eq!(name, "is_c1");
-            let span = declaration.expect("a struct's recogniser now has a real declaration span");
+            let span = declaration.expect("a struct's recogniser has a real declaration span");
             assert_eq!(&text[span.start..span.end], "is_c1");
         }
         other => panic!("expected a Mapping resolution for the recogniser, got {other:?}"),
@@ -186,7 +186,7 @@ fn test_struct_projection_and_recogniser_goto_def_point_at_their_own_names() {
     match resolved_name_at(text, "a(c1(true))") {
         ResolvedName::Mapping { name, declaration, .. } => {
             assert_eq!(name, "a");
-            let span = declaration.expect("a struct's projection now has a real declaration span");
+            let span = declaration.expect("a struct's projection has a real declaration span");
             assert_eq!(&text[span.start..span.end], "a");
         }
         other => panic!("expected a Mapping resolution for the projection, got {other:?}"),
@@ -247,8 +247,7 @@ fn test_typecheck_expression_with_typing_returns_a_typing_over_the_expression() 
     let (lowered, info) = spec
         .typecheck_expression_with_typing(&expr)
         .expect("'1 + 1' should type check");
-    // The lowered aterm form prints in prefix notation, already covered by expression_test.rs;
-    // just confirm this API path lowers the same way.
+    // The lowered aterm form prints in prefix notation.
     assert_eq!(lowered.to_string(), "+(@c1, @c1)");
 
     // Same tie-break as the equation case: hovering the operator resolves to its concrete

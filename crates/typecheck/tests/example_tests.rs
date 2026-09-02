@@ -7,10 +7,9 @@
 //! its module doc comment and the crate README) before type checking runs, using only declared
 //! action/process *names*.
 //!
-//! The `#[test_case]`s still commented out below are excluded for an unrelated, pre-existing
-//! reason: `merc_syntax::UntypedProcessSpecification::parse` itself never returns on them — a
-//! parser-level performance issue, not a type-checking one — so running them would hang the test
-//! suite. Fixing that is out of scope here; see the crate README.
+//! The `#[test_case]`s commented out below are excluded because
+//! `merc_syntax::UntypedProcessSpecification::parse` does not return on them — a parser-level
+//! performance issue, not a type-checking one — so running them would hang the test suite.
 
 use merc_syntax::UntypedProcessSpecification;
 use merc_typecheck::ProcessSpecification;

@@ -400,10 +400,9 @@ fn check_one_instantiation(
 
 /// Checks that every `names` entry is a declared action, reporting the offending name's own
 /// [Span] (rather than the enclosing expression's), since each [ActionName] carries one. On
-/// success, also pushes a [`ResolvedName::ActionSet`] at each name's own span — see
-/// [`docs/action-name-set-goto-def-plan.md`](../../../../docs/action-name-set-goto-def-plan.md):
-/// unlike [`check_action_or_process`], there is no argument list here to narrow an overloaded name
-/// down to one declaration, so every declaration sharing the name is offered.
+/// success, also pushes a [`ResolvedName::ActionSet`] at each name's own span: unlike
+/// [`check_action_or_process`], there is no argument list here to narrow an overloaded name down
+/// to one declaration, so every declaration sharing the name is offered.
 fn check_action_names(
     tables: &DeclarationTables,
     names: &[ActionName],

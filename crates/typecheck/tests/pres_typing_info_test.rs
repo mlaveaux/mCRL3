@@ -51,25 +51,16 @@ fn test_prop_var_inst_argument_hover_reports_declared_sort() {
     assert_eq!(hover("pres mu X(n: Nat) = val(n); init X(1);", "1);"), "Pos");
 }
 
-#[test]
-fn test_prop_var_inst_self_recursive_argument_goto_def_resolves_to_parameter() {
-    let text = "pres nu X(n: Nat) = val(n) || X(n); init X(0);";
-    let name = resolved_name_at(text, "n);");
-    assert!(
-        matches!(&name, ResolvedName::Variable { name, .. } if name == "n"),
-        "expected a Variable resolution to 'n', got {name:?}"
-    );
-}
-
 /// The declaration span carried by a `Variable` resolution points at the equation's own
 /// parameter declaration, not the (self-recursive) occurrence.
 #[test]
 fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_parameter() {
     let text = "pres nu X(n: Nat) = val(n) || X(n); init X(0);";
     let name = resolved_name_at(text, "n);");
-    let ResolvedName::Variable { declaration, .. } = &name else {
+    let ResolvedName::Variable { name, declaration } = &name else {
         panic!("expected a Variable resolution, got {name:?}");
     };
+    assert_eq!(name, "n");
     let declaration = declaration
         .clone()
         .expect("an equation parameter has a real declaration span");
@@ -105,7 +96,8 @@ fn test_constant_multiply_hover_reports_declared_sort() {
 }
 
 /// `typing_info` merges in the data specification's own `eqn` typing, not just the PRES
-/// expressions' — mirrors [`crate::PbesSpecification::typing_info`]'s equivalent regression test.
+/// expressions': a data-`eqn` right-hand side has no PRES formula wrapping it, so only the merge
+/// itself can surface it here.
 #[test]
 fn test_typing_info_merges_the_data_specification_eqn_typing() {
     let text = "map f: Nat; eqn f = 1; pres mu X = val(f); init X;";
@@ -114,8 +106,8 @@ fn test_typing_info_merges_the_data_specification_eqn_typing() {
 
 // ─── goto-def: propositional-variable names ─────────────────────────────────
 //
-// Mirrors `pbes_typing_info_test.rs`'s equivalent section: a PRES equation is never overloaded, so
-// `check_prop_var_inst` resolves every `PropVarInst` to exactly one declaration, unconditionally.
+// A PRES equation is never overloaded, so `check_prop_var_inst` resolves every `PropVarInst` to
+// exactly one declaration.
 
 /// `init X(1);`'s own name resolves to a `PropositionalVariable`, pointing at its `pres`
 /// declaration.

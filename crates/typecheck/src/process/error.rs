@@ -9,9 +9,8 @@ use crate::WellTypedError;
 /// declaration that doesn't type check, on top of everything [`WellTypedError`]/[`InferenceError`]
 /// already cover for the data-specification subtree.
 ///
-/// `#[non_exhaustive]`: this is new, additive surface expected to grow (communication
-/// sort-compatibility checking, for one) without that being a breaking change for a caller who
-/// matches on it.
+/// `#[non_exhaustive]`: more variants may be added (communication sort-compatibility checking,
+/// for one), so a caller matching on this needs a catch-all arm.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ProcessError {

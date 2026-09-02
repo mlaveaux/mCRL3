@@ -97,8 +97,7 @@ impl DataSpecification {
 
         // A pure syntactic pass, before anything else needs `spec` — see
         // `resolution::variable_resolution`. Ties every equation-variable occurrence to its own
-        // `var`-block declaration span, the same way `resolve_process_variables`/
-        // `resolve_pbes_variables` already do for a process/PBES body.
+        // `var`-block declaration span.
         resolve_data_specification_variables(&mut spec);
 
         // Hoist anonymous structured sorts into fresh named declarations, so
@@ -455,15 +454,9 @@ impl DataSpecification {
     /// [`Self::data_specification`]); panics otherwise.
     ///
     /// Memoized in `self.context`'s `equation_typing_info` cache: `self` is immutable once built,
-    /// so a given `key`'s `TypingInfo` only ever needs building once — an LSP hovering repeatedly
-    /// over the same equation reuses the cached `Arc` rather than re-deriving its `DeclarationIndex`
-    /// and every node's sort each time. Takes `&mut self` to populate that cache; still returns an
-    /// owned `TypingInfo` (cloned out of the cached `Arc`) for API stability.
-    ///
-    /// Not built through `TypeCheckContext::get_or_compute`: that helper's `compute` closure only
-    /// gets `&mut TypeCheckContext`, but building a `TypingInfo` needs `self` as a whole (the
-    /// `DataSpecification`'s own accessors); there's also no risk of the cyclic self-dependency
-    /// `get_or_compute` guards against, since this never recurses into itself.
+    /// so a given `key`'s `TypingInfo` is only ever built once and every later call reuses the
+    /// cached `Arc`. Takes `&mut self` to populate that cache, and returns an owned `TypingInfo`
+    /// cloned out of it.
     pub fn equation_typing_info(&mut self, key: (EqnSpecId, EquationId)) -> TypingInfo {
         if let Some(cached) = self.context.equation_typing_info.get(&key) {
             return (**cached).clone();
@@ -476,8 +469,8 @@ impl DataSpecification {
     /// Every user equation's typing, merged into one table, in declaration order. See
     /// [`Self::equation_typing_info`] for the per-equation version.
     ///
-    /// Memoized as `self.context`'s `whole_typing_info` singleton, the same way — a second call
-    /// reuses the cached `Arc` instead of re-merging every equation's typing again.
+    /// Memoized as `self.context`'s `whole_typing_info` singleton: a second call reuses the
+    /// cached `Arc` instead of re-merging every equation's typing.
     pub fn typing_info(&mut self) -> TypingInfo {
         if let Some(cached) = &self.context.whole_typing_info {
             return (**cached).clone();

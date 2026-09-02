@@ -45,9 +45,8 @@ where
 /// argument, a `PropVarInst` argument, …) against `expected`, merging its `TypingInfo` into
 /// `typing` on success.
 ///
-/// Generic over the caller's own error type `E` (`ProcessError`, `PbesError`, …) rather than
-/// returning a `checking`-local error: both callers already wrap [`WellTypedError`]/
-/// [`InferenceError`] via `#[from]`, so there is nothing this module needs of its own.
+/// Generic over the caller's own error type `E` (`ProcessError`, `PbesError`, …), which must
+/// convert from [`WellTypedError`] and [`InferenceError`].
 pub(crate) fn check_expression_against<E>(
     data: &mut DataSpecification,
     scope: &Scope,
