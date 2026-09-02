@@ -32,6 +32,7 @@ pub use pres::PresError;
 pub use pres::PresSpecification;
 pub use process::ProcessError;
 pub use process::ProcessSpecification;
+pub use process::reparse_process_specification;
 pub use signature::WellTypedError;
 pub use typing_info::ResolvedName;
 pub use typing_info::TypedNode;

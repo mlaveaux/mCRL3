@@ -1,4 +1,4 @@
-//! A semantic-aware reparse pass that runs *before* type checking (see
+//! A semantic-aware reparse pass, public so it can run independently of type checking (see
 //! [`reparse_process_specification`]): mCRL2's concrete grammar shares tokens between the
 //! process algebra and the data language (most notably `.`, `+`, `||`), so a context-free parser
 //! can misparse a [`ProcessExprKind::Condition`]'s `condition` field — the one `DataExpr` slot in
@@ -7,12 +7,13 @@
 //! Specification](https://MERCorg.github.io/merc/developer/typechecking/process-specification/)
 //! page for the exact shapes (with parse-tree diagrams) and the known limitations.
 //!
-//! This pass runs before type checking, using only the declared action/process *names* (arity and
-//! sort don't matter — overload resolution itself still happens later, during type checking in
-//! [`super::check`]), and rewrites every misparsed `Condition` it finds back into the
-//! `ProcessExpr` shape — `Sequence`/`Choice`/`Parallel`, `Action` steps, `Hide`/`Block`/`Allow` —
-//! it should have parsed as. [`super::check`]'s walk can then assume every `Condition` it sees is
-//! already correctly shaped.
+//! [`super::process_specification::ProcessSpecification::from_untyped_with`] runs this first,
+//! using only the declared action/process *names* (arity and sort don't matter — overload
+//! resolution itself still happens later, during type checking in [`super::check`]), and rewrites
+//! every misparsed `Condition` it finds back into the `ProcessExpr` shape —
+//! `Sequence`/`Choice`/`Parallel`, `Action` steps, `Hide`/`Block`/`Allow` — it should have parsed
+//! as, so [`super::check`]'s walk can then assume every `Condition` it sees is already correctly
+//! shaped.
 //!
 //! [`merc_syntax::Traverse::apply_mut`] drives the walk (see [`reparse_mut`]): only [`Condition`]
 //! is special-cased, in [`fix_swallow`]; every other `ProcessExprKind` variant's own recursion
@@ -53,9 +54,12 @@ impl Names {
 }
 
 /// Rewrites every `proc` body and `init` in `spec` in place, fixing every misparsed `Condition`
-/// this module's doc comment describes. Idempotent: running it again on an already-fixed
-/// specification finds nothing left to rewrite.
-pub(super) fn reparse_process_specification(spec: &mut UntypedProcessSpecification) {
+/// this module's doc comment describes. Idempotent — see [`tests::reparse_is_idempotent`] and
+/// [`tests::reparse_is_idempotent_for_the_long_guarded_choice_chain`] — running it again on an
+/// already-fixed specification finds nothing left to rewrite, so a caller unsure whether a
+/// specification has already been through this pass can simply call it again rather than track
+/// that themselves.
+pub fn reparse_process_specification(spec: &mut UntypedProcessSpecification) {
     let names = Names::build(spec);
     for decl in &mut spec.process_declarations {
         reparse_mut(&names, &mut decl.body);
@@ -893,13 +897,12 @@ mod tests {
         assert!(matches!(&rhs.node, ProcessExprKind::Condition { .. }));
     }
 
-    /// A real-world-shaped repro (reported against the LSP): a long `is_x(state) -> (...) +
-    /// is_y(state) -> (...) + ...` chain of eight guarded clauses, each `then` a parenthesized
-    /// `.`/`+` mix, with a `%`-comment sitting between two clauses. Every guard must recover as its
-    /// own `Condition`, in order, not swallow a neighboring clause.
-    #[test]
-    fn long_guarded_choice_chain_with_comments_is_recovered() {
-        let text = r#"act _JobWrapper_initialize, _JobWrapper_transferInputSandbox, _JobWrapper_resolveInputData, _JobWrapper_execute, _JobWrapper_processJobOutputs, _JobWrapper_finalize, AppPayload;
+    /// The fixture [`long_guarded_choice_chain_with_comments_is_recovered`] and
+    /// [`reparse_is_idempotent_for_the_long_guarded_choice_chain`] share: a long `is_x(state) ->
+    /// (...) + is_y(state) -> (...) + ...` chain of eight guarded clauses, each `then` a
+    /// parenthesized `.`/`+` mix, with a `%`-comment sitting between two clauses — a real-world-
+    /// shaped repro (reported against the LSP).
+    const LONG_GUARDED_CHOICE_CHAIN: &str = r#"act _JobWrapper_initialize, _JobWrapper_transferInputSandbox, _JobWrapper_resolveInputData, _JobWrapper_execute, _JobWrapper_processJobOutputs, _JobWrapper_finalize, AppPayload;
 proc JobWrapper(cc:List(Nat),state:Nat) =
 
 		is_startWrapper(state)->
@@ -978,7 +981,14 @@ proc JobWrapper(cc:List(Nat),state:Nat) =
 	;
 init JobWrapper([],0);
 "#;
-        let body = reparsed_proc_body(text);
+
+    /// A real-world-shaped repro (reported against the LSP): a long `is_x(state) -> (...) +
+    /// is_y(state) -> (...) + ...` chain of eight guarded clauses, each `then` a parenthesized
+    /// `.`/`+` mix, with a `%`-comment sitting between two clauses. Every guard must recover as its
+    /// own `Condition`, in order, not swallow a neighboring clause.
+    #[test]
+    fn long_guarded_choice_chain_with_comments_is_recovered() {
+        let body = reparsed_proc_body(LONG_GUARDED_CHOICE_CHAIN);
 
         // Flattens the top-level `Choice` spine, returning each clause's guard name (the
         // function name of its `Condition`'s `condition`, which is always a plain application
@@ -1021,5 +1031,53 @@ init JobWrapper([],0);
             ],
             "every guard must recover as its own Condition, in source order"
         );
+    }
+
+    /// [`reparse_process_specification`]'s own doc comment claims this: reparsing an
+    /// already-reparsed specification must find nothing left to rewrite. Covers every shape the
+    /// tests above exercise (a dot-prefix swallow, a choice/parallel swallow, a swallow nested one
+    /// level down inside `then`, `else_` surviving every which way, leading unconditional
+    /// branches, `hide`/`rename`, and a genuine data condition that must be left alone) in one
+    /// pass; [`reparse_is_idempotent_for_the_long_guarded_choice_chain`] covers the long
+    /// real-world chain separately, since it needs the whole `spec` (not one extracted body).
+    #[test]
+    fn reparse_is_idempotent() {
+        let fixtures = [
+            "act a: Nat; init a(1) . true -> delta;",
+            "act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);",
+            "act a; proc P = delta; init P || (true) -> a;",
+            "act a: Nat; b: Nat; c: Nat; init (true) -> a(1) . b(1) + (false) -> a(2) . b(2) + (true) -> c(3);",
+            "act jump, ready; proc X(f: Bool) = (f) -> jump . X(f) <> delta + (!f) -> ready . delta <> delta; init X(true);",
+            "act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);",
+            "act a: Nat; b: Nat; c: Nat; init (true) -> a(1) + b(2) <> c(3);",
+            "act a, b, c; proc P = a.P + b.P + (true) -> c.P; init P;",
+            "sort L = List(Nat); init (([1,2,3] . 0) + 1 == 2) -> delta;",
+            "init true -> delta;",
+            "act a, b; proc P = delta; init hide({a}, P) + (true) -> b;",
+            "act a, b; proc P = delta; init rename({a -> b}, P) + (true) -> b;",
+        ];
+
+        for text in fixtures {
+            let mut spec = UntypedProcessSpecification::parse(text).expect("the fixture should parse");
+            reparse_process_specification(&mut spec);
+            let once = spec.clone();
+
+            reparse_process_specification(&mut spec);
+            assert_eq!(spec, once, "reparsing an already-reparsed specification must be a no-op for {text:?}");
+        }
+    }
+
+    /// As [`reparse_is_idempotent`], for [`LONG_GUARDED_CHOICE_CHAIN`] — the fixture
+    /// [`long_guarded_choice_chain_with_comments_is_recovered`] also uses — on its own, since it
+    /// needs the real `proc`/`init` split rather than one extracted body.
+    #[test]
+    fn reparse_is_idempotent_for_the_long_guarded_choice_chain() {
+        let mut spec =
+            UntypedProcessSpecification::parse(LONG_GUARDED_CHOICE_CHAIN).expect("the fixture should parse");
+        reparse_process_specification(&mut spec);
+        let once = spec.clone();
+
+        reparse_process_specification(&mut spec);
+        assert_eq!(spec, once, "reparsing an already-reparsed specification must be a no-op");
     }
 }
