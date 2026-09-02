@@ -323,8 +323,8 @@ fn random_process_expr<R: Rng>(
     }
 }
 
-/// Wraps a synthetically-generated action name in a default (empty) [Span] — random generation
-/// has no source location to attach, unlike a name read off actual parser input.
+/// Wraps a synthetically-generated action name in a default (empty) [Span], since random
+/// generation has no source location to attach.
 fn synthetic_name(name: String) -> ActionName {
     respan(Span::default(), name)
 }

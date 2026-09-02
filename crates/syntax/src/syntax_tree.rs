@@ -516,8 +516,8 @@ pub enum ProcessExprKind {
         rhs: Box<ProcessExpr>,
     },
     Hide {
-        // Each action name keeps the [Span] it was parsed from, so later passes (e.g. goto-def)
-        // can point at the individual name rather than the whole `hide(...)` expression.
+        // Each action name keeps the [Span] it was parsed from, so a later pass can point at the
+        // individual name rather than the whole `hide(...)` expression.
         actions: Vec<ActionName>,
         operand: Box<ProcessExpr>,
     },
@@ -699,10 +699,10 @@ impl From<StateFrmKind> for StateFrm {
 }
 
 /// An identifier occurrence naming an action or process, paired with the [Span] it was parsed
-/// from — so later passes (e.g. goto-def) can point at the individual name rather than the whole
-/// enclosing expression. Used both for a name inside a `hide`/`block`/`allow`/`comm`/`rename` set
-/// and for `ProcessExprKind::Action`/`Id`'s own name. Equality, ordering and hashing ignore the
-/// span (see [Spanned]).
+/// from, so a later pass can point at the individual name rather than the whole enclosing
+/// expression. Used both for a name inside a `hide`/`block`/`allow`/`comm`/`rename` set and for
+/// `ProcessExprKind::Action`/`Id`'s own name. Equality, ordering and hashing ignore the span
+/// (see [Spanned]).
 pub type ActionName = Spanned<String>;
 
 /// Represents a multi action label `a | b | c ...`.
@@ -731,8 +731,7 @@ pub struct Action {
 
 impl Action {
     /// Creates a new action from an identifier and a list of arguments. `id` gets
-    /// [Span::default] — for a synthetic action with no real source location; the parser builds
-    /// `id`'s real span directly (see `consume::Mcrl2Parser::Action`).
+    /// [Span::default], for a synthetic action with no source location.
     pub fn new(id: String, args: Vec<DataExpr>) -> Self {
         Action {
             id: ActionName {

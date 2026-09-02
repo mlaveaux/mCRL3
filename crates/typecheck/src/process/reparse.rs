@@ -377,7 +377,7 @@ impl ProcessOperator {
 /// `operand` is (recursively) pure process content. `None` on anything else, including a
 /// 2-argument call that merely happens to share one of these three names, or a `set` that isn't a
 /// plain `{a, b, ...}` enumeration (a set comprehension, say) — those are left as an ordinary
-/// `Condition`, matching today's conservative fallback.
+/// `Condition`.
 fn process_operator_application(names: &Names, expr: &DataExpr) -> Option<ProcessOperator> {
     let DataExprKind::Application { function, arguments } = &expr.node else {
         return None;
@@ -609,7 +609,7 @@ mod tests {
         assert!(matches!(&rhs_then.node, ProcessExprKind::Action(name, _) if name.node == "b"));
     }
 
-    /// The same bug with `||` (`Parallel`) in place of `+` (`Choice`): `P || (true) -> a` parses
+    /// The same shape with `||` (`Parallel`) in place of `+` (`Choice`): `P || (true) -> a` parses
     /// `P || (true)` as one `DataExprDisj` chain rather than a parallel-composition operand
     /// followed by the real condition.
     #[test]
@@ -714,7 +714,7 @@ mod tests {
         ));
     }
 
-    /// Minimal form of the same bug: `then` hiding an unrelated (`Add`-shaped) swallow must never
+    /// Minimal form of the same shape: `then` hiding an unrelated (`Add`-shaped) swallow must never
     /// cost the current clause its own `<>`. `(ps==1) -> a(1) + (ps==2) -> a(2) <> b(9)` puts the
     /// swallow (`a(1) + (ps==2) -> ...`) one level down from the outermost condition, and the
     /// grammar attaches `<>`'s `b(9)` to the *innermost* reached `->` (`(ps==2)`, not `(ps==1)`).
@@ -744,7 +744,7 @@ mod tests {
         assert!(matches!(&second_else.node, ProcessExprKind::Action(name, _) if name.node == "b"));
     }
 
-    /// The minimal shape of the same bug class as [`choice_directly_in_else_position_is_left_alone`],
+    /// The minimal shape of the same class as [`choice_directly_in_else_position_is_left_alone`],
     /// with `then` (not `else_`) directly `a + b`: `cond -> a + b <> c` must keep `b` unconditional
     /// (not folded into `cond`'s own guard) *and* keep `c` as the `else_`.
     #[test]
@@ -873,10 +873,9 @@ mod tests {
 
     /// `comm` uses `from -> to` pairs inside its set argument, and `->` isn't a valid `DataExpr`
     /// operator, so it can't reach the swallow at all — a hard parse error, not a silent misparse.
-    /// `rename` shares the same `from -> to` shape but, empirically, fails to match the ambiguous
-    /// `DataExpr`-typed `condition` position at all and falls back to its own dedicated grammar
-    /// rule instead, so it already parses correctly here with nothing to fix. Both are documented
-    /// next to the README's "Known limitation" paragraph rather than claimed fixed by this pass.
+    /// `rename` shares the same `from -> to` shape but does not match the ambiguous
+    /// `DataExpr`-typed `condition` position, falling back to its own dedicated grammar rule, so
+    /// it parses correctly here with nothing to fix.
     #[test]
     fn comm_fails_to_parse_and_rename_already_parses_correctly() {
         assert!(
@@ -900,8 +899,7 @@ mod tests {
     /// The fixture [`long_guarded_choice_chain_with_comments_is_recovered`] and
     /// [`reparse_is_idempotent_for_the_long_guarded_choice_chain`] share: a long `is_x(state) ->
     /// (...) + is_y(state) -> (...) + ...` chain of eight guarded clauses, each `then` a
-    /// parenthesized `.`/`+` mix, with a `%`-comment sitting between two clauses — a real-world-
-    /// shaped repro (reported against the LSP).
+    /// parenthesized `.`/`+` mix, with a `%`-comment sitting between two clauses.
     const LONG_GUARDED_CHOICE_CHAIN: &str = r#"act _JobWrapper_initialize, _JobWrapper_transferInputSandbox, _JobWrapper_resolveInputData, _JobWrapper_execute, _JobWrapper_processJobOutputs, _JobWrapper_finalize, AppPayload;
 proc JobWrapper(cc:List(Nat),state:Nat) =
 
@@ -982,7 +980,7 @@ proc JobWrapper(cc:List(Nat),state:Nat) =
 init JobWrapper([],0);
 "#;
 
-    /// A real-world-shaped repro (reported against the LSP): a long `is_x(state) -> (...) +
+    /// A long `is_x(state) -> (...) +
     /// is_y(state) -> (...) + ...` chain of eight guarded clauses, each `then` a parenthesized
     /// `.`/`+` mix, with a `%`-comment sitting between two clauses. Every guard must recover as its
     /// own `Condition`, in order, not swallow a neighboring clause.
@@ -1033,8 +1031,7 @@ init JobWrapper([],0);
         );
     }
 
-    /// [`reparse_process_specification`]'s own doc comment claims this: reparsing an
-    /// already-reparsed specification must find nothing left to rewrite. Covers every shape the
+    /// Reparsing an already-reparsed specification must find nothing left to rewrite. Covers every shape the
     /// tests above exercise (a dot-prefix swallow, a choice/parallel swallow, a swallow nested one
     /// level down inside `then`, `else_` surviving every which way, leading unconditional
     /// branches, `hide`/`rename`, and a genuine data condition that must be left alone) in one

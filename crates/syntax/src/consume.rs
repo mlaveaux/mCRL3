@@ -421,8 +421,8 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn DataSpec(spec: ParseNode) -> ParseResult<UntypedDataSpecification> {
-        // `DataSpecBody` always matches (its repetition allows zero declarations), so it's always
-        // the first child, ahead of `EOI` — no need to look past it.
+        // `DataSpecBody` always matches (its repetition allows zero declarations), so it is
+        // always the first child, ahead of `EOI`.
         let Some(child) = spec.into_children().next() else {
             return Ok(UntypedDataSpecification::default());
         };
@@ -877,10 +877,9 @@ impl Mcrl2Parser {
         )
     }
 
-    // `ConstrDecl = { IdAt ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ IdAt )? }`: `IdAt` returns a
-    // `Spanned<String>`, so the leading name and the trailing recogniser (used for semantic tokens
-    // and goto-definition on the constructor/accessor names a `struct` sort implicitly declares)
-    // keep their own spans through `match_nodes!` — one arm per optional-group combination.
+    // `ConstrDecl = { IdAt ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ IdAt )? }`: one arm per
+    // combination of the two optional groups. The leading name and the trailing recogniser each
+    // keep their own span.
     pub(crate) fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
         match_nodes!(input.into_children();
             [IdAt(name)] => {

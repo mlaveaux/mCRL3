@@ -28,8 +28,7 @@ fn check_err(text: &str) -> ProcessError {
 
 #[test]
 fn test_action_with_matching_argument_sort_is_accepted() {
-    // `0: Nat` directly (unlike `1`, which is `Pos` and only reaches `Nat` via upcast — see the
-    // next test), so this exercises the exact-match case without duplicating its fixture.
+    // `0: Nat` directly, unlike `1`, which is `Pos` and only reaches `Nat` via upcast.
     check_ok("act a: Nat; init a(0);");
 }
 
