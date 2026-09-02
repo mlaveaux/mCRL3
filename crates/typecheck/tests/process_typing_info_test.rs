@@ -2,6 +2,7 @@
 //! information accumulated over a checked process specification's action arguments,
 //! process-instantiation arguments, conditions, time bounds, and `dist` weights.
 
+use merc_syntax::Span;
 use merc_syntax::UntypedProcessSpecification;
 use merc_typecheck::ProcessSpecification;
 use merc_typecheck::ResolvedName;
@@ -70,7 +71,9 @@ fn test_action_argument_goto_def_declaration_points_at_process_parameter() {
     let ResolvedName::Variable { declaration, .. } = &name else {
         panic!("expected a Variable resolution, got {name:?}");
     };
-    let declaration = declaration.clone().expect("a process parameter has a real declaration span");
+    let declaration = declaration
+        .clone()
+        .expect("a process parameter has a real declaration span");
     assert_eq!(&text[declaration.start..declaration.end], "n");
 }
 
@@ -83,7 +86,9 @@ fn test_sum_bound_variable_goto_def_declaration_points_at_binder() {
     let ResolvedName::Variable { declaration, .. } = &name else {
         panic!("expected a Variable resolution, got {name:?}");
     };
-    let declaration = declaration.clone().expect("a sum-bound variable has a real declaration span");
+    let declaration = declaration
+        .clone()
+        .expect("a sum-bound variable has a real declaration span");
     assert_eq!(&text[declaration.start..declaration.end], "x");
 }
 
@@ -161,7 +166,10 @@ fn test_positional_process_instantiation_name_goto_def_resolves_to_its_declarati
     assert_eq!(name, "P");
     let declaration = declaration.clone().expect("a plain `proc` declaration has a real span");
     assert_eq!(&text[declaration.start..declaration.end], "P");
-    assert_eq!(declaration.start, text.find("P(n: Nat)").expect("'P(n: Nat)' not found"));
+    assert_eq!(
+        declaration.start,
+        text.find("P(n: Nat)").expect("'P(n: Nat)' not found")
+    );
 }
 
 /// The assignment form of instantiation (`P(n = 1)`, a `ProcessExprKind::Id` node) resolves to a
@@ -198,4 +206,87 @@ fn test_overloaded_action_resolves_to_the_matching_declaration_by_arity() {
     };
     let declaration = declaration.clone().expect("a real declaration span");
     assert_eq!(declaration.start, text.find("a: Bool").expect("'a: Bool' not found"));
+}
+
+// ─── goto-def: hide/block/allow/comm/rename action-name sets ────────────────
+//
+// These name an action with no argument list to disambiguate an overload by, so
+// `check_action_names` offers every same-named declaration as a `ResolvedName::ActionSet` instead
+// of picking one — see `docs/action-name-set-goto-def-plan.md`. One test per construct/position
+// covers that `typing` is actually threaded through every `check_action_names` call site, not just
+// the first.
+
+#[track_caller]
+fn action_set_at(name: ResolvedName) -> (String, Vec<Span>) {
+    let ResolvedName::ActionSet { name, declarations } = name else {
+        panic!("expected an ActionSet resolution, got {name:?}");
+    };
+    (name, declarations)
+}
+
+#[test]
+fn test_hide_action_name_resolves_to_action_set() {
+    let text = "act a, b; init hide({b}, a);";
+    let (name, declarations) = action_set_at(resolved_name_at(text, "b}"));
+    assert_eq!(name, "b");
+    let [declaration] = declarations.as_slice() else {
+        panic!("expected exactly one declaration, got {declarations:?}");
+    };
+    assert_eq!(&text[declaration.start..declaration.end], "b");
+}
+
+#[test]
+fn test_block_action_name_resolves_to_action_set() {
+    let text = "act a; init block({a}, a);";
+    let (name, declarations) = action_set_at(resolved_name_at(text, "a}"));
+    assert_eq!(name, "a");
+    assert_eq!(declarations.len(), 1);
+}
+
+#[test]
+fn test_allow_action_name_resolves_to_action_set() {
+    let text = "act a, b; init allow({b}, a);";
+    let (name, declarations) = action_set_at(resolved_name_at(text, "b}"));
+    assert_eq!(name, "b");
+    assert_eq!(declarations.len(), 1);
+}
+
+#[test]
+fn test_comm_from_and_to_action_names_resolve_to_action_sets() {
+    // `comm`'s multi-action `from` side needs at least two actions (`Id "|" MultActId`, see the
+    // grammar), unlike `rename`'s plain `Id -> Id`.
+    let text = "act a, c, b; proc P = b; init comm({a|c -> b}, P);";
+    let (from_name, from_declarations) = action_set_at(resolved_name_at(text, "a|c"));
+    assert_eq!(from_name, "a");
+    assert_eq!(from_declarations.len(), 1);
+
+    let (to_name, to_declarations) = action_set_at(resolved_name_at(text, "b}"));
+    assert_eq!(to_name, "b");
+    assert_eq!(to_declarations.len(), 1);
+}
+
+#[test]
+fn test_rename_from_and_to_action_names_resolve_to_action_sets() {
+    let text = "act a, b; proc P = b; init rename({a -> b}, P);";
+    let (from_name, from_declarations) = action_set_at(resolved_name_at(text, "a ->"));
+    assert_eq!(from_name, "a");
+    assert_eq!(from_declarations.len(), 1);
+
+    let (to_name, to_declarations) = action_set_at(resolved_name_at(text, "b}"));
+    assert_eq!(to_name, "b");
+    assert_eq!(to_declarations.len(), 1);
+}
+
+/// An overloaded action named in an action-name set (no argument list to disambiguate by) offers
+/// every declaration, in declaration order, rather than guessing one.
+#[test]
+fn test_overloaded_action_in_action_set_offers_every_declaration() {
+    let text = "act b: Nat; b: Bool; a; init block({b}, a);";
+    let (name, declarations) = action_set_at(resolved_name_at(text, "b}"));
+    assert_eq!(name, "b");
+    let [first, second] = declarations.as_slice() else {
+        panic!("expected exactly two declarations, got {declarations:?}");
+    };
+    assert_eq!(first.start, text.find("b: Nat").expect("'b: Nat' not found"));
+    assert_eq!(second.start, text.find("b: Bool").expect("'b: Bool' not found"));
 }
