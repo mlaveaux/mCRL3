@@ -78,8 +78,7 @@ pub enum ResolvedName {
     Constructor {
         name: String,
         id: ConstructorId,
-        /// The declaration's span, when it has a real one — absent for some struct-desugared
-        /// constructors (see the crate README).
+        /// The declaration's span, when it has a real one.
         declaration: Option<Span>,
     },
     /// A user-declared mapping.
@@ -146,6 +145,12 @@ impl TypingInfo {
     /// The most specific node whose span contains `offset` — the usual hover/go-to-definition
     /// query.
     ///
+    /// A span's end is treated as inclusive for this lookup, so a cursor sitting right after a
+    /// token's last character (offset == that token's `span.end`) still resolves to the token,
+    /// matching the editor convention that a cursor between two characters belongs to the one on
+    /// its left. This can put a node in a tie with a zero-gap neighbour starting exactly at that
+    /// offset (e.g. the boundary between `1` and `+` in `1+1`); the usual tie-break below decides.
+    ///
     /// When several nodes tie for the smallest span (a synthesized node sharing its surface
     /// expression's span with that expression itself — `x + y`'s synthesized `Id("+")` and its
     /// `Application` both span the whole expression), the *last* one in generation order wins,
@@ -154,7 +159,7 @@ impl TypingInfo {
     pub fn at_offset(&self, offset: usize) -> Option<&TypedNode> {
         let mut best: Option<&TypedNode> = None;
         for node in &self.nodes {
-            if node.span.start > offset || offset >= node.span.end {
+            if node.span.start > offset || offset > node.span.end {
                 continue;
             }
             let width = node.span.end - node.span.start;
@@ -297,10 +302,9 @@ impl<'a> DeclarationIndex<'a> {
     }
 }
 
-/// `Span::default()` marks a declaration synthesized without a real source location (some
-/// struct-desugared constructors, projections and recognisers) rather than a real position at the
-/// start of the file; normalize it to `None` so a consumer doesn't render a misleading
-/// declaration site.
+/// `Span::default()` marks a declaration synthesized without a real source location, rather than a
+/// real position at the start of the file; normalize it to `None` so a consumer doesn't render a
+/// misleading declaration site.
 pub(crate) fn declared_span(span: &Span) -> Option<Span> {
     (*span != Span::default()).then(|| span.clone())
 }
