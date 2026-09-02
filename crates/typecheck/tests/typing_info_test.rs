@@ -99,6 +99,21 @@ fn test_hovering_a_comparison_operator_resolves_to_the_polymorphic_builtin() {
     }
 }
 
+// ─── hover: offset boundary ─────────────────────────────────────────────────
+
+#[test]
+fn test_hovering_right_after_a_variables_last_character_still_resolves_to_it() {
+    // A span's end is treated as inclusive: the cursor sitting right after `n`'s last character
+    // (offset == `n`'s own `span.end`, i.e. the position of the following `)`) must still resolve
+    // to `n` itself, not miss it or fall back to some enclosing node.
+    let text = "map f: Nat -> Bool; var n: Nat; eqn f(n) = true;";
+    let offset = text.find("n)").unwrap() + 1;
+    match typing_for(text).at_offset(offset) {
+        Some(node) => assert_eq!(&text[node.span.start..node.span.end], "n"),
+        None => panic!("expected a node at offset {offset} in '{text}', right after 'n'"),
+    }
+}
+
 // ─── goto-def: constructors and mappings ────────────────────────────────────
 
 #[test]

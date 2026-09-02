@@ -124,11 +124,24 @@ fn test_every_guard_of_a_condition_chain_contributes_typing() {
                 map is_a, is_b, is_c: Nat -> Bool; \
                 proc P(state: Nat) = is_a(state) -> a + is_b(state) -> b + is_c(state) -> c; \
                 init P(0);";
-    // The needle starts at `(`, inside the guard's `Application` span but outside its narrower
-    // `is_x`/`state` sub-node spans, so `at_offset` resolves to the whole (`Bool`-checked) guard.
-    assert_eq!(hover(text, "(state) -> a"), "Bool");
-    assert_eq!(hover(text, "(state) -> b"), "Bool");
-    assert_eq!(hover(text, "(state) -> c"), "Bool");
+    // Looked up directly by span rather than through `hover`/`at_offset`: `is_x(state)` packs its
+    // identifier, `(`, argument and `)` with no gap, so every offset inside it also sits on the
+    // *end* of a narrower sub-node (`is_x` or `state`) — `at_offset`'s inclusive-end tie-break
+    // always prefers that narrower node, so no offset resolves to the guard's own application.
+    let info = typing_for(text);
+    for guard in ["is_a(state)", "is_b(state)", "is_c(state)"] {
+        let start = text.find(guard).expect("guard text should occur verbatim");
+        let span = Span { start, end: start + guard.len() };
+        let node = info
+            .nodes()
+            .iter()
+            .find(|node| node.span == span)
+            .unwrap_or_else(|| panic!("no typed node spanning '{guard}'"));
+        assert_eq!(
+            node.sort.as_ref().expect("the guard is a Bool-checked application").to_string(),
+            "Bool"
+        );
+    }
 }
 
 // ─── goto-def: action and process names ─────────────────────────────────────
