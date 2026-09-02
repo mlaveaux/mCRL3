@@ -280,7 +280,11 @@ pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> V
             let domain = constructor.args.iter().map(|(_, sort)| sort.clone()).collect();
             let constructor_sort = function_sort(domain, sort.clone());
             trace!("desugar:   cons {}: {constructor_sort}", constructor.name.node);
-            constructors.push(IdDecl::new(constructor.name.node.clone(), constructor_sort, constructor.name.span.clone()));
+            constructors.push(IdDecl::new(
+                constructor.name.node.clone(),
+                constructor_sort,
+                constructor.name.span.clone(),
+            ));
 
             // map is_c: D -> Bool  (recogniser), when one is declared.
             if let Some(recogniser) = &constructor.projection {
@@ -330,7 +334,10 @@ fn function_sort(domain: Vec<SortExpression>, range: SortExpression) -> SortExpr
 /// projection shared by several constructors is generated only once — kept at the *first*
 /// constructor's own span, which is now where goto-definition lands for every shared use.
 fn push_unique(mappings: &mut Vec<IdDecl<MapId>>, mapping: IdDecl<MapId>) {
-    if !mappings.iter().any(|existing| existing.identifier == mapping.identifier && existing.sort == mapping.sort) {
+    if !mappings
+        .iter()
+        .any(|existing| existing.identifier == mapping.identifier && existing.sort == mapping.sort)
+    {
         trace!("desugar:   map {}: {}", mapping.identifier, mapping.sort);
         mappings.push(mapping);
     }

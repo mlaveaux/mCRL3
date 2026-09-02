@@ -1063,7 +1063,10 @@ init JobWrapper([],0);
             let once = spec.clone();
 
             reparse_process_specification(&mut spec);
-            assert_eq!(spec, once, "reparsing an already-reparsed specification must be a no-op for {text:?}");
+            assert_eq!(
+                spec, once,
+                "reparsing an already-reparsed specification must be a no-op for {text:?}"
+            );
         }
     }
 
@@ -1072,12 +1075,14 @@ init JobWrapper([],0);
     /// needs the real `proc`/`init` split rather than one extracted body.
     #[test]
     fn reparse_is_idempotent_for_the_long_guarded_choice_chain() {
-        let mut spec =
-            UntypedProcessSpecification::parse(LONG_GUARDED_CHOICE_CHAIN).expect("the fixture should parse");
+        let mut spec = UntypedProcessSpecification::parse(LONG_GUARDED_CHOICE_CHAIN).expect("the fixture should parse");
         reparse_process_specification(&mut spec);
         let once = spec.clone();
 
         reparse_process_specification(&mut spec);
-        assert_eq!(spec, once, "reparsing an already-reparsed specification must be a no-op");
+        assert_eq!(
+            spec, once,
+            "reparsing an already-reparsed specification must be a no-op"
+        );
     }
 }

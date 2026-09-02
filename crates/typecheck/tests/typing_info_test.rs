@@ -145,7 +145,11 @@ fn test_struct_constructor_goto_def_points_at_its_own_name_in_the_struct_declara
         ResolvedName::Constructor { name, declaration, .. } => {
             assert_eq!(name, "c1");
             let span = declaration.expect("a struct constructor now has a real declaration span");
-            assert_eq!(&text[span.start..span.end], "c1", "must point at just the constructor's own name");
+            assert_eq!(
+                &text[span.start..span.end],
+                "c1",
+                "must point at just the constructor's own name"
+            );
         }
         other => panic!("expected a Constructor resolution, got {other:?}"),
     }
