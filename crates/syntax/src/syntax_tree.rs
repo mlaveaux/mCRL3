@@ -238,9 +238,12 @@ impl From<SortExpressionKind> for SortExpression {
 /// Constructor declaration
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct ConstructorDecl {
-    pub name: String,
-    pub args: Vec<(Option<String>, SortExpression)>,
-    pub projection: Option<String>,
+    /// The constructor's own name (`c1`), with its declaration span.
+    pub name: Spanned<String>,
+    /// Each argument's optional projection-function name.
+    pub args: Vec<(Option<Spanned<String>>, SortExpression)>,
+    /// The recogniser function's name.
+    pub projection: Option<Spanned<String>>,
 }
 
 /// Built-in simple sorts.

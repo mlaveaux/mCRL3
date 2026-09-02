@@ -259,6 +259,32 @@ fn sort_alias_declaration_span_is_precisely_the_identifier() {
     assert_eq!(&text[decl.span.start..decl.span.end], "L");
 }
 
+/// A `struct` sort expression's own constructor/projection/recogniser names each get a precise
+/// span of their own.
+#[test]
+fn struct_constructor_projection_and_recogniser_get_precise_spans() {
+    let text = "sort D = struct c1(a1: Bool, Nat)?is_c1 | c2;";
+    let spec = UntypedDataSpecification::parse(text).expect("the specification should parse");
+    let merc_syntax::SortExpressionKind::Struct { inner } = &spec.sort_declarations[0].expr.as_ref().unwrap().node
+    else {
+        panic!("expected a structured sort");
+    };
+
+    let c1 = &inner[0];
+    assert_eq!(&text[c1.name.span.start..c1.name.span.end], "c1");
+    let (a1, _) = &c1.args[0];
+    let a1 = a1.as_ref().expect("the first argument names its projection");
+    assert_eq!(&text[a1.span.start..a1.span.end], "a1");
+    let (anonymous, _) = &c1.args[1];
+    assert!(anonymous.is_none(), "the second argument has no projection name");
+    let is_c1 = c1.projection.as_ref().expect("c1 declares a recogniser");
+    assert_eq!(&text[is_c1.span.start..is_c1.span.end], "is_c1");
+
+    let c2 = &inner[1];
+    assert_eq!(&text[c2.name.span.start..c2.name.span.end], "c2");
+    assert!(c2.projection.is_none());
+}
+
 #[test]
 fn grouped_constructor_declarations_get_distinct_precise_spans() {
     let text = "sort D; cons c1, c2: D;";
