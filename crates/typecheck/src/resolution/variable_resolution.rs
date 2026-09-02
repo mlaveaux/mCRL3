@@ -1,14 +1,16 @@
 //! Resolves *variable* references — as opposed to constructor/mapping/action/process names, which
-//! are not context-free (see `docs/name_resolution.md`) — in a process specification's `proc`
-//! bodies/`init` and a PBES's equation bodies/`init`, before type checking runs.
+//! are not context-free (see `docs/name_resolution.md`) — before type checking runs: in a process
+//! specification's `proc` bodies/`init`, a PBES's or PRES's equation bodies/`init`, and a data
+//! specification's own `var`-block equations.
 //!
 //! A variable occurrence's binder — `sum`/`dist`, a process's own parameters, a PBES
-//! quantifier/equation parameter — is decided purely by lexical scoping over the untyped syntax
-//! tree, with no dependency on inferred sorts (unlike overloaded constructor/mapping resolution,
-//! or the arity-based action-vs-process disambiguation `check_action_or_process` performs). This
-//! pass therefore needs no [`crate::DataSpecification`] and cannot fail: a name not found in
-//! scope is left as a plain `Id`, and `inference.rs`'s overload/`UndeclaredName` machinery is
-//! responsible for rejecting it if it turns out to be undeclared.
+//! quantifier/equation parameter, a PRES `inf`/`sup`/`sum`/equation parameter — is decided purely
+//! by lexical scoping over the untyped syntax tree, with no dependency on inferred sorts (unlike
+//! overloaded constructor/mapping resolution, or the arity-based action-vs-process disambiguation
+//! `check_action_or_process` performs). This pass therefore needs no [`crate::DataSpecification`]
+//! and cannot fail: a name not found in scope is left as a plain `Id`, and `inference.rs`'s
+//! overload/`UndeclaredName` machinery is responsible for rejecting it if it turns out to be
+//! undeclared.
 //!
 //! [`DataExprKind::Id`] resolves to [`DataExprKind::Resolved`] the same way a sort's
 //! `Reference` resolves to `Resolved` in `resolution::name_resolution::resolve_sort_id`.
@@ -18,12 +20,15 @@ use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
 use merc_syntax::PbesExpr;
 use merc_syntax::PbesExprKind;
+use merc_syntax::PresExpr;
+use merc_syntax::PresExprKind;
 use merc_syntax::ProcessExpr;
 use merc_syntax::ProcessExprKind;
 use merc_syntax::PropVarInst;
 use merc_syntax::Span;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
+use merc_syntax::UntypedPres;
 use merc_syntax::UntypedProcessSpecification;
 
 /// Resolves every context-free variable reference in `spec`'s own `var`-block equations. Each
@@ -74,6 +79,21 @@ pub(crate) fn resolve_pbes_variables(pbes: &mut UntypedPbes) {
     // `init` sits outside every equation's own parameter scope — only globals apply.
     let mut scope = globals.clone();
     resolve_in_prop_var_inst(&mut pbes.init, &mut scope);
+}
+
+/// Resolves every context-free variable reference in `pres`'s equation bodies and `init`.
+pub(crate) fn resolve_pres_variables(pres: &mut UntypedPres) {
+    let globals = binder_scope(&pres.global_variables);
+
+    for equation in &mut pres.equations {
+        let mut scope = globals.clone();
+        push_binder(&mut scope, &equation.variable.parameters);
+        resolve_in_pres_expr(&mut equation.formula, &mut scope);
+    }
+
+    // `init` sits outside every equation's own parameter scope — only globals apply.
+    let mut scope = globals.clone();
+    resolve_in_prop_var_inst(&mut pres.init, &mut scope);
 }
 
 /// The shadowing stack this pass threads through a tree: each binder's own name paired with its
@@ -171,6 +191,35 @@ fn resolve_in_pbes_expr(expr: &mut PbesExpr, scope: &mut Scope) {
     }
 }
 
+fn resolve_in_pres_expr(expr: &mut PresExpr, scope: &mut Scope) {
+    match &mut expr.node {
+        PresExprKind::True | PresExprKind::False => {}
+        PresExprKind::DataValExpr(data_expr) => resolve_in_data_expr(data_expr, scope),
+        PresExprKind::PropVarInst(inst) => resolve_in_prop_var_inst(inst, scope),
+        PresExprKind::Negation(inner) => resolve_in_pres_expr(inner, scope),
+        PresExprKind::Binary { lhs, rhs, .. } => {
+            resolve_in_pres_expr(lhs, scope);
+            resolve_in_pres_expr(rhs, scope);
+        }
+        PresExprKind::Equal { body, .. } => resolve_in_pres_expr(body, scope),
+        PresExprKind::Condition { lhs, then, else_, .. } => {
+            resolve_in_pres_expr(lhs, scope);
+            resolve_in_pres_expr(then, scope);
+            resolve_in_pres_expr(else_, scope);
+        }
+        PresExprKind::RightConstantMultiply { expr, constant }
+        | PresExprKind::LeftConstantMultiply { expr, constant } => {
+            resolve_in_data_expr(constant, scope);
+            resolve_in_pres_expr(expr, scope);
+        }
+        PresExprKind::Bound { variables, expr, .. } => {
+            let pushed = push_binder(scope, variables);
+            resolve_in_pres_expr(expr, scope);
+            scope.truncate(scope.len() - pushed);
+        }
+    }
+}
+
 fn resolve_in_prop_var_inst(inst: &mut PropVarInst, scope: &mut Scope) {
     for argument in &mut inst.arguments {
         resolve_in_data_expr(argument, scope);
@@ -250,20 +299,25 @@ fn resolve_in_data_expr(expr: &mut DataExpr, scope: &mut Scope) {
 mod tests {
     use merc_syntax::DataExprKind;
     use merc_syntax::PbesExprKind;
+    use merc_syntax::PresExprKind;
     use merc_syntax::ProcessExprKind;
     use merc_syntax::UntypedDataSpecification;
     use merc_syntax::UntypedPbes;
+    use merc_syntax::UntypedPres;
     use merc_syntax::UntypedProcessSpecification;
 
     use super::resolve_data_specification_variables;
     use super::resolve_pbes_variables;
+    use super::resolve_pres_variables;
     use super::resolve_process_variables;
 
     /// The declaration span of `name`, located via `locate`'s first occurrence in `text` (an
     /// `IdDecl`'s own span covers only its identifier — not the `: Sort` that follows it — so
     /// `locate` only pins down where to look, `name`'s own length determines the span's width).
     fn decl_span(text: &str, locate: &str, name: &str) -> (usize, usize) {
-        let start = text.find(locate).unwrap_or_else(|| panic!("'{locate}' not found in '{text}'"));
+        let start = text
+            .find(locate)
+            .unwrap_or_else(|| panic!("'{locate}' not found in '{text}'"));
         (start, start + name.len())
     }
 
@@ -442,6 +496,73 @@ mod tests {
         let (start, end) = decl_span(text, "g: Nat", "g");
         assert!(matches!(
             &pbes.init.arguments[0].node,
+            DataExprKind::Resolved(name, span) if name == "g" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_pres_prop_var_inst_argument_resolves_to_equation_parameter() {
+        let text = "pres mu X(n: Nat) = val(n) || X(n); init X(0);";
+        let mut pres = UntypedPres::parse(text).unwrap();
+        resolve_pres_variables(&mut pres);
+
+        let PresExprKind::Binary { rhs, .. } = &pres.equations[0].formula.node else {
+            panic!("expected a Binary (||) formula");
+        };
+        let PresExprKind::PropVarInst(inst) = &rhs.node else {
+            panic!("expected a PropVarInst");
+        };
+        let (start, end) = decl_span(text, "n: Nat", "n");
+        assert!(matches!(
+            &inst.arguments[0].node,
+            DataExprKind::Resolved(name, span) if name == "n" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_pres_bound_variable_resolves_to_its_own_binder() {
+        let text = "pres mu X = sum n: Nat . val(n); init X;";
+        let mut pres = UntypedPres::parse(text).unwrap();
+        resolve_pres_variables(&mut pres);
+
+        let PresExprKind::Bound { expr, .. } = &pres.equations[0].formula.node else {
+            panic!("expected a Bound formula");
+        };
+        let PresExprKind::DataValExpr(data_expr) = &expr.node else {
+            panic!("expected a DataValExpr body");
+        };
+        let (start, end) = decl_span(text, "n: Nat", "n");
+        assert!(matches!(
+            &data_expr.node,
+            DataExprKind::Resolved(name, span) if name == "n" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_pres_constant_multiply_resolves_its_constant() {
+        let text = "pres mu X(n: Nat) = val(n) * X; init X;";
+        let mut pres = UntypedPres::parse(text).unwrap();
+        resolve_pres_variables(&mut pres);
+
+        let PresExprKind::LeftConstantMultiply { constant, .. } = &pres.equations[0].formula.node else {
+            panic!("expected a LeftConstantMultiply formula");
+        };
+        let (start, end) = decl_span(text, "n: Nat", "n");
+        assert!(matches!(
+            &constant.node,
+            DataExprKind::Resolved(name, span) if name == "n" && span.start == start && span.end == end
+        ));
+    }
+
+    #[test]
+    fn test_pres_init_only_sees_globals_not_any_equations_own_parameters() {
+        let text = "glob g: Nat; pres nu X(n: Nat) = val(n); init X(g);";
+        let mut pres = UntypedPres::parse(text).unwrap();
+        resolve_pres_variables(&mut pres);
+
+        let (start, end) = decl_span(text, "g: Nat", "g");
+        assert!(matches!(
+            &pres.init.arguments[0].node,
             DataExprKind::Resolved(name, span) if name == "g" && span.start == start && span.end == end
         ));
     }
