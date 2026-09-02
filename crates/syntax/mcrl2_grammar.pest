@@ -633,11 +633,11 @@ PresExprPrimary = _{
     | PresExprParens
     | PbesExprTrue
     | PbesExprFalse
-    | PropVarInst    
     | PresExprEqinf
     | PresExprEqninf
     | PresExprCondsm
     | PresExprCondeq
+    | PropVarInst
 }
     PresExprParens = { "(" ~ PresExpr ~ ")" }
     PresExprEqinf = { "eqinf" ~ "(" ~ PresExpr ~ ")" }
