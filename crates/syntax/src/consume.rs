@@ -257,14 +257,14 @@ impl Mcrl2Parser {
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params)] => {
                 Ok(PropVarDecl {
-                    identifier,
+                    identifier: identifier.node,
                     parameters: params,
                     span: span.into(),
                 })
             },
             [Id(identifier)] => {
                 Ok(PropVarDecl {
-                    identifier,
+                    identifier: identifier.node,
                     parameters: Vec::new(),
                     span: span.into(),
                 })
@@ -277,13 +277,13 @@ impl Mcrl2Parser {
         match_nodes!(inst.into_children();
             [Id(identifier)] => {
                 Ok(PropVarInstData {
-                    identifier,
+                    identifier: identifier.node,
                     arguments: Vec::new(),
                 }.spanned(span.into()))
             },
             [Id(identifier), DataExprList(arguments)] => {
                 Ok(PropVarInstData {
-                    identifier,
+                    identifier: identifier.node,
                     arguments,
                 }.spanned(span.into()))
             }
@@ -523,10 +523,10 @@ impl Mcrl2Parser {
         let span: Span = id.as_span().into();
         match_nodes!(id.into_children();
             [Id(identifier)] => {
-                Ok(StateFrmKind::Id(identifier, Vec::new()).spanned(span))
+                Ok(StateFrmKind::Id(identifier.node, Vec::new()).spanned(span))
             },
             [Id(identifier), DataExprList(expressions)] => {
-                Ok(StateFrmKind::Id(identifier, expressions).spanned(span))
+                Ok(StateFrmKind::Id(identifier.node, expressions).spanned(span))
             },
         )
     }
@@ -548,14 +548,10 @@ impl Mcrl2Parser {
     }
 
     fn SortDecl(decl: ParseNode) -> ParseResult<Vec<SortDecl>> {
-        // The rule starts exactly at `identifier`.
-        let start = decl.as_span().start();
-
         match_nodes!(decl.into_children();
             // The alias form (`sort A = Bool;`) always names exactly one sort per node.
             [IdAt(identifier), SortExpr(expr)] => {
-                let span = Span { start, end: start + identifier.len() };
-                Ok(vec![SortDecl::new(identifier, Some(expr), span)])
+                Ok(vec![SortDecl::new(identifier.node, Some(expr), identifier.span)])
             },
             // `sort A, B, C;`: each gets its own precise identifier span (see `IdList`).
             [IdList(ids)] => {
@@ -589,25 +585,21 @@ impl Mcrl2Parser {
     }
 
     fn ProcDecl(decl: ParseNode) -> ParseResult<ProcDecl> {
-        // The rule starts exactly at `identifier`.
-        let start = decl.as_span().start();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params), ProcExpr(body)] => {
-                let span = Span { start, end: start + identifier.len() };
                 Ok(ProcDecl {
-                    identifier,
+                    identifier: identifier.node,
                     params,
                     body,
-                    span,
+                    span: identifier.span,
                 })
             },
             [Id(identifier), ProcExpr(body)] => {
-                let span = Span { start, end: start + identifier.len() };
                 Ok(ProcDecl {
-                    identifier,
+                    identifier: identifier.node,
                     params: Vec::new(),
                     body,
-                    span,
+                    span: identifier.span,
                 })
             }
         )
@@ -721,12 +713,9 @@ impl Mcrl2Parser {
     }
 
     pub(crate) fn Assignment(assignment: ParseNode) -> ParseResult<Assignment> {
-        // The rule starts exactly at `identifier`.
-        let start = assignment.as_span().start();
         match_nodes!(assignment.into_children();
             [IdAt(identifier), DataExpr(expr)] => {
-                let span = Span { start, end: start + identifier.len() };
-                Ok(AssignmentData { identifier, expr }.spanned(span))
+                Ok(AssignmentData { identifier: identifier.node, expr }.spanned(identifier.span))
             },
         )
     }
@@ -785,12 +774,18 @@ impl Mcrl2Parser {
         parse_sortexpr(expr.children().as_pairs().clone())
     }
 
-    pub(crate) fn Id(identifier: ParseNode) -> ParseResult<String> {
-        Ok(identifier.as_str().to_string())
+    pub(crate) fn Id(identifier: ParseNode) -> ParseResult<Spanned<String>> {
+        Ok(Spanned {
+            node: identifier.as_str().to_string(),
+            span: identifier.as_span().into(),
+        })
     }
 
-    pub(crate) fn IdAt(identifier: ParseNode) -> ParseResult<String> {
-        Ok(identifier.as_str().to_string())
+    pub(crate) fn IdAt(identifier: ParseNode) -> ParseResult<Spanned<String>> {
+        Ok(Spanned {
+            node: identifier.as_str().to_string(),
+            span: identifier.as_span().into(),
+        })
     }
 
     pub(crate) fn IdList(identifiers: ParseNode) -> ParseResult<Vec<(String, Span)>> {
@@ -882,59 +877,36 @@ impl Mcrl2Parser {
         )
     }
 
-    // `ConstrDecl = { IdAt ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ IdAt )? }`: the trailing
-    // `IdAt` (the recogniser) is only distinguishable from the leading one (the constructor's own
-    // name) by position, not by rule, so this walks the children by hand — as `ProjDecl` below
-    // does for the same reason — rather than through `match_nodes!`, so the name/recogniser spans
-    // (used for semantic tokens and goto-definition on the constructor/accessor names a `struct`
-    // sort implicitly declares) can be captured directly off the raw nodes.
+    // `ConstrDecl = { IdAt ~ ( "(" ~ ProjDeclList ~ ")" )? ~ ( "?" ~ IdAt )? }`: `IdAt` returns a
+    // `Spanned<String>`, so the leading name and the trailing recogniser (used for semantic tokens
+    // and goto-definition on the constructor/accessor names a `struct` sort implicitly declares)
+    // keep their own spans through `match_nodes!` — one arm per optional-group combination.
     pub(crate) fn ConstrDecl(input: ParseNode) -> ParseResult<ConstructorDecl> {
-        let mut children = input.into_children();
-        let name_node = children.next().expect("ConstrDecl always starts with its own name");
-        let name = Spanned {
-            node: name_node.as_str().to_string(),
-            span: name_node.as_span().into(),
-        };
-
-        let mut args = Vec::new();
-        let mut projection = None;
-        for child in children {
-            match child.as_rule() {
-                Rule::ProjDeclList => {
-                    args = Mcrl2Parser::ProjDeclList(child)?;
-                }
-                Rule::IdAt => {
-                    projection = Some(Spanned {
-                        node: child.as_str().to_string(),
-                        span: child.as_span().into(),
-                    });
-                }
-                rule => unimplemented!("Unexpected rule in ConstrDecl: {rule:?}"),
-            }
-        }
-
-        Ok(ConstructorDecl { name, args, projection })
+        match_nodes!(input.into_children();
+            [IdAt(name)] => {
+                Ok(ConstructorDecl { name, args: Vec::new(), projection: None })
+            },
+            [IdAt(name), ProjDeclList(args)] => {
+                Ok(ConstructorDecl { name, args, projection: None })
+            },
+            [IdAt(name), IdAt(projection)] => {
+                Ok(ConstructorDecl { name, args: Vec::new(), projection: Some(projection) })
+            },
+            [IdAt(name), ProjDeclList(args), IdAt(projection)] => {
+                Ok(ConstructorDecl { name, args, projection: Some(projection) })
+            },
+        )
     }
 
     pub(crate) fn ProjDecl(input: ParseNode) -> ParseResult<(Option<Spanned<String>>, SortExpression)> {
-        let mut name = None;
-        let mut sort = None;
-        for child in input.into_children() {
-            match child.as_rule() {
-                Rule::Id => {
-                    name = Some(Spanned {
-                        node: child.as_str().to_string(),
-                        span: child.as_span().into(),
-                    });
-                }
-                Rule::SortExpr => {
-                    sort = Some(Mcrl2Parser::SortExpr(child)?);
-                }
-                rule => unimplemented!("Unexpected rule in ProjDecl: {rule:?}"),
-            }
-        }
-
-        Ok((name, sort.expect("ProjDecl always has a sort expression")))
+        match_nodes!(input.into_children();
+            [SortExpr(sort)] => {
+                Ok((None, sort))
+            },
+            [Id(name), SortExpr(sort)] => {
+                Ok((Some(name), sort))
+            },
+        )
     }
 
     pub(crate) fn DataExprListEnum(input: ParseNode) -> ParseResult<DataExpr> {
@@ -995,11 +967,9 @@ impl Mcrl2Parser {
     }
 
     fn VarDecl(decl: ParseNode) -> ParseResult<IdDecl> {
-        let start = decl.as_span().start();
         match_nodes!(decl.into_children();
             [IdAt(identifier), SortExpr(sort)] => {
-                let span = Span { start, end: start + identifier.len() };
-                Ok(IdDecl::new(identifier, sort, span))
+                Ok(IdDecl::new(identifier.node, sort, identifier.span))
             },
         )
     }
@@ -1040,18 +1010,12 @@ impl Mcrl2Parser {
         )
     }
 
-    // `MultActId = { Id ~ ( "|" ~ Id )* }`: every child is a plain `Id` leaf, so its span is read
-    // directly off the raw node (as [IdList] does) rather than via the `Id` production, which
-    // only returns the name.
     fn MultActId(actions: ParseNode) -> ParseResult<MultiActionLabel> {
-        let actions = actions
-            .into_children()
-            .map(|id| ActionName {
-                node: id.as_str().to_string(),
-                span: id.as_span().into(),
-            })
-            .collect();
-        Ok(MultiActionLabel { actions })
+        match_nodes!(actions.into_children();
+            [Id(actions)..] => {
+                Ok(MultiActionLabel { actions: actions.collect() })
+            },
+        )
     }
 
     fn MultActIdList(actions: ParseNode) -> ParseResult<Vec<MultiActionLabel>> {
@@ -1078,23 +1042,16 @@ impl Mcrl2Parser {
         parse_process_expr(input.children().as_pairs().clone())
     }
 
-    // `ProcExprId = { Id ~ "(" ~ AssignmentList? ~ ")" }`: walked by hand, rather than via
-    // `match_nodes!`, so the leading `Id` keeps its own span — see [Self::Action].
     pub(crate) fn ProcExprId(input: ParseNode) -> ParseResult<ProcessExpr> {
         let span: Span = input.as_span().into();
-        let mut children = input.into_children();
-        let id_node = children.next().expect("ProcExprId requires a leading Id");
-        let identifier = ActionName {
-            node: id_node.as_str().to_string(),
-            span: id_node.as_span().into(),
-        };
-
-        let assignments = match children.next() {
-            Some(node) => Self::AssignmentList(node)?,
-            None => Vec::new(),
-        };
-
-        Ok(ProcessExprKind::Id(identifier, assignments).spanned(span))
+        match_nodes!(input.into_children();
+            [Id(identifier)] => {
+                Ok(ProcessExprKind::Id(identifier, Vec::new()).spanned(span))
+            },
+            [Id(identifier), AssignmentList(assignments)] => {
+                Ok(ProcessExprKind::Id(identifier, assignments).spanned(span))
+            },
+        )
     }
 
     pub(crate) fn ProcExprBlock(input: ParseNode) -> ParseResult<ProcessExpr> {
@@ -1176,28 +1133,13 @@ impl Mcrl2Parser {
         )
     }
 
-    // `CommExpr = { Id ~ "|" ~ MultActId ~ "->" ~ Id }`: walked by hand, rather than via
-    // `match_nodes!`, so the two bare `Id` leaves keep their span (see [MultActId]) alongside the
-    // recursively-parsed `MultActId` in between.
     fn CommExpr(action: ParseNode) -> ParseResult<CommExpr> {
-        let mut children = action.into_children();
-        let first = children.next().expect("CommExpr requires a leading Id");
-        let first = ActionName {
-            node: first.as_str().to_string(),
-            span: first.as_span().into(),
-        };
-
-        let multiact_node = children.next().expect("CommExpr requires a MultActId");
-        let mut multiact = Self::MultActId(multiact_node)?;
-        multiact.actions.insert(0, first);
-
-        let to_node = children.next().expect("CommExpr requires a trailing Id");
-        let to = ActionName {
-            node: to_node.as_str().to_string(),
-            span: to_node.as_span().into(),
-        };
-
-        Ok(CommExpr { from: multiact, to })
+        match_nodes!(action.into_children();
+            [Id(first), MultActId(mut multiact), Id(to)] => {
+                multiact.actions.insert(0, first);
+                Ok(CommExpr { from: multiact, to })
+            },
+        )
     }
 
     fn CommExprList(actions: ParseNode) -> ParseResult<Vec<CommExpr>> {
@@ -1240,23 +1182,15 @@ impl Mcrl2Parser {
         )
     }
 
-    // `Action = { Id ~ ("(" ~ DataExprList ~ ")")? }`: walked by hand, rather than via
-    // `match_nodes!`, so the leading `Id` keeps its own span (see [CommExpr]) — needed for
-    // action/process goto-definition once type checking resolves which declaration it names.
     pub(crate) fn Action(input: ParseNode) -> ParseResult<Action> {
-        let mut children = input.into_children();
-        let id_node = children.next().expect("Action requires a leading Id");
-        let id = ActionName {
-            node: id_node.as_str().to_string(),
-            span: id_node.as_span().into(),
-        };
-
-        let args = match children.next() {
-            Some(args_node) => Self::DataExprList(args_node)?,
-            None => Vec::new(),
-        };
-
-        Ok(Action { id, args })
+        match_nodes!(input.into_children();
+            [Id(id)] => {
+                Ok(Action { id, args: Vec::new() })
+            },
+            [Id(id), DataExprList(args)] => {
+                Ok(Action { id, args })
+            },
+        )
     }
 
     fn RenExprSet(renames: ParseNode) -> ParseResult<Vec<Rename>> {
@@ -1275,22 +1209,12 @@ impl Mcrl2Parser {
         )
     }
 
-    // `RenExpr = { Id ~ "->" ~ Id }`: both children are plain `Id` leaves, so spans are read
-    // directly off the raw nodes (see [MultActId]) rather than via the `Id` production.
     fn RenExpr(renames: ParseNode) -> ParseResult<Rename> {
-        let mut children = renames.into_children();
-        let from = children.next().expect("RenExpr requires a from Id");
-        let to = children.next().expect("RenExpr requires a to Id");
-        Ok(Rename {
-            from: ActionName {
-                node: from.as_str().to_string(),
-                span: from.as_span().into(),
+        match_nodes!(renames.into_children();
+            [Id(from), Id(to)] => {
+                Ok(Rename { from, to })
             },
-            to: ActionName {
-                node: to.as_str().to_string(),
-                span: to.as_span().into(),
-            },
-        })
+        )
     }
 
     pub(crate) fn ProcExprSum(input: ParseNode) -> ParseResult<Vec<IdDecl>> {
@@ -1582,14 +1506,14 @@ impl Mcrl2Parser {
         match_nodes!(input.into_children();
             [Id(identifier), StateVarAssignmentList(arguments)] => {
                 Ok(StateVarDecl {
-                    identifier,
+                    identifier: identifier.node,
                     arguments,
                     span: span.into(),
                 })
             },
             [Id(identifier)] => {
                 Ok(StateVarDecl {
-                    identifier,
+                    identifier: identifier.node,
                     arguments: Vec::new(),
                     span: span.into(),
                 })
@@ -1609,7 +1533,7 @@ impl Mcrl2Parser {
         match_nodes!(input.into_children();
             [Id(identifier), SortExpr(sort), DataExpr(expr)] => {
                 Ok(StateVarAssignment {
-                    identifier,
+                    identifier: identifier.node,
                     sort,
                     expr,
                 })

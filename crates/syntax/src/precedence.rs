@@ -54,7 +54,7 @@ pub static SORT_PRATT_PARSER: LazyLock<PrattParser<Rule>> = LazyLock::new(|| {
 pub fn parse_sortexpr_primary(primary: Pair<'_, Rule>) -> ParseResult<SortExpression> {
     let span: Span = primary.as_span().into();
     match primary.as_rule() {
-        Rule::IdAt => Ok(SortExpressionKind::Reference(Mcrl2Parser::IdAt(Node::new(primary))?).spanned(span)),
+        Rule::IdAt => Ok(SortExpressionKind::Reference(Mcrl2Parser::IdAt(Node::new(primary))?.node).spanned(span)),
         Rule::SortExpr => Mcrl2Parser::SortExpr(Node::new(primary)),
 
         Rule::SortExprBool => Ok(SortExpressionKind::Simple(Sort::Bool).spanned(span)),
@@ -161,7 +161,7 @@ pub fn parse_dataexpr(pairs: Pairs<Rule>) -> ParseResult<DataExpr> {
                 Rule::DataExprSetBagComp => Mcrl2Parser::DataExprSetBagComp(Node::new(primary)),
                 Rule::DataExprSetEnum => Mcrl2Parser::DataExprSetEnum(Node::new(primary)),
                 Rule::Number => Mcrl2Parser::Number(Node::new(primary)),
-                Rule::IdAt => Ok(DataExprKind::Id(Mcrl2Parser::IdAt(Node::new(primary))?).spanned(span)),
+                Rule::IdAt => Ok(DataExprKind::Id(Mcrl2Parser::IdAt(Node::new(primary))?.node).spanned(span)),
 
                 Rule::DataExprBrackets => {
                     // Handle parentheses by recursively parsing the inner expression
