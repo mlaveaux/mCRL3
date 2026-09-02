@@ -69,7 +69,7 @@ fn test_partial_solve_is_sound() {
         let empty = manager.with_manager_shared(LDDFunction::empty_set).unwrap();
         let partial_solution = SymbolicSolution {
             winning: [empty.clone(), empty],
-            strategy: None,
+            strategy: [None, None],
         };
 
         let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
@@ -148,7 +148,7 @@ fn test_cycle_detectors_are_sound() {
 
         let fresh_solution = || SymbolicSolution {
             winning: [empty.clone(), empty.clone()],
-            strategy: None,
+            strategy: [None, None],
         };
 
         // "safe" mode: folds `incomplete` directly into every attractor call.
@@ -249,7 +249,7 @@ fn test_partial_solving_is_sound_with_incomplete_vertices() {
         };
         let fresh_solution = || SymbolicSolution {
             winning: [empty.clone(), empty.clone()],
-            strategy: None,
+            strategy: [None, None],
         };
 
         let partial = partial_solve(
@@ -356,7 +356,7 @@ fn test_partial_solving_computes_a_valid_strategy() {
 
         let fresh_solution = || SymbolicSolution {
             winning: [empty.clone(), empty.clone()],
-            strategy: Some([empty.clone(), empty.clone()]),
+            strategy: [Some(empty.clone()), Some(empty.clone())],
         };
 
         let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
@@ -375,10 +375,12 @@ fn test_partial_solving_computes_a_valid_strategy() {
         ];
 
         for solution in solutions {
-            let strategy = solution.strategy.expect("compute_strategy is set");
             for player in [Player::Even, Player::Odd] {
+                let strategy = solution.strategy[player.to_index()]
+                    .as_ref()
+                    .expect("compute_strategy is set");
                 epg.game
-                    .apply_strategy(player, &strategy[player.to_index()])
+                    .apply_strategy(player, strategy)
                     .expect("a partial solver's own strategy must be a valid input to apply_strategy");
             }
         }
@@ -421,7 +423,7 @@ fn test_detect_solitair_cycles_finds_the_fixture_cycle() {
 
     let partial_solution = SymbolicSolution {
         winning: [empty.clone(), empty],
-        strategy: None,
+        strategy: [None, None],
     };
 
     let epg = ExtendedParityGame::new(symbolic, initial, empty_sinks);
@@ -493,7 +495,7 @@ fn test_detect_forced_cycles_finds_the_fixture_cycle() {
     // even priority owned by anyone) is owned by Odd, so it never seeds the search.
     let solitair_partial_solution = SymbolicSolution {
         winning: [empty.clone(), empty.clone()],
-        strategy: None,
+        strategy: [None, None],
     };
     let solitair = detect_solitair_cycles_within_safe_vertices(
         &epg,
@@ -515,7 +517,7 @@ fn test_detect_forced_cycles_finds_the_fixture_cycle() {
 
     let forced_partial_solution = SymbolicSolution {
         winning: [empty.clone(), empty],
-        strategy: None,
+        strategy: [None, None],
     };
     let forced = detect_forced_cycles_within_safe_vertices(
         &epg,

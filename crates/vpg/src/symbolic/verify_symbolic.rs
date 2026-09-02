@@ -42,12 +42,11 @@ pub fn verify_symbolic_strategy(
     let winner = solution
         .winner(initial_vertex)
         .ok_or("verify_symbolic_strategy: initial vertex was not resolved by the solver")?;
-    let strategy = solution
-        .strategy
+    let strategy = solution.strategy[winner.to_index()]
         .as_ref()
         .ok_or("verify_symbolic_strategy: solution has no strategy (game was not built with compute_strategy)")?;
 
-    let restricted = game.apply_strategy(winner, &strategy[winner.to_index()])?;
+    let restricted = game.apply_strategy(winner, strategy)?;
     let new_sinks = restricted.sinks(restricted.vertices(), restricted.vertices())?;
 
     let epg = ExtendedParityGame::new(restricted, initial_vertex.clone(), new_sinks);
