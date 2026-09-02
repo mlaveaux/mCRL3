@@ -73,7 +73,11 @@ pub(super) fn check_process_specification(
 /// — every variable occurrence in `expr` already names its own declaration's span
 /// (`crate::resolve_process_variables`), so this only needs to run once, before checking any of
 /// `expr`'s leaves, not interleaved with the check walk itself.
-fn collect_scope(data: &mut DataSpecification, expr: &ProcessExpr, scope: &mut Vec<(Span, ResolvedSortId)>) -> Result<(), ProcessError> {
+fn collect_scope(
+    data: &mut DataSpecification,
+    expr: &ProcessExpr,
+    scope: &mut Vec<(Span, ResolvedSortId)>,
+) -> Result<(), ProcessError> {
     match &expr.node {
         ProcessExprKind::Delta | ProcessExprKind::Tau | ProcessExprKind::Action(..) | ProcessExprKind::Id(..) => Ok(()),
         ProcessExprKind::Sum { variables, operand } => {
@@ -157,30 +161,30 @@ fn check_process_expr(
         }
 
         ProcessExprKind::Hide { actions, operand } => {
-            check_action_names(tables, actions)?;
+            check_action_names(tables, actions, typing)?;
             check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Block { actions, operand } => {
-            check_action_names(tables, actions)?;
+            check_action_names(tables, actions, typing)?;
             check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Allow { actions, operand } => {
             for label in actions {
-                check_action_names(tables, &label.actions)?;
+                check_action_names(tables, &label.actions, typing)?;
             }
             check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Comm { comm, operand } => {
             for c in comm {
-                check_action_names(tables, &c.from.actions)?;
-                check_action_names(tables, std::slice::from_ref(&c.to))?;
+                check_action_names(tables, &c.from.actions, typing)?;
+                check_action_names(tables, std::slice::from_ref(&c.to), typing)?;
             }
             check_process_expr(data, tables, scope, operand, typing)
         }
         ProcessExprKind::Rename { renames, operand } => {
             for r in renames {
-                check_action_names(tables, std::slice::from_ref(&r.from))?;
-                check_action_names(tables, std::slice::from_ref(&r.to))?;
+                check_action_names(tables, std::slice::from_ref(&r.from), typing)?;
+                check_action_names(tables, std::slice::from_ref(&r.to), typing)?;
             }
             check_process_expr(data, tables, scope, operand, typing)
         }
@@ -222,12 +226,19 @@ fn check_action_or_process(
         .into_iter()
         .flatten()
         .map(|&index| (Candidate::Action(index), tables.action_domains[index].clone()))
-        .chain(tables.processes_by_name.get(name.as_str()).into_iter().flatten().map(|&index| {
-            (
-                Candidate::Process(index),
-                tables.process_params[index].iter().map(|&(_, sort)| sort).collect(),
-            )
-        }))
+        .chain(
+            tables
+                .processes_by_name
+                .get(name.as_str())
+                .into_iter()
+                .flatten()
+                .map(|&index| {
+                    (
+                        Candidate::Process(index),
+                        tables.process_params[index].iter().map(|&(_, sort)| sort).collect(),
+                    )
+                }),
+        )
         .filter(|(_, domain)| domain.len() == args.len())
         .collect();
 
@@ -388,15 +399,35 @@ fn check_one_instantiation(
 }
 
 /// Checks that every `names` entry is a declared action, reporting the offending name's own
-/// [Span] (rather than the enclosing expression's) since each [ActionName] now carries one.
-fn check_action_names(tables: &DeclarationTables, names: &[ActionName]) -> Result<(), ProcessError> {
+/// [Span] (rather than the enclosing expression's), since each [ActionName] carries one. On
+/// success, also pushes a [`ResolvedName::ActionSet`] at each name's own span — see
+/// [`docs/action-name-set-goto-def-plan.md`](../../../../docs/action-name-set-goto-def-plan.md):
+/// unlike [`check_action_or_process`], there is no argument list here to narrow an overloaded name
+/// down to one declaration, so every declaration sharing the name is offered.
+fn check_action_names(
+    tables: &DeclarationTables,
+    names: &[ActionName],
+    typing: &mut TypingInfo,
+) -> Result<(), ProcessError> {
     for name in names {
-        if !tables.actions_by_name.contains_key(name.as_str()) {
+        let Some(indices) = tables.actions_by_name.get(name.as_str()) else {
             return Err(ProcessError::UndeclaredAction {
                 name: name.node.clone(),
                 span: name.span.clone(),
             });
-        }
+        };
+
+        let declarations = indices
+            .iter()
+            .filter_map(|&index| declared_span(&tables.action_decl_spans[index]))
+            .collect();
+        typing.push(
+            name.span.clone(),
+            ResolvedName::ActionSet {
+                name: name.node.clone(),
+                declarations,
+            },
+        );
     }
     Ok(())
 }

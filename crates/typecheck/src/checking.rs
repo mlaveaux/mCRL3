@@ -1,14 +1,14 @@
 //! Shared building blocks for a `TypingInfo`-accumulating walk over an expression tree that lives
-//! *outside* the data specification proper — a process body ([`crate::process::check`]) or a PBES
-//! equation ([`crate::pbes::check`]). Crate-private: both callers reach this via
-//! `crate::checking::...`.
+//! *outside* the data specification proper — a process body ([`crate::process::check`]), a PBES
+//! equation ([`crate::pbes::check`]), or a PRES equation ([`crate::pres::check`]). Crate-private:
+//! every caller reaches this via `crate::checking::...`.
 //!
-//! Neither caller threads its own name-shadowing scope through this walk: every variable
-//! occurrence in the expression being checked is already a `Resolved` node carrying its own
-//! declaration's span (`crate::resolve_process_variables`/`crate::resolve_pbes_variables`, see
-//! `docs/name_resolution.md`), so a flat [`Scope`] — every declaration reachable from the current
-//! `proc` body/PBES equation, keyed by its own span — is enough; there is no shadowing to resolve
-//! here, since two different declarations never share a span.
+//! No caller threads its own name-shadowing scope through this walk: every variable occurrence in
+//! the expression being checked is already a `Resolved` node carrying its own declaration's span
+//! (`crate::resolve_process_variables`/`crate::resolve_pbes_variables`/`crate::resolve_pres_variables`,
+//! see `docs/name_resolution.md`), so a flat [`Scope`] — every declaration reachable from the
+//! current `proc` body/PBES or PRES equation, keyed by its own span — is enough; there is no
+//! shadowing to resolve here, since two different declarations never share a span.
 
 use merc_syntax::DataExpr;
 use merc_syntax::IdDecl;
@@ -66,8 +66,9 @@ where
 }
 
 /// Resolves each of `variables`' declared sorts, extending `scope` with `(declaration span,
-/// resolved sort)` for each — the shared leaf [`crate::process::check`]'s `Sum`/`Dist` and
-/// [`crate::pbes::check`]'s `Quantifier` scope collection calls into.
+/// resolved sort)` for each — the shared leaf [`crate::process::check`]'s `Sum`/`Dist`,
+/// [`crate::pbes::check`]'s `Quantifier`, and [`crate::pres::check`]'s `Bound` scope collection
+/// calls into.
 pub(crate) fn collect_binder_sorts<E>(
     data: &mut DataSpecification,
     scope: &mut Vec<(Span, ResolvedSortId)>,

@@ -448,8 +448,8 @@ enum Roots<'a> {
 ///
 /// `declared_scope` is a pre-resolved `(declaration span, sort)` list — used for a process/PBES
 /// scope (see [infer_expression_in_scope]/[crate::process]), looked up by a `Resolved` node's own
-/// declaration span rather than by name, since [`crate::resolve_process_variables`]/
-/// [`crate::resolve_pbes_variables`] already tie each such occurrence to its declaration. A caller
+/// declaration span rather than by name: [`crate::resolve_process_variables`]/
+/// [`crate::resolve_pbes_variables`] tie each such occurrence to its declaration. A caller
 /// supplies one of `scope`/`declared_scope` and leaves the other empty.
 #[allow(clippy::too_many_arguments)]
 fn infer<'a>(

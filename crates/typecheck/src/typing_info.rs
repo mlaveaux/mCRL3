@@ -113,6 +113,23 @@ pub enum ResolvedName {
         /// See [`ResolvedName::Action::declaration`].
         declaration: Option<Span>,
     },
+    /// A bare action name with no argument list to disambiguate an overload by — the
+    /// `hide`/`block`/`allow`/`comm`/`rename` action-name sets.
+    ActionSet {
+        name: String,
+        /// Every declaration sharing this name with a real span, in declaration order.
+        declarations: Vec<Span>,
+    },
+    /// A PBES/PRES propositional-variable instantiation (`X(e1, e2)`.
+    ///
+    /// Pushed at the whole `PropVarInst`'s own span, not just its identifier prefix.
+    PropositionalVariable {
+        name: String,
+        /// The equation's own declaration span (`X(n: Nat)`, not just `X`) — see
+        /// [`ResolvedName::Process::declaration`], which this mirrors. `None` only for a
+        /// declaration with no real span, which should not arise in practice.
+        declaration: Option<Span>,
+    },
 }
 
 impl TypingInfo {

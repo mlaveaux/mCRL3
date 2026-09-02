@@ -10,11 +10,13 @@ use merc_syntax::Span;
 use merc_syntax::UntypedPbes;
 
 use crate::DataSpecification;
+use crate::ResolvedName;
 use crate::ResolvedSortId;
 use crate::TypingInfo;
 use crate::checking::Scope;
 use crate::checking::check_expression_against;
 use crate::checking::collect_binder_sorts;
+use crate::declared_span;
 
 use super::PbesError;
 use super::pbes_specification::DeclarationTables;
@@ -63,9 +65,15 @@ pub(super) fn check_pbes_specification(
 /// — every variable occurrence in `expr` already names its own declaration's span
 /// (`crate::resolve_pbes_variables`), so this only needs to run once, before checking any of
 /// `expr`'s leaves, not interleaved with the check walk itself.
-fn collect_scope(data: &mut DataSpecification, expr: &PbesExpr, scope: &mut Vec<(Span, ResolvedSortId)>) -> Result<(), PbesError> {
+fn collect_scope(
+    data: &mut DataSpecification,
+    expr: &PbesExpr,
+    scope: &mut Vec<(Span, ResolvedSortId)>,
+) -> Result<(), PbesError> {
     match &expr.node {
-        PbesExprKind::True | PbesExprKind::False | PbesExprKind::DataValExpr(_) | PbesExprKind::PropVarInst(_) => Ok(()),
+        PbesExprKind::True | PbesExprKind::False | PbesExprKind::DataValExpr(_) | PbesExprKind::PropVarInst(_) => {
+            Ok(())
+        }
         PbesExprKind::Negation(inner) => collect_scope(data, inner, scope),
         PbesExprKind::Binary { lhs, rhs, .. } => {
             collect_scope(data, lhs, scope)?;
@@ -108,7 +116,10 @@ fn check_pbes_expr(
 
 /// Resolves `inst.identifier` against the equation table (`UndeclaredPropositionalVariable` if
 /// missing), checks its argument count against the declared parameter count (`ArityMismatch`), and
-/// checks each argument against its parameter's sort.
+/// checks each argument against its parameter's sort. On success, also pushes a
+/// [`ResolvedName::PropositionalVariable`] at `inst`'s own span — see
+/// [`docs/name_resolution.md`](../../../../docs/name_resolution.md): unlike an action/process name,
+/// a PBES equation is never overloaded, so the equation table's single match is the answer.
 fn check_prop_var_inst(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
@@ -122,6 +133,13 @@ fn check_prop_var_inst(
             span: inst.span.clone(),
         });
     };
+    typing.push(
+        inst.span.clone(),
+        ResolvedName::PropositionalVariable {
+            name: inst.identifier.clone(),
+            declaration: declared_span(&tables.equation_decl_spans[index]),
+        },
+    );
 
     let params = &tables.equation_params[index];
     if inst.arguments.len() != params.len() {
