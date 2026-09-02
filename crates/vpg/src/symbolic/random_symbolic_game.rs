@@ -24,8 +24,8 @@ use crate::VertexIndex;
 /// # Details
 ///
 /// Every vertex `v` is encoded as its base-`radix` digits over `k =
-/// ceil(log_radix(n))` positions; `radix` should be drawn from `2..=5` so `k >
-/// 1` and the resulting LDD actually has several levels.
+/// ceil(log_radix(n))` positions; `radix` should be drawn such that `k > 1` and
+/// the resulting LDD actually has several levels.
 ///
 /// Edges are partitioned at random into `num_groups` transition relations *per
 /// owner* , each reading and writing *every* position (`0..k`): a short

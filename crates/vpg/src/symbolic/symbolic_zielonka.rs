@@ -17,21 +17,19 @@ use crate::Repeat;
 use crate::SymbolicParityGame;
 use crate::symbolic::AttractorProgress;
 
-/// Progress reported by [`zielonka`]'s recursion: the recursion depth and the size of `V` at
-/// that call. Separate from [`AttractorProgress`] because the two fire at very different
-/// granularities — a single `zielonka` call can run many attractor iterations, each touching far
-/// fewer vertices than a whole recursive call does.
+/// Progress reported by [`zielonka`]'s recursion.
 pub type RecursionProgress = TimeProgress<(usize, usize)>;
 
 /// The winning sets of both players in a symbolic parity game, indexed by [`Player::to_index`].
 ///
-/// `strategy` is `None` unless the [`SymbolicParityGame`] this solution was computed for was
-/// built with `compute_strategy: true`; when present, `strategy[Player::to_index()]` is that
-/// player's winning strategy over the doubled, interleaved global vector `[from_0, to_0, from_1,
-/// to_1, …]` (see [`SymbolicParityGame::apply_strategy`]).
+/// `strategy[Player::to_index()]` is `None` unless the [`SymbolicParityGame`] this solution was
+/// computed for was built with `compute_strategy: true`; when present, it is that player's
+/// winning strategy over the doubled, interleaved global vector `[from_0, to_0, from_1, to_1, …]`
+/// (see [`SymbolicParityGame::apply_strategy`]). Both entries are always `Some` together, or
+/// `None` together, matching whether `compute_strategy` was set.
 pub struct SymbolicSolution {
     pub winning: [LDDFunction; 2],
-    pub strategy: Option<[LDDFunction; 2]>,
+    pub strategy: [Option<LDDFunction>; 2],
 }
 
 impl SymbolicSolution {
@@ -57,14 +55,13 @@ pub(crate) fn includes(winning: &LDDFunction, vertex: &LDDFunction) -> Result<bo
 }
 
 /// The problem instance every on-the-fly solving entry point in this module and
-/// [`crate::symbolic::partial_solve`] operates over: the game to solve, its deadlocks to resolve,
-/// and its initial vertex, whose winner every entry point returns as soon as it is known.
-///
-/// Does not carry `incomplete` or a `SafetyMode`; those are per-call arguments of
-/// [`crate::symbolic::partial_solve`]'s functions instead.
+/// [`crate::symbolic::partial_solve`] operates over.
 pub struct ExtendedParityGame {
+    /// The symbolic parity game to solve.
     pub game: SymbolicParityGame,
+    /// The initial vertex whose winner is sought.
     pub initial_vertex: LDDFunction,
+    /// The deadlock vertices to resolve.
     pub sinks: LDDFunction,
 }
 
@@ -78,11 +75,9 @@ impl ExtendedParityGame {
     }
 }
 
-/// The shared preamble every entry point in [`crate::symbolic::partial_solve`] runs first:
-/// removes the winning regions from `epg.game.vertices()` via
-/// [`SymbolicParityGame::compute_total_graph`] (growing `winning`/`strategy` in place), then
-/// returns early with the accumulated [`SymbolicSolution`] if that alone already resolved
-/// `epg.initial_vertex` — otherwise continues with the resulting total subgraph.
+/// Computes the total graph of `epg.game` with respect to `epg.sinks` and the
+/// current winning sets, and returns early with the accumulated
+/// [`SymbolicSolution`] if `epg.initial_vertex` is already resolved.
 pub(crate) fn total_graph_with_early_exit(
     epg: &ExtendedParityGame,
     incomplete: &LDDFunction,
@@ -102,7 +97,7 @@ pub(crate) fn total_graph_with_early_exit(
     if includes(&winning[0], &epg.initial_vertex)? || includes(&winning[1], &epg.initial_vertex)? {
         return Ok(ControlFlow::Break(SymbolicSolution {
             winning: winning.clone(),
-            strategy: pack_strategy_pair(strategy.clone()),
+            strategy: strategy.clone(),
         }));
     }
 
@@ -143,8 +138,6 @@ pub fn solve_symbolic_zielonka(
         winning[1] = winning[1].union(&solution.winning[1])?;
         union_strategy_pair_in_place(&mut strategy, solution.strategy)?;
     }
-
-    let strategy = pack_strategy_pair(strategy);
 
     if includes(&winning[0], &epg.initial_vertex)? {
         Ok((Player::Even, SymbolicSolution { winning, strategy }))
@@ -194,37 +187,26 @@ pub(crate) fn empty_strategy_pair(game: &SymbolicParityGame) -> Result<[Option<L
     }
 }
 
-/// Unions `addition` (a `zielonka` result's strategy) into `strategy` in place, or is a no-op
-/// when strategies are not being computed.
+/// Unions `addition` (a `zielonka` result's strategy) into `strategy` in place, player by player;
+/// a no-op on whichever players are not being tracked (i.e. `compute_strategy` is not set).
 fn union_strategy_pair_in_place(
     strategy: &mut [Option<LDDFunction>; 2],
-    addition: Option<[LDDFunction; 2]>,
+    addition: [Option<LDDFunction>; 2],
 ) -> Result<(), MercError> {
-    if let Some(addition) = addition {
-        for player in [Player::Even, Player::Odd] {
-            let i = player.to_index();
-            let existing = strategy[i].take().expect("compute_strategy is set, so this is Some");
-            strategy[i] = Some(existing.union(&addition[i])?);
+    for (existing, addition) in strategy.iter_mut().zip(addition) {
+        if let (Some(existing), Some(addition)) = (existing.as_mut(), addition) {
+            *existing = existing.union(&addition)?;
         }
     }
     Ok(())
 }
 
-/// Converts the `Option` accumulator pair into the `Option<[_; 2]>` shape [`SymbolicSolution`]
-/// exposes.
-pub(crate) fn pack_strategy_pair(strategy: [Option<LDDFunction>; 2]) -> Option<[LDDFunction; 2]> {
-    let [even, odd] = strategy;
-    Some([even?, odd?])
-}
-
-/// The inverse of [`pack_strategy_pair`]: unpacks a [`SymbolicSolution`]'s strategy into the
-/// `Option`-per-player accumulator shape [`SymbolicParityGame::compute_total_graph`] grows.
-pub(crate) fn unpack_strategy_pair(strategy: Option<[LDDFunction; 2]>) -> [Option<LDDFunction>; 2] {
-    strategy.map_or([None, None], |[even, odd]| [Some(even), Some(odd)])
-}
-
 /// The recursive Zielonka solver, restricted to the vertex set `v`. Entry point for
 /// [`zielonka_rec`], which does the actual recursion; starts it at `depth: 0`.
+///
+/// `v` must be deadlock-free (every vertex has an outgoing edge staying within `v`) — callers
+/// route it through [`SymbolicParityGame::compute_total_graph`] first to guarantee this. On
+/// return, `winning[0]` and `winning[1]` partition `v` exactly.
 pub(crate) fn zielonka(
     game: &SymbolicParityGame,
     v: &LDDFunction,
@@ -247,10 +229,7 @@ fn zielonka_rec(
 
     if v.is_empty() {
         let empty = empty_set(game)?;
-        let strategy = game
-            .compute_strategy()
-            .then(|| Ok::<_, MercError>([empty.clone(), empty.clone()]))
-            .transpose()?;
+        let strategy = empty_strategy_pair(game)?;
         return Ok(SymbolicSolution {
             winning: [empty.clone(), empty],
             strategy,
@@ -282,7 +261,8 @@ fn zielonka_rec(
         let mut winning = [empty_set(game)?, empty_set(game)?];
         winning[alpha.to_index()] = a.union(&solution_v_minus_a.winning[alpha.to_index()])?;
 
-        let strategy = if game.compute_strategy() {
+        let mut strategy = empty_strategy_pair(game)?;
+        if game.compute_strategy() {
             // `a_strategy` has no move for U itself (the attractor's target, not something pulled
             // in). Seed it with `merge(U ∩ Vplayer[alpha], v)`, later cut down to real edges by
             // `apply_strategy`.
@@ -290,15 +270,15 @@ fn zielonka_rec(
             let extra = merge(game.manager(), &u_alpha, v)?;
             let combined = a_strategy
                 .expect("compute_strategy is set")
-                .union(&solution_v_minus_a.strategy.as_ref().expect("compute_strategy is set")[alpha.to_index()])?
+                .union(
+                    solution_v_minus_a.strategy[alpha.to_index()]
+                        .as_ref()
+                        .expect("compute_strategy is set"),
+                )?
                 .union(&extra)?;
 
-            let mut strategy = [empty_set(game)?, empty_set(game)?];
-            strategy[alpha.to_index()] = combined;
-            Some(strategy)
-        } else {
-            None
-        };
+            strategy[alpha.to_index()] = Some(combined);
+        }
 
         SymbolicSolution { winning, strategy }
     } else {
@@ -321,12 +301,13 @@ fn zielonka_rec(
         solution.winning[not_alpha.to_index()] = solution.winning[not_alpha.to_index()].union(&b)?;
 
         if game.compute_strategy() {
-            let mut strategy = solution.strategy.take().expect("compute_strategy is set");
-            let combined = solution_v_minus_a.strategy.expect("compute_strategy is set")[not_alpha.to_index()]
-                .union(&b_strategy.expect("compute_strategy is set"))?
-                .union(&strategy[not_alpha.to_index()])?;
-            strategy[not_alpha.to_index()] = combined;
-            solution.strategy = Some(strategy);
+            let i = not_alpha.to_index();
+            let combined = solution_v_minus_a.strategy[i]
+                .as_ref()
+                .expect("compute_strategy is set")
+                .union(b_strategy.as_ref().expect("compute_strategy is set"))?
+                .union(solution.strategy[i].as_ref().expect("compute_strategy is set"))?;
+            solution.strategy[i] = Some(combined);
         }
 
         solution

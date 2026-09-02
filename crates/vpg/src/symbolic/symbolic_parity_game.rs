@@ -36,8 +36,8 @@ pub struct SymbolicParityGame {
 
     relations: Vec<SymbolicRelation>,
 
-    /// Whether [`Self::attractor`]/[`Self::apply_strategy`] also compute a winning strategy. Set
-    /// once for the whole instance so every operation on it behaves consistently.
+    /// Whether we also compute a winning strategy. Set once for the whole
+    /// instance so every operation on it behaves consistently.
     compute_strategy: bool,
 }
 
@@ -46,8 +46,8 @@ struct SymbolicRelation {
     relation: LDDFunction,
     meta: LDDFunction,
 
-    /// Positions in the interleaved global vector `[from_0, to_0, from_1, to_1, …]` this
-    /// relation reads from and writes to; needed by [`SymbolicParityGame::apply_strategy`].
+    /// Positions in the interleaved global vector `[from_0, to_0, from_1, to_1,
+    /// …]` this relation reads from and writes to.
     read_indices: Vec<Value>,
     write_indices: Vec<Value>,
 }
@@ -236,22 +236,19 @@ impl SymbolicParityGame {
         Ok(u.minus(&self.predecessors(u, v)?)?)
     }
 
-    /// One attractor step: the vertices of `search_space` pulled in by the vertices most
-    /// recently added to the attractor (`u`), for player `alpha`, together with the strategy
-    /// edges this step contributes (when [`Self::compute_strategy`] is set).
+    /// One attractor step: the vertices of `search_space` pulled in by the
+    /// vertices most recently added to the attractor (`u`), for player `alpha`,
+    /// together with the strategy edges this step contributes (when
+    /// [`Self::compute_strategy`] is set).
     ///
-    /// `alpha`-owned vertices in `search_space` with *any* edge into `u` are pulled in outright;
-    /// `¬alpha`-owned vertices are pulled in only once *every* edge leaving them lands inside the
-    /// attractor, checked by removing (for each group) whichever candidates still have an edge
-    /// into `outside`. `incomplete` vertices are never pulled in this second way, since an
-    /// unlearned edge could still leave them.
+    /// `alpha`-owned vertices in `search_space` with *any* edge into `u` are
+    /// pulled in outright; `¬alpha`-owned vertices are pulled in only once
+    /// *every* edge leaving them lands inside the attractor.
+    /// 
+    /// `search_space` bounds where candidates are looked for; `outside` bounds
+    /// what a `¬alpha` candidate must have no edge into.
     ///
-    /// `search_space` and `outside` are the same set in every caller except
-    /// [`Self::monotone_attractor`], which searches all of `v` but only checks the forced
-    /// condition against `Zoutside \ U`.
-    ///
-    /// The strategy contribution is `merge(pulled_in \ u, u)` — an overapproximation of the real
-    /// edges, cut down to exactly the real ones by [`Self::apply_strategy`].
+    /// The strategy contribution an overapproximation of the real edges.
     fn control_predecessors(
         &self,
         alpha: Player,
@@ -288,10 +285,7 @@ impl SymbolicParityGame {
     /// the vertices from which `alpha` can force play into `u`, together with a
     /// winning strategy for the vertices pulled in along the way.
     ///
-    /// `vplayer` is `self.players(v)`, taken as a parameter since callers that
-    /// invoke this repeatedly (`zielonka`, `compute_total_graph`) already have
-    /// it. `incomplete` marks vertices whose outgoing edges are not (yet) fully known, from a
-    /// partial exploration; pass `None` when solving a fully-known game.
+    /// `vplayer` denotes the sets of vertices controlled by each player within `v`.
     ///
     /// When `target` is given, the computation stops as soon as any vertex of
     /// `target` has entered the attractor. Carries a progress reporter that
@@ -352,7 +346,9 @@ impl SymbolicParityGame {
         Ok((z, strategy))
     }
 
-    /// Computes the same attractor set as [`Self::attractor`], without a `todo` frontier:.
+    /// Computes the same attractor set as [`Self::attractor`], without a `todo` frontier: each
+    /// iteration recomputes control predecessors of the whole set `Z` against `V \ Z`, rather
+    /// than only the vertices added last round.
     #[allow(clippy::too_many_arguments)]
     pub fn attractor_naive(
         &self,
@@ -409,8 +405,7 @@ impl SymbolicParityGame {
     /// [`Self::compute_strategy`] is set) in place, and returns the resulting total subgraph.
     ///
     /// Every deadlock in `sinks` is assigned to the *opponent* of its owner
-    /// (`winning[Even] |= sinks ∩ Odd-owned`, `winning[Odd] |= sinks ∩ Even-owned`) — the correct
-    /// PBES semantics, since a disjunctive equation with no enabled summand is `false`.
+    /// (`winning[Even] |= sinks ∩ Odd-owned`, `winning[Odd] |= sinks ∩ Even-owned`).
     pub fn compute_total_graph(
         &self,
         v: &LDDFunction,
@@ -471,17 +466,7 @@ impl SymbolicParityGame {
         Ok(v.minus(&winning[0])?.minus(&winning[1])?)
     }
 
-    /// Returns the vertices of `v` with even priority and with odd priority (indexed by
-    /// [`Player::to_index`]), excluding sinks — a sink has no priority-driven behaviour of its
-    /// own.
-    ///
-    /// Used only by [`partial_solve::detect_solitair_cycles`] and
-    /// [`partial_solve::detect_forced_cycles`] (fatal/solitair-cycle detection): a vertex can only
-    /// ever be part of a cycle that is winning for it "by parity" if its own priority has the
-    /// parity it needs.
-    ///
-    /// [`partial_solve::detect_solitair_cycles`]: super::partial_solve::detect_solitair_cycles
-    /// [`partial_solve::detect_forced_cycles`]: super::partial_solve::detect_forced_cycles
+    /// Returns the vertices of `v` with even priority and with odd priority excluding sinks/
     pub fn parity(&self, v: &LDDFunction) -> Result<[LDDFunction; 2], MercError> {
         let mut parity = [self.empty()?, self.empty()?];
         for (&priority, block) in &self.priorities {
@@ -493,14 +478,7 @@ impl SymbolicParityGame {
         Ok([non_sinks.intersect(&parity[0])?, non_sinks.intersect(&parity[1])?])
     }
 
-    /// Returns the vertices of `v` whose priority is at most `c` (under merc's max-parity
-    /// encoding, the *less* significant priorities).
-    ///
-    /// Used only by [`partial_solve::detect_fatal_attractors`]'s `safe_monotone_attractor` calls,
-    /// restricting the search for a fatal attractor at priority `c` to vertices that cannot
-    /// escape to something *more* significant.
-    ///
-    /// [`partial_solve::detect_fatal_attractors`]: super::partial_solve::detect_fatal_attractors
+    /// Returns the vertices of `v` whose priority is at most `c`.
     pub fn vertices_with_priority_at_most(&self, v: &LDDFunction, c: Priority) -> Result<LDDFunction, MercError> {
         let mut below = self.empty()?;
         for (&priority, block) in &self.priorities {
@@ -513,15 +491,7 @@ impl SymbolicParityGame {
 
     /// Computes the monotone attractor set of `u` for player `alpha` at priority `c` within `v`:
     /// like [`Self::attractor`], but every vertex pulled in is additionally required to have
-    /// priority at most `c` (via [`Self::vertices_with_priority_at_most`]) — used by
-    /// fatal-attractor detection to find a set of priority-`c` vertices that player `alpha` can
-    /// always force play to stay within.
-    ///
-    /// Never computes a strategy — [`partial_solve::detect_fatal_attractors`] instead records
-    /// `merge(Z, Z)` for the fatal-attractor vertices it accepts, an overapproximate
-    /// self-loop-like strategy that [`Self::apply_strategy`] cuts down to real edges.
-    ///
-    /// [`partial_solve::detect_fatal_attractors`]: super::partial_solve::detect_fatal_attractors
+    /// priority at most `c`.
     #[allow(clippy::too_many_arguments)]
     pub fn monotone_attractor(
         &self,
@@ -563,8 +533,7 @@ impl SymbolicParityGame {
     ///
     /// The seed is `(incomplete ∩ opponent-owned) ∪ sinks(incomplete, v)`: every `incomplete`
     /// vertex is a structural sink of `v` until explored, regardless of owner, so both terms are
-    /// needed to keep the returned subgame total. See the "On-the-fly and partial solving" page
-    /// on the merc-website developer docs for the derivation.
+    /// needed to keep the returned subgame total.
     pub fn safe_vertices(
         &self,
         alpha: Player,
@@ -586,11 +555,6 @@ impl SymbolicParityGame {
 
     /// One-shot [`Self::control_predecessors`], with `outside` computed automatically as `v \
     /// u` and its strategy contribution discarded.
-    ///
-    /// Needed by [`partial_solve::detect_forced_cycles`]'s forced-cycle search, which records an
-    /// overapproximate `merge(U, U)` for the cycle it accepts instead of a per-step strategy.
-    ///
-    /// [`partial_solve::detect_forced_cycles`]: super::partial_solve::detect_forced_cycles
     pub fn control_predecessors_within(
         &self,
         alpha: Player,
@@ -610,14 +574,7 @@ impl SymbolicParityGame {
     /// `[from_0, to_0, from_1, to_1, …]`. A group's row is classified as `alpha`-owned by
     /// projecting it onto the group's own read positions and testing membership of
     /// `owned[alpha]`; every other row passes through unchanged. This requires every group's read
-    /// positions to determine the owner of its source vertex — true of every `TransitionGroup`
-    /// this is currently called with, since the owner-determining state component is always among
-    /// the read positions, but not checked here. An `alpha`-owned source with no strategy at all
-    /// (the strategy is only ever partial for vertices *outside* the winning region requested)
-    /// loses its outgoing edges entirely, which is what turns an unresolved vertex into a fresh
-    /// sink for the caller
-    /// ([`verify_symbolic_strategy`][crate::symbolic::verify_symbolic::verify_symbolic_strategy])
-    /// to route through [`Self::compute_total_graph`] again.
+    /// positions to determine the owner of its source vertex.
     pub fn apply_strategy(&self, alpha: Player, strategy: &LDDFunction) -> Result<Self, MercError> {
         let all_vertices = self.vertices();
         let strategy_is_empty = strategy.is_empty();
