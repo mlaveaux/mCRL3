@@ -279,15 +279,15 @@ pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> V
             // cons c: A_1 # ... # A_n -> D  (or c: D when it has no arguments).
             let domain = constructor.args.iter().map(|(_, sort)| sort.clone()).collect();
             let constructor_sort = function_sort(domain, sort.clone());
-            trace!("desugar:   cons {}: {constructor_sort}", constructor.name);
-            constructors.push(IdDecl::new(constructor.name.clone(), constructor_sort, Span::default()));
+            trace!("desugar:   cons {}: {constructor_sort}", constructor.name.node);
+            constructors.push(IdDecl::new(constructor.name.node.clone(), constructor_sort, constructor.name.span.clone()));
 
             // map is_c: D -> Bool  (recogniser), when one is declared.
             if let Some(recogniser) = &constructor.projection {
                 let recogniser_sort = function_sort(vec![sort.clone()], SortExpressionKind::Simple(Sort::Bool).into());
                 push_unique(
                     &mut mappings,
-                    IdDecl::new(recogniser.clone(), recogniser_sort, Span::default()),
+                    IdDecl::new(recogniser.node.clone(), recogniser_sort, recogniser.span.clone()),
                 );
             }
 
@@ -297,7 +297,7 @@ pub(crate) fn desugar_structured_sorts(spec: &mut UntypedDataSpecification) -> V
                     let projection_sort = function_sort(vec![sort.clone()], argument_sort.clone());
                     push_unique(
                         &mut mappings,
-                        IdDecl::new(projection.clone(), projection_sort, Span::default()),
+                        IdDecl::new(projection.node.clone(), projection_sort, projection.span.clone()),
                     );
                 }
             }
@@ -326,10 +326,11 @@ fn function_sort(domain: Vec<SortExpression>, range: SortExpression) -> SortExpr
     }
 }
 
-/// Appends `mapping` unless an identical declaration is already present, so a
-/// projection shared by several constructors is generated only once.
+/// Appends `mapping` unless a declaration with the same name and sort is already present, so a
+/// projection shared by several constructors is generated only once — kept at the *first*
+/// constructor's own span, which is now where goto-definition lands for every shared use.
 fn push_unique(mappings: &mut Vec<IdDecl<MapId>>, mapping: IdDecl<MapId>) {
-    if !mappings.contains(&mapping) {
+    if !mappings.iter().any(|existing| existing.identifier == mapping.identifier && existing.sort == mapping.sort) {
         trace!("desugar:   map {}: {}", mapping.identifier, mapping.sort);
         mappings.push(mapping);
     }

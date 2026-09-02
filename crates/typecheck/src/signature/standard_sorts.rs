@@ -371,13 +371,13 @@ pub(crate) fn structured_sort_equations(
     let application = |i: usize, prefix: &str| -> String {
         let constructor = &constructors[i];
         if constructor.args.is_empty() {
-            constructor.name.clone()
+            constructor.name.node.clone()
         } else {
             let arguments = (0..constructor.args.len())
                 .map(|j| format!("{prefix}{i}_{j}"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{}({arguments})", constructor.name)
+            format!("{}({arguments})", constructor.name.node)
         }
     };
 
@@ -409,6 +409,7 @@ pub(crate) fn structured_sort_equations(
     // Recognisers: isC_i(c_i(..)) = true; isC_i(c_j(..)) = false for j != i.
     for (i, constructor) in constructors.iter().enumerate() {
         if let Some(recogniser) = &constructor.projection {
+            let recogniser = &recogniser.node;
             writeln!(eqns, "    {recogniser}({}) = true;", application(i, "x")).unwrap();
             for j in 0..constructors.len() {
                 if j != i {
@@ -422,6 +423,7 @@ pub(crate) fn structured_sort_equations(
     for (i, constructor) in constructors.iter().enumerate() {
         for (j, (projection, _)) in constructor.args.iter().enumerate() {
             if let Some(projection) = projection {
+                let projection = &projection.node;
                 writeln!(eqns, "    {projection}({}) = x{i}_{j};", application(i, "x")).unwrap();
             }
         }

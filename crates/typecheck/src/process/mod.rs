@@ -8,3 +8,4 @@ mod reparse;
 
 pub use error::ProcessError;
 pub use process_specification::ProcessSpecification;
+pub use reparse::reparse_process_specification;
