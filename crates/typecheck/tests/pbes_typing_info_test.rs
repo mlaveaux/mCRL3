@@ -48,6 +48,7 @@ fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
 
 /// A `PropVarInst` argument yields a non-empty, resolvable `TypingInfo`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_argument_hover_reports_declared_sort() {
     assert_eq!(hover("pbes mu X(n: Nat) = val(n == n); init X(1);", "1);"), "Pos");
 }
@@ -55,6 +56,7 @@ fn test_prop_var_inst_argument_hover_reports_declared_sort() {
 /// The declaration span carried by a `Variable` resolution points at the equation's own
 /// parameter declaration, not the (self-recursive) occurrence.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_parameter() {
     let text = "pbes nu X(n: Nat) = val(n == 0) || X(n); init X(0);";
     let name = resolved_name_at(text, "n);");
@@ -71,6 +73,7 @@ fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_par
 /// A quantifier-bound variable's declaration span points at the `forall`/`exists` binder
 /// itself, not the equation's own parameter list.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_quantifier_bound_variable_goto_def_declaration_points_at_binder() {
     let text = "pbes mu X = forall n: Nat . val(n == n); init X;";
     let name = resolved_name_at(text, "n == n");
@@ -85,6 +88,7 @@ fn test_quantifier_bound_variable_goto_def_declaration_points_at_binder() {
 
 /// A quantifier's bound variable is checked (and its typing recorded) inside its own body.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_quantifier_bound_variable_hover_reports_declared_sort() {
     assert_eq!(
         hover("pbes mu X = forall n: Nat . val(n == n); init X;", "n == n"),
@@ -95,6 +99,7 @@ fn test_quantifier_bound_variable_hover_reports_declared_sort() {
 /// Every branch of a conjunction/disjunction chain contributes its own `val(...)` typing, not
 /// just the last one.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_every_branch_of_a_conjunction_chain_contributes_typing() {
     let text = "pbes mu X(a: Nat, b: Nat, c: Nat) = val(a == a) && val(b == b) && val(c == c); init X(0, 0, 0);";
     assert_eq!(hover(text, "a == a"), "Nat");
@@ -106,20 +111,16 @@ fn test_every_branch_of_a_conjunction_chain_contributes_typing() {
 /// expressions': a data-`eqn` right-hand side has no PBES formula wrapping it, so only the merge
 /// itself can surface it here.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_typing_info_merges_the_data_specification_eqn_typing() {
     let text = "map f: Nat; eqn f = 1; pbes mu X = val(f == f); init X;";
     assert_eq!(hover(text, "1;"), "Pos");
 }
 
-// ─── goto-def: propositional-variable names ─────────────────────────────────
-//
-// Unlike an action/process name, a PBES equation is never overloaded (a second `pbes` equation of
-// the same name is rejected outright, see `DuplicatePropositionalVariable`), so
-// `check_prop_var_inst` resolves every `PropVarInst` to exactly one declaration.
-
 /// `init X(1);`'s own name resolves to a `PropositionalVariable`, pointing at its `pbes`
 /// declaration.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
     let text = "pbes mu X(n: Nat) = val(n == n); init X(1);";
     let name = resolved_name_at(text, "X(1)");
@@ -133,6 +134,7 @@ fn test_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
 
 /// An equation's own parameter sort resolves to the `sort` block declaring it.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_equation_parameter_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; pbes mu X(n: D) = val(true); init X(c);";
     // "D)" is unique to the equation parameter's own sort.
@@ -147,6 +149,7 @@ fn test_equation_parameter_sort_goto_def_resolves_to_its_declaration() {
 
 /// A `glob` variable's own sort resolves the same way.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; glob x: D; pbes mu X = val(true); init X;";
     // "D; pbes" is unique to the `glob`'s own sort — `sort D;` also contains "D;", but is
@@ -161,6 +164,7 @@ fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
 /// A `Quantifier` binder's own declared sort resolves too — distinct from the bound variable
 /// itself, already covered by [`test_quantifier_bound_variable_goto_def_declaration_points_at_binder`].
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_quantifier_bound_variable_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; pbes mu X = forall n: D . val(true); init X;";
     // Unique to the binder's own sort: no other "D ." occurs in `text`.
@@ -176,6 +180,7 @@ fn test_quantifier_bound_variable_sort_goto_def_resolves_to_its_declaration() {
 /// A self-recursive `PropVarInst` inside the equation's own formula resolves the same way as a use
 /// from `init`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_self_recursive_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
     let text = "pbes nu X(n: Nat) = val(n == 0) || X(n); init X(0);";
     let name = resolved_name_at(text, "X(n)");
@@ -185,4 +190,17 @@ fn test_self_recursive_prop_var_inst_name_goto_def_resolves_to_its_declaration()
     assert_eq!(name, "X");
     let declaration = declaration.clone().expect("a plain `pbes` equation has a real span");
     assert_eq!(&text[declaration.start..declaration.end], "X");
+}
+
+/// A list literal's element sort widens to the joined sort of all its elements (here `Nat`, from
+/// the `10`/`m` mix), not just the first element's own sort (`Pos`, `10`'s literal sort). mCRL2:
+/// test_pbes_specification2 — this failed in revision 10180 and before, inferring `List(Pos)`.
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_list_literal_element_sort_widens_to_the_joined_sort_of_its_elements() {
+    let text = "pbes nu X0(m: Nat) = forall i: Nat . val(!(i < 2)) || X0([10, m] . i); init X0(0);";
+    // The `.` (list-at) operator's own sort names its operand sorts directly: `List(Nat) # Nat ->
+    // Nat`, confirming the list literal `[10, m]` itself was inferred as `List(Nat)`, not
+    // `List(Pos)`. `". i)"` picks out this `.` specifically, not the quantifier's own `.`.
+    assert_eq!(hover(text, ". i)"), "(List(Nat) # Nat -> Nat)");
 }

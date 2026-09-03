@@ -47,6 +47,7 @@ fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_argument_hover_reports_declared_sort() {
     assert_eq!(hover("pres mu X(n: Nat) = val(n); init X(1);", "1);"), "Pos");
 }
@@ -54,6 +55,7 @@ fn test_prop_var_inst_argument_hover_reports_declared_sort() {
 /// The declaration span carried by a `Variable` resolution points at the equation's own
 /// parameter declaration, not the (self-recursive) occurrence.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_parameter() {
     let text = "pres nu X(n: Nat) = val(n) || X(n); init X(0);";
     let name = resolved_name_at(text, "n);");
@@ -70,6 +72,7 @@ fn test_prop_var_inst_self_recursive_argument_goto_def_declaration_points_at_par
 /// A `sum`-bound variable's declaration span points at the `sum` binder itself, not the
 /// equation's own parameter list.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bound_variable_goto_def_declaration_points_at_binder() {
     let text = "pres mu X = sum n: Nat . val(n); init X;";
     let name = resolved_name_at(text, "n); init");
@@ -84,6 +87,7 @@ fn test_bound_variable_goto_def_declaration_points_at_binder() {
 
 /// A `sum` binder's bound variable is checked (and its typing recorded) inside its own body.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bound_variable_hover_reports_declared_sort() {
     assert_eq!(hover("pres mu X = sum n: Nat . val(n); init X;", "n); init"), "Nat");
 }
@@ -91,6 +95,7 @@ fn test_bound_variable_hover_reports_declared_sort() {
 /// A constant multiplier's own `val(...)` expression is checked (and its typing recorded)
 /// against `Real`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_constant_multiply_hover_reports_declared_sort() {
     assert_eq!(hover("pres mu X(n: Nat) = val(n) * X(n); init X(1);", "n) * X"), "Nat");
 }
@@ -99,19 +104,16 @@ fn test_constant_multiply_hover_reports_declared_sort() {
 /// expressions': a data-`eqn` right-hand side has no PRES formula wrapping it, so only the merge
 /// itself can surface it here.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_typing_info_merges_the_data_specification_eqn_typing() {
     let text = "map f: Nat; eqn f = 1; pres mu X = val(f); init X;";
     assert_eq!(hover(text, "1;"), "Pos");
 }
 
-// ─── goto-def: propositional-variable names ─────────────────────────────────
-//
-// A PRES equation is never overloaded, so `check_prop_var_inst` resolves every `PropVarInst` to
-// exactly one declaration.
-
 /// `init X(1);`'s own name resolves to a `PropositionalVariable`, pointing at its `pres`
 /// declaration.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
     let text = "pres mu X(n: Nat) = val(n); init X(1);";
     let name = resolved_name_at(text, "X(1)");
@@ -126,6 +128,7 @@ fn test_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
 /// A self-recursive `PropVarInst` inside the equation's own formula resolves the same way as a use
 /// from `init`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_self_recursive_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
     let text = "pres nu X(n: Nat) = val(n) || X(n); init X(0);";
     let name = resolved_name_at(text, "X(n)");
@@ -139,6 +142,7 @@ fn test_self_recursive_prop_var_inst_name_goto_def_resolves_to_its_declaration()
 
 /// An equation's own parameter sort resolves to the `sort` block declaring it.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_equation_parameter_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; pres mu X(n: D) = val(0); init X(c);";
     // "D)" is unique to the equation parameter's own sort.
@@ -153,6 +157,7 @@ fn test_equation_parameter_sort_goto_def_resolves_to_its_declaration() {
 
 /// A `glob` variable's own sort resolves the same way.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; glob x: D; pres mu X = val(0); init X;";
     // "D; pres" is unique to the `glob`'s own sort — `sort D;` also contains "D;", but is
@@ -168,6 +173,7 @@ fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
 /// bound variable itself, already covered by
 /// [`test_bound_variable_goto_def_declaration_points_at_binder`].
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bound_variable_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; pres mu X = sum n: D . val(0); init X;";
     // Unique to the binder's own sort: no other "D ." occurs in `text`.

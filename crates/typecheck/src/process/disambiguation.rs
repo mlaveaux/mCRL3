@@ -576,6 +576,7 @@ mod tests {
     /// A single leading action step swallowed into the condition via `.` — the classic
     /// `act(args) . cond -> P <> Q` shape.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn dot_swallowed_action_prefix_is_recovered() {
         let body = disambiguated_body("act a: Nat; init a(1) . true -> delta;");
         let ProcessExprKind::Binary {
@@ -593,6 +594,7 @@ mod tests {
     /// A `+`-separated chain of guarded actions, each swallowed into the previous clause's
     /// condition.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn choice_swallowed_guarded_actions_are_recovered() {
         let body = disambiguated_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);");
         let ProcessExprKind::Binary {
@@ -617,6 +619,7 @@ mod tests {
     /// `P || (true)` as one `DataExprDisj` chain rather than a parallel-composition operand
     /// followed by the real condition.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn parallel_swallowed_condition_is_recovered() {
         let body = disambiguated_body("act a; proc P = delta; init P || (true) -> a;");
         let ProcessExprKind::Binary {
@@ -638,6 +641,7 @@ mod tests {
     /// A three-way `+`-chain, each clause's action itself preceded by a `.`-sequence — combines
     /// both swallow shapes at once.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn three_way_choice_with_sequenced_actions_is_recovered() {
         let body = disambiguated_body(
             "act a: Nat; b: Nat; c: Nat; init (true) -> a(1) . b(1) + (false) -> a(2) . b(2) + (true) -> c(3);",
@@ -692,6 +696,7 @@ mod tests {
     /// (a + b)` and `cond -> a + b` parse identically), so it is deliberately left alone — see
     /// [`take_swallow`]'s doc comment.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn choice_directly_in_else_position_is_left_alone() {
         let body = disambiguated_proc_body(
             "act jump, ready; proc X(f: Bool) = (f) -> jump . X(f) <> delta + (!f) -> ready . delta <> delta; init X(true);",
@@ -725,6 +730,7 @@ mod tests {
     /// `else_` still must not be dropped by `take_swallow`'s `Ok` arm, wherever the grammar
     /// actually attaches it.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn else_branch_survives_a_swallow_one_level_down() {
         let body = disambiguated_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);");
         let ProcessExprKind::Binary {
@@ -752,6 +758,7 @@ mod tests {
     /// with `then` (not `else_`) directly `a + b`: `cond -> a + b <> c` must keep `b` unconditional
     /// (not folded into `cond`'s own guard) *and* keep `c` as the `else_`.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn choice_directly_in_then_position_keeps_its_own_else() {
         let body = disambiguated_body("act a: Nat; b: Nat; c: Nat; init (true) -> a(1) + b(2) <> c(3);");
         let ProcessExprKind::Condition { condition, then, else_ } = &body.node else {
@@ -780,6 +787,7 @@ mod tests {
     /// `DataExpr`. Mirrors `mutex.mcrl2`'s `Turn`: `r_assign_turnA.Turn(A) + r_assign_turnB.Turn(B)
     /// + (t==A) -> s_read_turnA|label(true).Turn(A)`.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn unconditional_leading_branches_are_recovered() {
         let body = disambiguated_proc_body("act a, b, c; proc P = a.P + b.P + (true) -> c.P; init P;");
         // The two unconditional branches (`a.P`, `b.P`) peel off together, in one `Add`-chain
@@ -832,6 +840,7 @@ mod tests {
     /// A genuine data expression that merely happens to use `.`/`+` — nothing declared as an
     /// action or process appears in it — must be left untouched.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn a_genuine_condition_using_at_and_plus_is_left_alone() {
         let body = disambiguated_body("sort L = List(Nat); init (([1,2,3] . 0) + 1 == 2) -> delta;");
         assert!(matches!(&body.node, ProcessExprKind::Condition { .. }));
@@ -839,6 +848,7 @@ mod tests {
 
     /// Nothing to fix at all: a plain, already-well-formed condition is unchanged.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn an_ordinary_condition_is_left_alone() {
         let body = disambiguated_body("init true -> delta;");
         let ProcessExprKind::Condition { condition, then, else_ } = &body.node else {
@@ -854,6 +864,7 @@ mod tests {
     /// as an unconditional leading branch, and `hide`'s own `{a}` set survives as `Hide`'s
     /// `actions`.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn hide_swallowed_guarded_choice_is_recovered() {
         let body = disambiguated_body("act a, b; proc P = delta; init hide({a}, P) + (true) -> b;");
         let ProcessExprKind::Binary {
@@ -881,6 +892,7 @@ mod tests {
     /// `DataExpr`-typed `condition` position, falling back to its own dedicated grammar rule, so
     /// it parses correctly here with nothing to fix.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn comm_fails_to_parse_and_rename_already_parses_correctly() {
         assert!(
             UntypedProcessSpecification::parse("act a, b; proc P = delta; init comm({a -> b}, P) + (true) -> b;")
@@ -989,6 +1001,7 @@ init JobWrapper([],0);
     /// `.`/`+` mix, with a `%`-comment sitting between two clauses. Every guard must recover as its
     /// own `Condition`, in order, not swallow a neighboring clause.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn long_guarded_choice_chain_with_comments_is_recovered() {
         let body = disambiguated_proc_body(LONG_GUARDED_CHOICE_CHAIN);
 
@@ -1042,6 +1055,7 @@ init JobWrapper([],0);
     /// pass; [`disambiguation_is_idempotent_for_the_long_guarded_choice_chain`] covers the long
     /// real-world chain separately, since it needs the whole `spec` (not one extracted body).
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn disambiguation_is_idempotent() {
         let fixtures = [
             "act a: Nat; init a(1) . true -> delta;",
@@ -1075,6 +1089,7 @@ init JobWrapper([],0);
     /// [`long_guarded_choice_chain_with_comments_is_recovered`] also uses — on its own, since it
     /// needs the real `proc`/`init` split rather than one extracted body.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn disambiguation_is_idempotent_for_the_long_guarded_choice_chain() {
         let mut spec = UntypedProcessSpecification::parse(LONG_GUARDED_CHOICE_CHAIN).expect("the fixture should parse");
         disambiguate_process_specification(&mut spec);

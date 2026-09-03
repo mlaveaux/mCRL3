@@ -105,6 +105,7 @@ mod tests {
     /// Inserting comma separators must never corrupt the digits: stripping the
     /// commas back out has to reproduce the plain decimal representation.
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_large_formatter_random_preserves_value() {
         random_test(1000, |rng| {
             let value: i64 = rng.random();

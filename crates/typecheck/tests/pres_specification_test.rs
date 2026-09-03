@@ -27,51 +27,55 @@ fn check_err(text: &str) -> PresError {
     }
 }
 
-// ─── basic acceptance ───────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_true_and_false_are_accepted() {
     check_ok("pres mu X = true; init X;");
     check_ok("pres mu X = false; init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_data_val_expr_against_real_is_accepted() {
     check_ok("pres mu X = val(1); init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_multiple_equations_and_cross_reference_are_accepted() {
     check_ok("pres mu X = Y; nu Y = X; init Y;");
 }
 
-// ─── PRES-specific constructs ────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_eqinf_and_eqninf_are_accepted() {
     check_ok("pres mu X = eqinf(val(1)); init X;");
     check_ok("pres mu X = eqninf(val(1)); init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_condsm_and_condeq_are_accepted() {
     check_ok("pres mu X = condsm(val(1), val(2), val(3)); init X;");
     check_ok("pres mu X = condeq(val(1), val(2), val(3)); init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_constant_multiply_is_accepted_on_both_sides() {
     check_ok("pres mu X = val(2) * X; init X;");
     check_ok("pres mu X = X * val(2); init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_constant_multiply_rejects_a_non_real_constant() {
     let error = check_err("pres mu X = val(true) * X; init X;");
     assert!(matches!(error, PresError::Inference(_)), "got {error:?}");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_inf_sup_sum_binders_are_accepted() {
     check_ok("pres mu X = inf n: Nat . val(n); init X;");
     check_ok("pres mu X = sup n: Nat . val(n); init X;");
@@ -79,25 +83,25 @@ fn test_inf_sup_sum_binders_are_accepted() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_addition_between_pres_expressions_is_accepted() {
     check_ok("pres mu X(n: Nat) = val(n) + X(n); init X(0);");
 }
 
-// ─── self-recursive / parameterized propositional variables ────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_self_recursive_prop_var_inst_is_accepted() {
     check_ok("pres nu X(n: Nat) = val(n) || X(n); init X(0);");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_argument_upcasts_like_any_other_expression() {
     check_ok("pres mu X(n: Nat) = val(n); init X(1);");
 }
 
-// ─── undeclared / arity ──────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_undeclared_propositional_variable_is_rejected() {
     let error = check_err("pres mu X = true; init Y;");
     assert!(
@@ -107,6 +111,7 @@ fn test_undeclared_propositional_variable_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_undeclared_propositional_variable_inside_a_formula_is_rejected() {
     let error = check_err("pres mu X = Y; init X;");
     assert!(
@@ -116,49 +121,53 @@ fn test_undeclared_propositional_variable_inside_a_formula_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_arity_mismatch_is_rejected() {
     let error = check_err("pres mu X(n: Nat) = true; init X(1, 2);");
     assert!(matches!(error, PresError::ArityMismatch { .. }), "got {error:?}");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_prop_var_inst_argument_sort_mismatch_is_rejected() {
     let error = check_err("pres mu X(n: Nat) = true; init X(true);");
     assert!(matches!(error, PresError::Inference(_)), "got {error:?}");
 }
 
-// ─── scoping ─────────────────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bound_variable_is_in_scope_for_its_body() {
     check_ok("pres mu X = sum n: Nat . val(n); init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_bound_variable_is_out_of_scope_outside_it() {
     let error = check_err("pres mu X = (sum n: Nat . val(n)) + val(n); init X;");
     assert!(matches!(error, PresError::Inference(_)), "got {error:?}");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_equation_parameter_is_in_scope_for_its_own_formula() {
     check_ok("pres mu X(n: Nat) = val(n); init X(1);");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_global_variable_is_in_scope_in_a_formula_and_init() {
     check_ok("glob n: Nat; pres mu X = val(n); init X;");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_equation_parameter_shadows_a_global_of_the_same_name() {
     // `X`'s own `n: Bool` parameter shadows the global `n: Nat`.
     check_ok("glob n: Nat; pres mu X(n: Bool) = condsm(val(1), val(2), val(3)); init X(true);");
 }
 
-// ─── declaration-level errors ───────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_duplicate_equation_parameter_is_rejected() {
     let error = check_err("pres mu X(n: Nat, n: Bool) = true; init X(1, true);");
     assert!(
@@ -168,6 +177,7 @@ fn test_duplicate_equation_parameter_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_duplicate_global_variable_is_rejected() {
     let error = check_err("glob n, n: Nat; pres mu X = true; init X;");
     assert!(
@@ -177,6 +187,7 @@ fn test_duplicate_global_variable_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_duplicate_propositional_variable_is_rejected() {
     let error = check_err("pres mu X = true; mu X = false; init X;");
     assert!(
@@ -186,6 +197,7 @@ fn test_duplicate_propositional_variable_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_anonymous_struct_in_global_variable_is_rejected() {
     let error = check_err("glob g: struct x | y; pres mu X = true; init X;");
     assert!(
@@ -195,6 +207,7 @@ fn test_anonymous_struct_in_global_variable_is_rejected() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_anonymous_struct_in_equation_parameter_is_rejected() {
     let error = check_err("pres mu X(g: struct x | y) = true; init X(x);");
     assert!(

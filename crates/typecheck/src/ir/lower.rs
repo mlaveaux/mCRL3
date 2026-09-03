@@ -233,6 +233,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_lowering_is_idempotent() {
         let spec =
             UntypedDataSpecification::parse("map f: Bool; var b: Bool; c: Bool; n: Nat; m: Nat; eqn f = b;").unwrap();

@@ -49,6 +49,7 @@ fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
 
 /// An action argument yields a non-empty, resolvable `TypingInfo`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_action_argument_hover_reports_declared_sort() {
     assert_eq!(hover("act a: Nat; proc P(n: Nat) = a(n); init P(1);", "n);"), "Nat");
 }
@@ -56,6 +57,7 @@ fn test_action_argument_hover_reports_declared_sort() {
 /// The declaration span carried by a `Variable` resolution points at the process's own
 /// parameter declaration, not the occurrence — the actual goto-definition target.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_action_argument_goto_def_declaration_points_at_process_parameter() {
     let text = "act a: Nat; proc P(n: Nat) = a(n); init P(1);";
     let name = resolved_name_at(text, "n);");
@@ -72,6 +74,7 @@ fn test_action_argument_goto_def_declaration_points_at_process_parameter() {
 /// A `sum`-bound variable's declaration span points at the `sum` binder itself, not the
 /// process's parameter list.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_sum_bound_variable_goto_def_declaration_points_at_binder() {
     let text = "act a: Nat; proc P = sum x: Nat . a(x); init P;";
     let name = resolved_name_at(text, "x);");
@@ -86,6 +89,7 @@ fn test_sum_bound_variable_goto_def_declaration_points_at_binder() {
 
 /// A condition's guard is checked (and its typing recorded) too, not just action arguments.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_condition_guard_hover_reports_bool() {
     assert_eq!(hover("act a; proc P(b: Bool) = b -> a; init P(true);", "b ->"), "Bool");
 }
@@ -93,6 +97,7 @@ fn test_condition_guard_hover_reports_bool() {
 /// In a `+`-joined chain of guarded `sum`-actions, every branch's own bound variable must
 /// resolve, not just the last one.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_every_branch_of_a_choice_chain_contributes_typing() {
     let text = "act a: Nat; b: Nat; c: Nat; \
                 proc P(n: Nat) = sum x: Nat. a(x) + sum y: Nat. b(y) + sum z: Nat. c(z); \
@@ -110,6 +115,7 @@ fn test_every_branch_of_a_choice_chain_contributes_typing() {
 /// conditions (`is_x(state) -> ... + is_y(state) -> ... + ...`): every guard's own condition must
 /// be checked and typed, not just the last.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_every_guard_of_a_condition_chain_contributes_typing() {
     let text = "act a, b, c; \
                 map is_a, is_b, is_c: Nat -> Bool; \
@@ -141,17 +147,10 @@ fn test_every_guard_of_a_condition_chain_contributes_typing() {
     }
 }
 
-// ─── goto-def: action and process names ─────────────────────────────────────
-//
-// Unlike a variable occurrence, resolving *which* `act`/`proc` declaration a name refers to is
-// overload/arity-based (`check_action_or_process`/`check_instantiation`, see
-// `docs/name_resolution.md`), so it can only happen once type checking has picked the single
-// matching candidate — these `ResolvedName::Action`/`Process` nodes are pushed directly at that
-// point, not built from any `DataExpr` the way `Variable`/`Constructor`/`Mapping` are.
-
 /// `a(n)`'s own name — not its argument — resolves to an `Action`, pointing at its `act`
 /// declaration.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_action_name_goto_def_resolves_to_its_declaration() {
     let text = "act a: Nat; proc P(n: Nat) = a(n); init P(1);";
     let name = resolved_name_at(text, "a(n)");
@@ -167,6 +166,7 @@ fn test_action_name_goto_def_resolves_to_its_declaration() {
 /// A positional process instantiation (`P(1)`, parsed as the same `ProcessExprKind::Action` node
 /// an action instance is) resolves to a `Process`, not an `Action`.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_positional_process_instantiation_name_goto_def_resolves_to_its_declaration() {
     let text = "proc P(n: Nat) = delta; init P(1);";
     let name = resolved_name_at(text, "P(1)");
@@ -185,6 +185,7 @@ fn test_positional_process_instantiation_name_goto_def_resolves_to_its_declarati
 /// The assignment form of instantiation (`P(n = 1)`, a `ProcessExprKind::Id` node) resolves to a
 /// `Process` the same way the positional form does.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_assignment_form_instantiation_name_goto_def_resolves_to_its_declaration() {
     let text = "proc P(n: Nat) = delta; init P(n = 1);";
     let name = resolved_name_at(text, "P(n = 1)");
@@ -199,6 +200,7 @@ fn test_assignment_form_instantiation_name_goto_def_resolves_to_its_declaration(
 /// An action overloaded by argument sort resolves each *use* to the specific declaration its
 /// arguments actually match.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_overloaded_action_resolves_to_the_matching_declaration_by_arity() {
     let text = "act a: Nat; a: Bool; proc P = a(1) + a(true); init P;";
     let nat_decl = resolved_name_at(text, "a(1)");
@@ -216,13 +218,6 @@ fn test_overloaded_action_resolves_to_the_matching_declaration_by_arity() {
     assert_eq!(declaration.start, text.find("a: Bool").expect("'a: Bool' not found"));
 }
 
-// ─── goto-def: hide/block/allow/comm/rename action-name sets ────────────────
-//
-// These name an action with no argument list to disambiguate an overload by, so
-// `check_action_names` offers every same-named declaration as a `ResolvedName::ActionSet` instead
-// of picking one. One test per construct/position, since each is a separate `check_action_names`
-// call site.
-
 #[track_caller]
 fn action_set_at(name: ResolvedName) -> (String, Vec<Span>) {
     let ResolvedName::ActionSet { name, declarations } = name else {
@@ -232,6 +227,7 @@ fn action_set_at(name: ResolvedName) -> (String, Vec<Span>) {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_hide_action_name_resolves_to_action_set() {
     let text = "act a, b; init hide({b}, a);";
     let (name, declarations) = action_set_at(resolved_name_at(text, "b}"));
@@ -243,6 +239,7 @@ fn test_hide_action_name_resolves_to_action_set() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_block_action_name_resolves_to_action_set() {
     let text = "act a; init block({a}, a);";
     let (name, declarations) = action_set_at(resolved_name_at(text, "a}"));
@@ -251,6 +248,7 @@ fn test_block_action_name_resolves_to_action_set() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_allow_action_name_resolves_to_action_set() {
     let text = "act a, b; init allow({b}, a);";
     let (name, declarations) = action_set_at(resolved_name_at(text, "b}"));
@@ -259,6 +257,7 @@ fn test_allow_action_name_resolves_to_action_set() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_comm_from_and_to_action_names_resolve_to_action_sets() {
     // `comm`'s multi-action `from` side needs at least two actions (`Id "|" MultActId`, see the
     // grammar), unlike `rename`'s plain `Id -> Id`.
@@ -273,6 +272,7 @@ fn test_comm_from_and_to_action_names_resolve_to_action_sets() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_rename_from_and_to_action_names_resolve_to_action_sets() {
     let text = "act a, b; proc P = b; init rename({a -> b}, P);";
     let (from_name, from_declarations) = action_set_at(resolved_name_at(text, "a ->"));
@@ -287,6 +287,7 @@ fn test_rename_from_and_to_action_names_resolve_to_action_sets() {
 /// An overloaded action named in an action-name set (no argument list to disambiguate by) offers
 /// every declaration, in declaration order, rather than guessing one.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_overloaded_action_in_action_set_offers_every_declaration() {
     let text = "act b: Nat; b: Bool; a; init block({b}, a);";
     let (name, declarations) = action_set_at(resolved_name_at(text, "b}"));
@@ -300,6 +301,7 @@ fn test_overloaded_action_in_action_set_offers_every_declaration() {
 
 /// An `act` declaration's own argument sort resolves to the `sort` block declaring it.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_action_argument_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; act a: D; init a(c);";
     // The needle must start exactly on the `act`'s own "D" — `resolved_name_at` looks up its
@@ -316,6 +318,7 @@ fn test_action_argument_sort_goto_def_resolves_to_its_declaration() {
 
 /// A `proc` declaration's own parameter sort resolves the same way.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_process_parameter_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; proc P(x: D) = delta; init P(c);";
     // Must start on "D", not "x" — "D)" is unique to the parameter's own sort.
@@ -330,6 +333,7 @@ fn test_process_parameter_sort_goto_def_resolves_to_its_declaration() {
 
 /// A `glob` variable's own sort resolves the same way.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; glob x: D; init delta;";
     // Must start on "D", not "x" — "D; init" is unique to the `glob`'s own sort (unlike
@@ -344,6 +348,7 @@ fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
 /// A `sum` binder's own declared sort (not the bound variable itself, already covered by
 /// [`test_sum_bound_variable_goto_def_declaration_points_at_binder`]) resolves too.
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_sum_bound_variable_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; act a: D; proc P = sum x: D . a(x); init P;";
     // "D . a(x)" is unique in `text` — the only "D" immediately followed by the binder's own

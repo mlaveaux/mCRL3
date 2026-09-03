@@ -45,14 +45,14 @@ fn resolved_name_at(text: &str, needle: &str) -> ResolvedName {
         .unwrap_or_else(|| panic!("node at offset {offset} in '{text}' has no resolved name"))
 }
 
-// ─── hover: sorts ───────────────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_variable_hover_reports_declared_sort() {
     assert_eq!(hover("map f: Nat -> Bool; var n: Nat; eqn f(n) = true;", "n)"), "Nat");
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_literal_hover_reports_its_own_minimal_sort() {
     // `f`'s declared `Nat` result widens the *equation's* join, not `1`'s own recorded sort:
     // hovering the literal itself shows `Pos`, its minimal sort, same as a standalone expression.
@@ -60,6 +60,7 @@ fn test_literal_hover_reports_its_own_minimal_sort() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_hovering_each_side_of_an_upcast_equation_shows_its_own_sort() {
     // `f: Real` and `1: Pos` widen to a common `Real` for the equation to type check, but neither
     // side's own node is *forced* to report that shared value: `f` still shows its declared
@@ -70,6 +71,7 @@ fn test_hovering_each_side_of_an_upcast_equation_shows_its_own_sort() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_hovering_a_numeric_operator_resolves_to_its_system_mapping() {
     // `+` on a concrete numeric sort resolves to a real Appendix-B mapping overload (`+: Pos #
     // Pos -> Pos`, here), not the generic polymorphic scheme -- `+`/`-`/`*` are also overloaded
@@ -82,6 +84,7 @@ fn test_hovering_a_numeric_operator_resolves_to_its_system_mapping() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_hovering_a_comparison_operator_resolves_to_the_polymorphic_builtin() {
     // Unlike `+`, `==` has no concrete per-sort declaration anywhere to prefer: it is only ever
     // the polymorphic scheme, so it resolves to `Builtin`.
@@ -91,9 +94,8 @@ fn test_hovering_a_comparison_operator_resolves_to_the_polymorphic_builtin() {
     }
 }
 
-// ─── hover: offset boundary ─────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_hovering_right_after_a_variables_last_character_still_resolves_to_it() {
     // A span's end is treated as inclusive: the cursor sitting right after `n`'s last character
     // (offset == `n`'s own `span.end`, i.e. the position of the following `)`) must still resolve
@@ -107,6 +109,7 @@ fn test_hovering_right_after_a_variables_last_character_still_resolves_to_it() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_constructor_goto_def_points_at_its_declaration() {
     let text = "sort D; cons c: D; map f: D -> Bool; eqn f(c) = true;";
     match resolved_name_at(text, "c)") {
@@ -124,6 +127,7 @@ fn test_constructor_goto_def_points_at_its_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_mapping_goto_def_points_at_its_declaration() {
     let text = "map f: Bool; eqn f = true;";
     match resolved_name_at(text, "f =") {
@@ -141,6 +145,7 @@ fn test_mapping_goto_def_points_at_its_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_constructor_goto_def_points_at_its_own_name_in_the_struct_declaration() {
     // Unlike a plain `cons` declaration, a struct's `c1`/`c2` have no declaration of their own to
     // point at other than the `struct` sort expression itself, so goto-definition lands on
@@ -161,6 +166,7 @@ fn test_struct_constructor_goto_def_points_at_its_own_name_in_the_struct_declara
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_struct_projection_and_recogniser_goto_def_point_at_their_own_names() {
     let text = "sort D = struct c1(a: Bool)?is_c1 | c2; eqn true = is_c1(c1(true)) && a(c1(true));";
 
@@ -184,6 +190,7 @@ fn test_struct_projection_and_recogniser_goto_def_point_at_their_own_names() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_overloaded_name_resolves_to_the_matching_declaration_by_sort() {
     // `c` is declared twice with different sorts: a nullary `Bool` constructor and a `Nat -> Bool`
     // mapping. Each *use* must resolve to whichever declaration actually matches its context.
@@ -200,6 +207,7 @@ fn test_overloaded_name_resolves_to_the_matching_declaration_by_sort() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_duplicate_declaration_resolves_to_the_first() {
     // A literal duplicate (legal in mCRL2) is the one case `(name, sort)` doesn't disambiguate;
     // it resolves to the first declaration in source order.
@@ -218,6 +226,7 @@ fn test_duplicate_declaration_resolves_to_the_first() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_system_defined_symbol_reports_no_user_declaration() {
     // `succ` is an Appendix-B mapping with no user declaration to point at.
     match resolved_name_at("map f: Nat; eqn f = succ(0);", "succ") {
@@ -227,6 +236,7 @@ fn test_system_defined_symbol_reports_no_user_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_mapping_signature_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; map f: D -> D;";
     // "D ->" is unique to the *domain* sort — the range "D" (before the trailing `;`) would be
@@ -241,6 +251,7 @@ fn test_mapping_signature_sort_goto_def_resolves_to_its_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_nested_sort_reference_inside_a_container_goto_def_resolves_to_its_declaration() {
     let text = "sort D; map f: List(D) -> Bool;";
     // "D)" is unique to the reference nested inside `List(...)`.
@@ -254,6 +265,7 @@ fn test_nested_sort_reference_inside_a_container_goto_def_resolves_to_its_declar
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_var_block_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; var x: D; eqn x = x;";
     // "D; eqn" is unique to the `var`-block's own sort — `sort D;` and `cons c: D;` both contain
@@ -268,6 +280,7 @@ fn test_var_block_sort_goto_def_resolves_to_its_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_sort_alias_reference_goto_def_resolves_to_the_aliased_declaration() {
     let text = "sort D; sort E = D; cons c: D;";
     // "D; cons" is unique to the alias's own right-hand side — `sort D;` and `cons c: D;` (the
@@ -286,6 +299,7 @@ fn test_sort_alias_reference_goto_def_resolves_to_the_aliased_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_lambda_binder_sort_goto_def_resolves_to_its_declaration() {
     let text = "sort D; cons c: D; map f: D -> D; eqn f = lambda x: D . x;";
     // Unique to the lambda's own binder sort: no other "D ." occurs in `text`.
@@ -299,6 +313,7 @@ fn test_lambda_binder_sort_goto_def_resolves_to_its_declaration() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_reference_to_a_built_in_sort_has_no_typed_node_at_all() {
     // `Bool` parses straight to a dedicated sort kind, never a named reference — see
     // `ResolvedName::Sort`'s doc comment — so there is no node here at all, not even one with
@@ -309,6 +324,7 @@ fn test_reference_to_a_built_in_sort_has_no_typed_node_at_all() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_typecheck_expression_with_typing_returns_a_typing_over_the_expression() {
     let untyped = UntypedDataSpecification::parse("map f: Nat;").expect("the specification should parse");
     let mut spec = DataSpecification::from_untyped(untyped).expect("the specification should type check");
@@ -329,9 +345,8 @@ fn test_typecheck_expression_with_typing_returns_a_typing_over_the_expression() 
     }
 }
 
-// ─── structural invariants ──────────────────────────────────────────────────
-
 #[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_every_node_has_a_well_formed_non_degenerate_span_into_the_source() {
     let text = "sort D;\n\
                 cons c: D;\n\

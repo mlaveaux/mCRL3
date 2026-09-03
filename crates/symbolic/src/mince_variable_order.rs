@@ -423,6 +423,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mince_random_partition_is_permutation() {
         random_test(100, |rng| {
             // A handful of overlapping relations so the hypergraph has connecting edges.
@@ -445,6 +446,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_mince_disconnected_subgraph_is_permutation() {
         // Two clusters {0,1,2} and {3,4,5} with no hyperedge between them. A random
         // bipartition can therefore split a cluster into a side that, recursively, has
@@ -468,6 +470,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)] // Test is too slow under miri
     fn test_create_hypergraph_dedups_and_skips_self_loops() {
         // Duplicate relations and a single-variable relation (self-loop) must not create edges.
         let graph = graph_from(
