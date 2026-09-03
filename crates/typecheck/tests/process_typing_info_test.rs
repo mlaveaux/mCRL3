@@ -297,3 +297,62 @@ fn test_overloaded_action_in_action_set_offers_every_declaration() {
     assert_eq!(first.start, text.find("b: Nat").expect("'b: Nat' not found"));
     assert_eq!(second.start, text.find("b: Bool").expect("'b: Bool' not found"));
 }
+
+/// An `act` declaration's own argument sort resolves to the `sort` block declaring it.
+#[test]
+fn test_action_argument_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; cons c: D; act a: D; init a(c);";
+    // The needle must start exactly on the `act`'s own "D" — `resolved_name_at` looks up its
+    // needle's *start* offset, and both `sort D;` and `cons c: D;` also contain a "D;"; "D; init"
+    // is unique to the `act` declaration's own sort.
+    let name = resolved_name_at(text, "D; init");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+/// A `proc` declaration's own parameter sort resolves the same way.
+#[test]
+fn test_process_parameter_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; cons c: D; proc P(x: D) = delta; init P(c);";
+    // Must start on "D", not "x" — "D)" is unique to the parameter's own sort.
+    let name = resolved_name_at(text, "D)");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+/// A `glob` variable's own sort resolves the same way.
+#[test]
+fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; glob x: D; init delta;";
+    // Must start on "D", not "x" — "D; init" is unique to the `glob`'s own sort (unlike
+    // `sort D;`'s own "D;", which is followed by " glob", not " init").
+    let name = resolved_name_at(text, "D; init");
+    let ResolvedName::Sort { name, .. } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+}
+
+/// A `sum` binder's own declared sort (not the bound variable itself, already covered by
+/// [`test_sum_bound_variable_goto_def_declaration_points_at_binder`]) resolves too.
+#[test]
+fn test_sum_bound_variable_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; cons c: D; act a: D; proc P = sum x: D . a(x); init P;";
+    // "D . a(x)" is unique in `text` — the only "D" immediately followed by the binder's own
+    // operand, as opposed to the `sort`/`cons`/`act` declarations' own "D" occurrences.
+    let name = resolved_name_at(text, "D . a(x)");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}

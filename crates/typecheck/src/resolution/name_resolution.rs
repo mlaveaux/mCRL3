@@ -163,7 +163,9 @@ pub(crate) fn resolve_sort_id(
     sort.clone().apply(|expr| {
         if let SortExpressionKind::Reference(name) = &expr.node {
             if let Some(id) = resolved.index(name) {
-                return Ok(Some(SortExpressionKind::Resolved(name.clone(), DefId::new(*id)).into()));
+                return Ok(Some(
+                    SortExpressionKind::Resolved(name.clone(), DefId::new(*id)).spanned(expr.span.clone()),
+                ));
             }
 
             return Err(WellTypedError::UndefinedSort {

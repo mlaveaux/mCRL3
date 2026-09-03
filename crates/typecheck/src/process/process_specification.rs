@@ -22,13 +22,12 @@ use crate::TypingInfo;
 
 use super::ProcessError;
 use super::check;
-use super::reparse;
+use super::disambiguation;
 
 /// A type-checked mCRL2 process specification: the data specification plus its `act`, `proc`,
 /// `glob`, and `init` declarations, all resolved and checked against it.
 ///
-/// See the crate README for what's scoped in and out of this — most notably, communication
-/// sort-compatibility is not checked yet.
+/// See the crate README for what's scoped in and out of this.
 pub struct ProcessSpecification {
     /// The original specification, *minus* its data specification.
     spec: UntypedProcessSpecification,
@@ -51,8 +50,8 @@ impl ProcessSpecification {
         mut spec: UntypedProcessSpecification,
         encoding: NumberEncoding,
     ) -> Result<Self, ProcessError> {
-        // Semantic-aware reparsing first.
-        reparse::reparse_process_specification(&mut spec);
+        // Semantic-aware disambiguation first.
+        disambiguation::disambiguate_process_specification(&mut spec);
 
         // A pure syntactic pass, before anything else needs `spec` — see
         // `resolution::variable_resolution`.
@@ -126,16 +125,15 @@ pub(super) struct DeclarationTables {
     /// Resolved `(name, sort)` parameters of each process declaration, parallel to
     /// `spec.process_declarations`.
     pub(super) process_params: Vec<Vec<(String, ResolvedSortId)>>,
-    /// `spec.process_declarations[i].span`, parallel to `process_params` — so a resolved
-    /// `Action`/`Id` occurrence can report its winning candidate's declaration span (see
-    /// `check::check_action_or_process`/`check_instantiation`) without holding onto `spec` itself.
+    /// `spec.process_declarations[i].identifier.span`, parallel to
+    /// `process_params`.
     pub(super) process_decl_spans: Vec<Span>,
     /// name -> indices into `spec.process_declarations`/`process_params` declaring it.
     pub(super) processes_by_name: HashMap<String, Vec<usize>>,
     /// Resolved argument-sort domain of each action declaration, parallel to
     /// `spec.action_declarations`.
     pub(super) action_domains: Vec<Vec<ResolvedSortId>>,
-    /// `spec.action_declarations[i].span`, parallel to `action_domains` — see
+    /// `spec.action_declarations[i].identifier.span`, parallel to `action_domains` — see
     /// `process_decl_spans`.
     pub(super) action_decl_spans: Vec<Span>,
     /// name -> indices into `spec.action_declarations`/`action_domains` declaring it.
@@ -153,9 +151,12 @@ impl DeclarationTables {
                 .iter()
                 .map(|sort| resolve_declared_sort(data, sort))
                 .collect::<Result<Vec<_>, _>>()?;
-            actions_by_name.entry(decl.identifier.clone()).or_default().push(index);
+            actions_by_name
+                .entry(decl.identifier.node.clone())
+                .or_default()
+                .push(index);
             action_domains.push(domain);
-            action_decl_spans.push(decl.span.clone());
+            action_decl_spans.push(decl.identifier.span.clone());
         }
 
         let mut process_params = Vec::with_capacity(spec.process_declarations.len());
@@ -167,7 +168,7 @@ impl DeclarationTables {
             for param in &decl.params {
                 if !seen.insert(param.identifier.as_str()) {
                     return Err(ProcessError::DuplicateProcessParameter {
-                        process: decl.identifier.clone(),
+                        process: decl.identifier.node.clone(),
                         name: param.identifier.clone(),
                         span: param.span.clone(),
                     });
@@ -176,11 +177,11 @@ impl DeclarationTables {
                 params.push((param.identifier.clone(), sort));
             }
             processes_by_name
-                .entry(decl.identifier.clone())
+                .entry(decl.identifier.node.clone())
                 .or_default()
                 .push(index);
             process_params.push(params);
-            process_decl_spans.push(decl.span.clone());
+            process_decl_spans.push(decl.identifier.span.clone());
         }
 
         // A name declared as both an action and a process would make `Action(name, args)`
@@ -189,10 +190,10 @@ impl DeclarationTables {
         // `actions_by_name`'s (unordered) keys, so which conflicting name gets reported is
         // deterministic.
         for decl in &spec.action_declarations {
-            if processes_by_name.contains_key(&decl.identifier) {
+            if processes_by_name.contains_key(&decl.identifier.node) {
                 return Err(ProcessError::ActionAndProcessConflict {
-                    name: decl.identifier.clone(),
-                    span: decl.span.clone(),
+                    name: decl.identifier.node.clone(),
+                    span: decl.identifier.span.clone(),
                 });
             }
         }

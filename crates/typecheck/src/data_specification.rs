@@ -17,6 +17,7 @@ use merc_syntax::EquationId;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
+use merc_syntax::Span;
 use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
 
@@ -50,6 +51,7 @@ use crate::lower_data_expr;
 use crate::lower_data_expressions;
 use crate::lower_data_specification;
 use crate::lower_expression;
+use crate::lsp_info;
 use crate::merge_signatures;
 use crate::normalize_sorts;
 use crate::resolve_data_specification_variables;
@@ -59,7 +61,6 @@ use crate::resolve_sort_ids;
 use crate::resolve_system_signature;
 use crate::resolve_system_signature_full;
 use crate::structured_sort_equations;
-use crate::typing_info;
 
 /// A type checked and well-typed data specification.
 ///
@@ -72,6 +73,8 @@ pub struct DataSpecification {
     system: UntypedDataSpecification,
     context: TypeCheckContext,
     encoding: NumberEncoding,
+    /// Every sort-name reference in `spec`'s own declarations.
+    sort_references: Vec<(Span, String)>,
 }
 
 impl DataSpecification {
@@ -150,6 +153,10 @@ impl DataSpecification {
         let mut context = TypeCheckContext::new();
         build_signature(&mut context, &spec)?;
         debug!("typecheck: signature checks passed");
+
+        // Every sort-name reference `spec`'s own declarations make.
+        let sort_references = lsp_info::collect_data_specification_sort_references(&spec);
+        debug!("typecheck: collected {} sort-name reference(s)", sort_references.len());
 
         // Expand aliases to a canonical form now that they are known to be
         // acyclic.
@@ -278,6 +285,7 @@ impl DataSpecification {
             system,
             context,
             encoding,
+            sort_references,
         })
     }
 
@@ -299,11 +307,7 @@ impl DataSpecification {
 
     /// The system-defined (Appendix-B) declarations for the basic and container
     /// sorts that occur in the specification, plus the defining equations of
-    /// the desugared structured sorts (Appendix B.10). This is generated
-    /// content with unresolved sorts but lowered equation expressions, verified
-    /// unconditionally by `check_system_specification`; function-update
-    /// operators are generated for every declared arity, single- and
-    /// multi-argument alike.
+    /// the desugared structured sorts (Appendix B.10).
     pub fn system_defined_specification(&self) -> &UntypedDataSpecification {
         &self.system
     }
@@ -375,8 +379,7 @@ impl DataSpecification {
     }
 
     /// Assembles and returns the fully typed mCRL2 data specification in the
-    /// binary aterm format, ready for downstream consumption by `merc_sabre`
-    /// and `merc_explore`.
+    /// binary aterm format.
     ///
     /// Includes the user sort declarations, aliases, constructors, mappings,
     /// and equations. Call this once after [`Self::from_untyped`] when the
@@ -433,7 +436,7 @@ impl DataSpecification {
         let lowered_expr = lower_data_expr(expr.clone());
 
         let typing = infer_expression(&mut self.context, &self.spec, &self.system, &lowered_expr)?;
-        let info = typing_info::build(self, &typing);
+        let info = lsp_info::build(self, &typing);
 
         let lowered = lower_expression(
             &self.context,
@@ -461,13 +464,18 @@ impl DataSpecification {
         if let Some(cached) = self.context.equation_typing_info.get(&key) {
             return (**cached).clone();
         }
-        let info = Arc::new(typing_info::build(self, self.equation_typing(key)));
+        let info = Arc::new(lsp_info::build(self, self.equation_typing(key)));
         self.context.equation_typing_info.insert(key, Arc::clone(&info));
         (*info).clone()
     }
 
-    /// Every user equation's typing, merged into one table, in declaration order. See
-    /// [`Self::equation_typing_info`] for the per-equation version.
+    /// Every user equation's typing, merged into one table, in declaration order, plus a
+    /// [`crate::ResolvedName::Sort`] node for every sort-name reference this specification's own
+    /// declarations make (`cons`/`map` signatures, a `var`-block, a sort alias's own right-hand
+    /// side, a binder inside an equation) — see [`Self::equation_typing_info`] for the per-
+    /// equation version, which does *not* include these: a sort declaration isn't scoped to any
+    /// one equation, so there is nothing meaningful to slice per `key` the way the rest of this
+    /// method's result is.
     ///
     /// Memoized as `self.context`'s `whole_typing_info` singleton: a second call reuses the
     /// cached `Arc` instead of re-merging every equation's typing.
@@ -495,6 +503,7 @@ impl DataSpecification {
         for key in keys {
             info.merge(self.equation_typing_info(key));
         }
+        lsp_info::push_sort_references(self, &self.sort_references, &mut info);
         self.context.whole_typing_info = Some(Arc::new(info.clone()));
         info
     }

@@ -1,15 +1,5 @@
-//! Type checks every example specification from the corpus, mirroring
-//! `crates/syntax/tests/example_test.rs`. Each specification is expected to
-//! type check; the assertions grow stricter as later type-checking phases land.
-//!
-//! This type checks the whole specification (`ProcessSpecification::from_untyped`), not just the
-//! data specification. `crate::process::reparse` fixes up mCRL2's `.`/`+` grammar ambiguity (see
-//! its module doc comment and the crate README) before type checking runs, using only declared
-//! action/process *names*.
-//!
-//! The `#[test_case]`s commented out below are excluded because
-//! `merc_syntax::UntypedProcessSpecification::parse` does not return on them — a parser-level
-//! performance issue, not a type-checking one — so running them would hang the test suite.
+//! Type checks every example specification from the corpus. Each specification
+//! is expected to type check.
 
 use merc_syntax::UntypedProcessSpecification;
 use merc_typecheck::ProcessSpecification;

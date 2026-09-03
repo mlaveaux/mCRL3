@@ -253,20 +253,19 @@ impl Mcrl2Parser {
     }
 
     fn PropVarDecl(decl: ParseNode) -> ParseResult<PropVarDecl> {
-        let span = decl.as_span();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params)] => {
                 Ok(PropVarDecl {
                     identifier: identifier.node,
                     parameters: params,
-                    span: span.into(),
+                    span: identifier.span,
                 })
             },
             [Id(identifier)] => {
                 Ok(PropVarDecl {
                     identifier: identifier.node,
                     parameters: Vec::new(),
-                    span: span.into(),
+                    span: identifier.span,
                 })
             }
         )

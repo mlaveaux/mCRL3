@@ -17,21 +17,30 @@ use crate::checking::Scope;
 use crate::checking::check_expression_against;
 use crate::checking::collect_binder_sorts;
 use crate::declared_span;
+use crate::lsp_info;
 
 use super::PbesError;
 use super::pbes_specification::DeclarationTables;
 use super::pbes_specification::resolve_declared_sort;
 
-/// Checks every equation's `formula` and `init` in `spec` against `tables` (already built by
-/// [`super::pbes_specification::DeclarationTables::build`], which resolved every declared sort —
-/// global variables' and each equation's own parameters'), returning every checked expression's
-/// merged [`TypingInfo`] in declaration order.
+/// Checks a PBES specification against its declaration tables, returning typing
+/// information for all expressions.
 pub(super) fn check_pbes_specification(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
     spec: &UntypedPbes,
 ) -> Result<TypingInfo, PbesError> {
     let mut typing = TypingInfo::default();
+    let mut sort_references = Vec::new();
+
+    for decl in &spec.global_variables {
+        lsp_info::collect_sort_name_references(&decl.sort, &mut sort_references);
+    }
+    for eqn in &spec.equations {
+        for param in &eqn.variable.parameters {
+            lsp_info::collect_sort_name_references(&param.sort, &mut sort_references);
+        }
+    }
 
     let globals: Vec<(Span, ResolvedSortId)> = spec
         .global_variables
@@ -50,7 +59,7 @@ pub(super) fn check_pbes_specification(
                 .zip(params)
                 .map(|(decl, &(_, sort))| (decl.span.clone(), sort)),
         );
-        collect_scope(data, &eqn.formula, &mut scope)?;
+        collect_scope(data, &eqn.formula, &mut scope, &mut sort_references)?;
         check_pbes_expr(data, tables, &scope, &eqn.formula, &mut typing)?;
     }
 
@@ -58,30 +67,29 @@ pub(super) fn check_pbes_specification(
     // scope = globals only, since it sits outside every equation's own parameter scope.
     check_prop_var_inst(data, tables, &globals, &spec.init, &mut typing)?;
 
+    lsp_info::push_sort_references(data, &sort_references, &mut typing);
     Ok(typing)
 }
 
-/// Resolves the declared sort of every `Quantifier` binder in `expr`, extending `scope` with each
-/// — every variable occurrence in `expr` already names its own declaration's span
-/// (`crate::resolve_pbes_variables`), so this only needs to run once, before checking any of
-/// `expr`'s leaves, not interleaved with the check walk itself.
+/// Resolves the declared sort of every `Quantifier` binder in `expr`.
 fn collect_scope(
     data: &mut DataSpecification,
     expr: &PbesExpr,
     scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
 ) -> Result<(), PbesError> {
     match &expr.node {
         PbesExprKind::True | PbesExprKind::False | PbesExprKind::DataValExpr(_) | PbesExprKind::PropVarInst(_) => {
             Ok(())
         }
-        PbesExprKind::Negation(inner) => collect_scope(data, inner, scope),
+        PbesExprKind::Negation(inner) => collect_scope(data, inner, scope, sort_references),
         PbesExprKind::Binary { lhs, rhs, .. } => {
-            collect_scope(data, lhs, scope)?;
-            collect_scope(data, rhs, scope)
+            collect_scope(data, lhs, scope, sort_references)?;
+            collect_scope(data, rhs, scope, sort_references)
         }
         PbesExprKind::Quantifier { variables, body, .. } => {
-            collect_binder_sorts(data, scope, variables, resolve_declared_sort)?;
-            collect_scope(data, body, scope)
+            collect_binder_sorts(data, scope, sort_references, variables, resolve_declared_sort)?;
+            collect_scope(data, body, scope, sort_references)
         }
     }
 }
@@ -114,13 +122,7 @@ fn check_pbes_expr(
     }
 }
 
-/// Resolves `inst.identifier` against the equation table (`UndeclaredPropositionalVariable` if
-/// missing), checks its argument count against the declared parameter count (`ArityMismatch`), and
-/// checks each argument against its parameter's sort. On success, also pushes a
-/// [`ResolvedName::PropositionalVariable`] at `inst.identifier`'s own span (not `inst.span`, the
-/// whole `name(args)` node) — see [`docs/name_resolution.md`](../../../../docs/name_resolution.md):
-/// unlike an action/process name, a PBES equation is never overloaded, so the equation table's
-/// single match is the answer. Mirrors `check_action_or_process`'s `name`'s-own-span convention.
+/// Resolves `inst.identifier` against the equation table.
 fn check_prop_var_inst(
     data: &mut DataSpecification,
     tables: &DeclarationTables,

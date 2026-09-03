@@ -78,8 +78,7 @@ pub(crate) struct EquationTyping {
     /// The inferred sort of every expression node, indexed by [ExprId].
     pub(crate) sorts: Vec<ResolvedSortId>,
     /// The source span of every expression node, parallel to `sorts`. Only
-    /// filled for [EquationRole::User] (see [crate::typing_info], the sole
-    /// consumer).
+    /// filled for [EquationRole::User].
     ///
     /// A synthesized node (the desugared `Id("+")` of `x + y`, a list
     /// literal's cons chain, …) inherits the span of the whole surface

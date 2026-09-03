@@ -69,13 +69,6 @@ fn test_hovering_each_side_of_an_upcast_equation_shows_its_own_sort() {
     assert_eq!(hover(text, "1;"), "Pos");
 }
 
-// ─── hover: operator tie-break ──────────────────────────────────────────────
-//
-// `x + y` lowers to `Application { function: Id("+"), arguments: [x, y] }` before inference ever
-// runs, and the synthesized `Id("+")`/`Application` nodes both inherit the whole surface
-// expression's span (neither existed in the source on its own). `TypingInfo::at_offset`'s
-// documented tie-break (last node generated wins) is what picks the operator's own resolution
-// over the application's result sort when hovering anywhere in the expression.
 
 #[test]
 fn test_hovering_a_numeric_operator_resolves_to_its_system_mapping() {
@@ -113,8 +106,6 @@ fn test_hovering_right_after_a_variables_last_character_still_resolves_to_it() {
         None => panic!("expected a node at offset {offset} in '{text}', right after 'n'"),
     }
 }
-
-// ─── goto-def: constructors and mappings ────────────────────────────────────
 
 #[test]
 fn test_constructor_goto_def_points_at_its_declaration() {
@@ -236,7 +227,87 @@ fn test_system_defined_symbol_reports_no_user_declaration() {
     }
 }
 
-// ─── typecheck_expression_with_typing ───────────────────────────────────────
+#[test]
+fn test_mapping_signature_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; map f: D -> D;";
+    // "D ->" is unique to the *domain* sort — the range "D" (before the trailing `;`) would be
+    // found by a plain "D" needle instead, since `resolved_name_at` uses the first match.
+    let name = resolved_name_at(text, "D ->");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+#[test]
+fn test_nested_sort_reference_inside_a_container_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; map f: List(D) -> Bool;";
+    // "D)" is unique to the reference nested inside `List(...)`.
+    let name = resolved_name_at(text, "D)");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+#[test]
+fn test_var_block_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; cons c: D; var x: D; eqn x = x;";
+    // "D; eqn" is unique to the `var`-block's own sort — `sort D;` and `cons c: D;` both contain
+    // a "D;" too, but neither is followed by " eqn".
+    let name = resolved_name_at(text, "D; eqn");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+#[test]
+fn test_sort_alias_reference_goto_def_resolves_to_the_aliased_declaration() {
+    let text = "sort D; sort E = D; cons c: D;";
+    // "D; cons" is unique to the alias's own right-hand side — `sort D;` and `cons c: D;` (the
+    // very end of `text`) both contain "D;" too, but neither is followed by " cons".
+    let name = resolved_name_at(text, "D; cons");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(
+        declaration.start,
+        text.find("sort D").expect("'sort D' not found") + "sort ".len(),
+        "should point at D's own declaration, not E's"
+    );
+}
+
+#[test]
+fn test_lambda_binder_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; cons c: D; map f: D -> D; eqn f = lambda x: D . x;";
+    // Unique to the lambda's own binder sort: no other "D ." occurs in `text`.
+    let name = resolved_name_at(text, "D .");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+#[test]
+fn test_reference_to_a_built_in_sort_has_no_typed_node_at_all() {
+    // `Bool` parses straight to a dedicated sort kind, never a named reference — see
+    // `ResolvedName::Sort`'s doc comment — so there is no node here at all, not even one with
+    // `name: None`: a `map` signature isn't part of any checked `DataExpr` on its own.
+    let text = "map f: Bool; eqn f = true;";
+    let offset = text.find("Bool").unwrap();
+    assert!(typing_for(text).at_offset(offset).is_none());
+}
 
 #[test]
 fn test_typecheck_expression_with_typing_returns_a_typing_over_the_expression() {

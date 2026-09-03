@@ -128,7 +128,49 @@ fn test_prop_var_inst_name_goto_def_resolves_to_its_declaration() {
     };
     assert_eq!(name, "X");
     let declaration = declaration.clone().expect("a plain `pbes` equation has a real span");
-    assert_eq!(&text[declaration.start..declaration.end], "X(n: Nat)");
+    assert_eq!(&text[declaration.start..declaration.end], "X");
+}
+
+/// An equation's own parameter sort resolves to the `sort` block declaring it.
+#[test]
+fn test_equation_parameter_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; cons c: D; pbes mu X(n: D) = val(true); init X(c);";
+    // "D)" is unique to the equation parameter's own sort.
+    let name = resolved_name_at(text, "D)");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
+}
+
+/// A `glob` variable's own sort resolves the same way.
+#[test]
+fn test_global_variable_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; glob x: D; pbes mu X = val(true); init X;";
+    // "D; pbes" is unique to the `glob`'s own sort — `sort D;` also contains "D;", but is
+    // followed by " glob", not " pbes".
+    let name = resolved_name_at(text, "D; pbes");
+    let ResolvedName::Sort { name, .. } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+}
+
+/// A `Quantifier` binder's own declared sort resolves too — distinct from the bound variable
+/// itself, already covered by [`test_quantifier_bound_variable_goto_def_declaration_points_at_binder`].
+#[test]
+fn test_quantifier_bound_variable_sort_goto_def_resolves_to_its_declaration() {
+    let text = "sort D; pbes mu X = forall n: D . val(true); init X;";
+    // Unique to the binder's own sort: no other "D ." occurs in `text`.
+    let name = resolved_name_at(text, "D .");
+    let ResolvedName::Sort { name, declaration } = &name else {
+        panic!("expected a Sort resolution, got {name:?}");
+    };
+    assert_eq!(name, "D");
+    let declaration = declaration.clone().expect("a plain `sort` declaration has a real span");
+    assert_eq!(&text[declaration.start..declaration.end], "D");
 }
 
 /// A self-recursive `PropVarInst` inside the equation's own formula resolves the same way as a use
@@ -142,5 +184,5 @@ fn test_self_recursive_prop_var_inst_name_goto_def_resolves_to_its_declaration()
     };
     assert_eq!(name, "X");
     let declaration = declaration.clone().expect("a plain `pbes` equation has a real span");
-    assert_eq!(&text[declaration.start..declaration.end], "X(n: Nat)");
+    assert_eq!(&text[declaration.start..declaration.end], "X");
 }

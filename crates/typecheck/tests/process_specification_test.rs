@@ -260,3 +260,89 @@ fn test_allowing_an_undeclared_multi_action_is_rejected() {
     let error = check_err("act a; init allow({b}, a);");
     assert!(matches!(error, ProcessError::UndeclaredAction { .. }), "got {error:?}");
 }
+
+#[test]
+fn test_comm_with_identical_action_sorts_is_accepted() {
+    check_ok("act a, b, c: Nat; init comm({a|b -> c}, delta);");
+}
+
+#[test]
+fn test_comm_with_no_argument_actions_is_accepted() {
+    check_ok("act a, b, c; init comm({a|b -> c}, delta);");
+}
+
+#[test]
+fn test_comm_widens_combined_actions_like_any_other_position() {
+    // `a: Pos` and `b: Nat` join to `Nat`, same as `Pos <= Nat` upcasts anywhere else; `c: Nat`
+    // then accepts that joined sort directly.
+    check_ok("act a: Pos; act b: Nat; act c: Nat; init comm({a|b -> c}, delta);");
+}
+
+#[test]
+fn test_comm_widens_the_joined_sort_into_the_result_action() {
+    // `a`/`b: Pos` join to `Pos`, which upcasts into `c: Nat`, exactly like passing a `Pos`
+    // argument where a `Nat` parameter is declared.
+    check_ok("act a, b: Pos; act c: Nat; init comm({a|b -> c}, delta);");
+}
+
+#[test]
+fn test_comm_picks_the_compatible_overload_among_several() {
+    // `a: Bool` cannot combine with `b: Nat`, but `a`'s other overload (`Nat`) can.
+    check_ok("act a: Bool; act a: Nat; act b, c: Nat; init comm({a|b -> c}, delta);");
+}
+
+#[test]
+fn test_comm_with_incompatible_action_sorts_is_rejected() {
+    let error = check_err("act a: Bool; act b: Nat; act c: Nat; init comm({a|b -> c}, delta);");
+    assert!(
+        matches!(error, ProcessError::IncompatibleCommunication { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn test_comm_with_mismatched_arity_is_rejected() {
+    let error = check_err("act a: Nat; act b: Nat # Nat; act c: Nat; init comm({a|b -> c}, delta);");
+    assert!(
+        matches!(error, ProcessError::IncompatibleCommunication { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn test_comm_result_sort_too_narrow_is_rejected() {
+    // `a`/`b: Nat` join to `Nat`, which does not downcast into `c: Pos`.
+    let error = check_err("act a, b: Nat; act c: Pos; init comm({a|b -> c}, delta);");
+    assert!(
+        matches!(error, ProcessError::IncompatibleCommunication { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn test_rename_with_identical_action_sorts_is_accepted() {
+    check_ok("act a, b: Nat; init rename({a -> b}, delta);");
+}
+
+#[test]
+fn test_rename_widens_like_any_other_position() {
+    check_ok("act a: Pos; act b: Nat; init rename({a -> b}, delta);");
+}
+
+#[test]
+fn test_rename_with_incompatible_action_sorts_is_rejected() {
+    let error = check_err("act a: Bool; act b: Nat; init rename({a -> b}, delta);");
+    assert!(
+        matches!(error, ProcessError::IncompatibleRename { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+fn test_rename_with_mismatched_arity_is_rejected() {
+    let error = check_err("act a: Nat; act b: Nat # Nat; init rename({a -> b}, delta);");
+    assert!(
+        matches!(error, ProcessError::IncompatibleRename { .. }),
+        "got {error:?}"
+    );
+}
