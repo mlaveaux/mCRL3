@@ -10,9 +10,7 @@ use merc_syntax::UntypedDataSpecification;
 use crate::ResolvedSortId;
 use crate::TypeCheckContext;
 
-/// Returns the resolved sort of the constructor with the given [ConstructorId],
-/// memoized on [TypeCheckContext::sort_of_constructor]. Requires
-/// `id` to originate from `assign_declaration_ids` on `spec`.
+/// Returns the resolved sort of the constructor with the given [ConstructorId].
 ///
 /// Covers the user specification only; the system-defined specification is
 /// still unresolved content.

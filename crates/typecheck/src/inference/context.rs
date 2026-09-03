@@ -33,9 +33,7 @@ pub(crate) struct TypeCheckContext {
     /// The memoized resolved sort of each map declaration, keyed by [MapId].
     /// Populated lazily by `query_sort_of_map`.
     pub(crate) sort_of_map: QueryCache<MapId, ResolvedSortId>,
-    /// The memoized resolved sort of each equation variable, keyed by
-    /// `(EqnSpecId, EqnVarId)`. Populated lazily by
-    /// `query_sort_of_equation_var`.
+    /// The memoized resolved sort of each equation variable.
     pub(crate) sort_of_equation_var: QueryCache<(EqnSpecId, EqnVarId), ResolvedSortId>,
 
     /// The signature of the specification.
@@ -56,17 +54,12 @@ pub(crate) struct TypeCheckContext {
     /// enclosing equation specification block and the equation's own id
     /// within it.
     pub(crate) equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Arc<EquationTyping>, InferenceError>>,
-    /// The system-equation counterpart of `equation_typing`. Separate because
-    /// `assign_declaration_ids` numbers each specification's ids independently
-    /// from zero, so the keys would otherwise collide.
+    /// The system-equation counterpart of `equation_typing`.
     pub(crate) system_equation_typing: QueryCache<(EqnSpecId, EquationId), Result<Arc<EquationTyping>, InferenceError>>,
 
-    /// The memoized results of `DataSpecification::equation_typing_info`, keyed the same way as
-    /// `equation_typing`. `DataSpecification` is immutable once built, so each equation's
-    /// `TypingInfo` only ever needs computing once.
+    /// The memoized result of the public TypingInfo for every equation.
     pub(crate) equation_typing_info: QueryCache<(EqnSpecId, EquationId), Arc<TypingInfo>>,
-    /// The memoized result of `DataSpecification::typing_info` (every equation's typing, merged).
-    /// A single value rather than a `QueryCache`: there is only ever one whole-document typing.
+    /// The typing info for the whole set of equations.
     pub(crate) whole_typing_info: Option<Arc<TypingInfo>>,
 }
 

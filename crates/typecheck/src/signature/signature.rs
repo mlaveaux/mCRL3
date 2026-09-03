@@ -30,10 +30,11 @@ pub(crate) struct Signature {
 /// is a no-op that returns the already-stored result.
 ///
 /// Runs *before* alias normalization, so the errors refer to sorts as the user
-/// wrote them (`D` rather than its alias expansion `Nat`); the semantic facts
-/// are obtained through the interned sort lattice instead, which expands alias
-/// indirection lazily via `query_sort_of_def`. Requires names to be resolved
-/// and structured sorts to be desugared.
+/// wrote them (`D` rather than its alias expansion `Nat`).
+///
+/// # Requirements
+///
+/// Requires names to be resolved and structured sorts to be desugared.
 pub(crate) fn build_signature<'a>(
     ctx: &'a mut TypeCheckContext,
     spec: &UntypedDataSpecification,
@@ -69,18 +70,12 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
     };
 
     // Zero-arity constructors/mappings are keyed by *name* only, so a second
-    // declaration under any different sort is rejected — even across
-    // `cons`/`map` and across different structs (two structs each declaring a
-    // nullary `open`, say). A symbol with a function sort is unaffected: its
-    // overloads are disambiguated by argument sort instead (Phase-3 overload
-    // resolution), which is why `signature.constructors`/`mappings` allow
-    // distinct-sort overloads freely.
+    // declaration under any different sort is rejected.
     let mut constants: HashMap<String, ResolvedSortId> = HashMap::new();
 
     for decl in &spec.constructor_declarations {
         // Resolve through the memoized query so lowering can later read the
-        // interned constructor sort straight from the context, instead of
-        // re-resolving it (`resolve_sort` gives the same id, unmemoized).
+        // interned constructor sort straight from the context.
         let constructor_id = decl.id.expect("assign_declaration_ids ran before build_signature");
         let id = query_sort_of_constructor(ctx, spec, constructor_id);
 

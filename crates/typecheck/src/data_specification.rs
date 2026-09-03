@@ -98,14 +98,11 @@ impl DataSpecification {
             spec.equation_declarations.len()
         );
 
-        // A pure syntactic pass, before anything else needs `spec` — see
-        // `resolution::variable_resolution`. Ties every equation-variable occurrence to its own
-        // `var`-block declaration span.
+        // Ties every equation-variable occurrence to its own `var`-block
+        // declaration span.
         resolve_data_specification_variables(&mut spec);
 
-        // Hoist anonymous structured sorts into fresh named declarations, so
-        // name resolution, the alias checks and the desugaring below only ever
-        // see named structs.
+        // Hoist anonymous structured sorts into fresh named declarations.
         hoist_anonymous_structs(&mut spec);
         debug!(
             "typecheck: hoisted anonymous structs; {} sort declaration(s) remain",

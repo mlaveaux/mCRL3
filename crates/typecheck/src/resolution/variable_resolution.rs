@@ -31,17 +31,16 @@ use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedPres;
 use merc_syntax::UntypedProcessSpecification;
 
-/// Resolves every context-free variable reference in `spec`'s own `var`-block equations. Each
-/// `EqnSpec`'s `variables` are in scope for that block's own equations only; an equation's `lhs`
-/// is resolved exactly like its `rhs`/`condition` — mCRL2 equations don't bind new variables in
-/// their left-hand side, `lhs` is just another read of the block's declared variables.
+/// Resolves every context-free variable reference in `spec`'s own `var`-block equations.
 pub(crate) fn resolve_data_specification_variables(spec: &mut UntypedDataSpecification) {
     for eqn_spec in &mut spec.equation_declarations {
-        let mut scope = binder_scope(&eqn_spec.variables);
+        let mut scope = Scope::from_declarations(&eqn_spec.variables);
+
         for equation in &mut eqn_spec.equations {
             if let Some(condition) = &mut equation.condition {
                 resolve_in_data_expr(condition, &mut scope);
             }
+
             resolve_in_data_expr(&mut equation.lhs, &mut scope);
             resolve_in_data_expr(&mut equation.rhs, &mut scope);
         }
@@ -50,12 +49,12 @@ pub(crate) fn resolve_data_specification_variables(spec: &mut UntypedDataSpecifi
 
 /// Resolves every context-free variable reference in `spec`'s `proc` bodies and `init`.
 pub(crate) fn resolve_process_variables(spec: &mut UntypedProcessSpecification) {
-    let globals = binder_scope(&spec.global_variables);
+    let globals = Scope::from_declarations(&spec.global_variables);
 
     for proc_decl in &mut spec.process_declarations {
         // A process's own parameters shadow a global variable of the same name.
         let mut scope = globals.clone();
-        push_binder(&mut scope, &proc_decl.params);
+        scope.push_declarations(&proc_decl.params);
         resolve_in_process_expr(&mut proc_decl.body, &mut scope);
     }
 
@@ -68,11 +67,11 @@ pub(crate) fn resolve_process_variables(spec: &mut UntypedProcessSpecification) 
 
 /// Resolves every context-free variable reference in `pbes`'s equation bodies and `init`.
 pub(crate) fn resolve_pbes_variables(pbes: &mut UntypedPbes) {
-    let globals = binder_scope(&pbes.global_variables);
+    let globals = Scope::from_declarations(&pbes.global_variables);
 
     for equation in &mut pbes.equations {
         let mut scope = globals.clone();
-        push_binder(&mut scope, &equation.variable.parameters);
+        scope.push_declarations(&equation.variable.parameters);
         resolve_in_pbes_expr(&mut equation.formula, &mut scope);
     }
 
@@ -83,11 +82,11 @@ pub(crate) fn resolve_pbes_variables(pbes: &mut UntypedPbes) {
 
 /// Resolves every context-free variable reference in `pres`'s equation bodies and `init`.
 pub(crate) fn resolve_pres_variables(pres: &mut UntypedPres) {
-    let globals = binder_scope(&pres.global_variables);
+    let globals = Scope::from_declarations(&pres.global_variables);
 
     for equation in &mut pres.equations {
         let mut scope = globals.clone();
-        push_binder(&mut scope, &equation.variable.parameters);
+        scope.push_declarations(&equation.variable.parameters);
         resolve_in_pres_expr(&mut equation.formula, &mut scope);
     }
 
@@ -96,25 +95,54 @@ pub(crate) fn resolve_pres_variables(pres: &mut UntypedPres) {
     resolve_in_prop_var_inst(&mut pres.init, &mut scope);
 }
 
-/// The shadowing stack this pass threads through a tree: each binder's own name paired with its
-/// declaration's span (not the occurrence's), so two occurrences of the same binder keep comparing
-/// equal once rewritten to [`DataExprKind::Resolved`].
-type Scope = Vec<(String, Span)>;
+/// The binders currently in scope, each paired with its declaration's span so two occurrences of
+/// the same binder keep comparing equal once rewritten to [`DataExprKind::Resolved`]. Lexical
+/// scoping is stack-shaped: a subtree's own binders are pushed before descending into it and
+/// [`Scope::pop`]ped back off once that subtree is done, so a later binder of the same name
+/// shadows an earlier one without disturbing it.
+#[derive(Clone, Default)]
+struct Scope(Vec<(String, Span)>);
 
-fn binder_scope<Id>(variables: &[IdDecl<Id>]) -> Scope {
-    variables
-        .iter()
-        .map(|decl| (decl.identifier.clone(), decl.span.clone()))
-        .collect()
-}
-
-/// Pushes each declaration in `variables` onto `scope`, returning how many were pushed so the
-/// caller can `truncate` them back off once its subtree is done.
-fn push_binder<Id>(scope: &mut Scope, variables: &[IdDecl<Id>]) -> usize {
-    for variable in variables {
-        scope.push((variable.identifier.clone(), variable.span.clone()));
+impl Scope {
+    /// Builds a scope from a binder's own declarations.
+    fn from_declarations<Id>(variables: &[IdDecl<Id>]) -> Self {
+        Scope(
+            variables
+                .iter()
+                .map(|decl| (decl.identifier.clone(), decl.span.clone()))
+                .collect(),
+        )
     }
-    variables.len()
+
+    /// Pushes each declaration in `variables` onto the scope, returning how many were pushed so
+    /// the caller can [`Scope::pop`] them back off once its subtree is done.
+    fn push_declarations<Id>(&mut self, variables: &[IdDecl<Id>]) -> usize {
+        for variable in variables {
+            self.0.push((variable.identifier.clone(), variable.span.clone()));
+        }
+        variables.len()
+    }
+
+    /// Pushes a single `(name, span)` binding directly, for a binder that isn't itself an
+    /// `IdDecl` (a `whr` assignment's identifier).
+    fn push(&mut self, name: String, span: Span) {
+        self.0.push((name, span));
+    }
+
+    /// Drops the `count` most recently pushed bindings, restoring the scope to what it was
+    /// before they were pushed.
+    fn pop(&mut self, count: usize) {
+        self.0.truncate(self.0.len() - count);
+    }
+
+    /// The innermost binder named `name`, if one is in scope.
+    fn resolve(&self, name: &str) -> Option<&Span> {
+        self.0
+            .iter()
+            .rev()
+            .find(|(bound, _)| bound == name)
+            .map(|(_, span)| span)
+    }
 }
 
 fn resolve_in_process_expr(expr: &mut ProcessExpr, scope: &mut Scope) {
@@ -126,29 +154,26 @@ fn resolve_in_process_expr(expr: &mut ProcessExpr, scope: &mut Scope) {
             }
         }
         ProcessExprKind::Id(_, assignments) => {
-            // Only the assignment's *value* is a context-free variable read; the key (`n` in
-            // `P(n = x)`) is resolved against whichever process `P` turns out to name — that's
-            // the non-context-free `check_action_or_process`/`check_instantiation` path, out of
-            // scope here (see `docs/name_resolution.md`).
+            // Only the assignment's *value* is a context-free variable read.
             for assignment in assignments {
                 resolve_in_data_expr(&mut assignment.expr, scope);
             }
         }
         ProcessExprKind::Sum { variables, operand } => {
-            let pushed = push_binder(scope, variables);
+            let pushed = scope.push_declarations(variables);
             resolve_in_process_expr(operand, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
         ProcessExprKind::Dist {
             variables,
             expr: weight,
             operand,
         } => {
-            let pushed = push_binder(scope, variables);
+            let pushed = scope.push_declarations(variables);
             // `dist`'s weight is resolved with its own bound variables already in scope.
             resolve_in_data_expr(weight, scope);
             resolve_in_process_expr(operand, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
         ProcessExprKind::Binary { lhs, rhs, .. } => {
             resolve_in_process_expr(lhs, scope);
@@ -184,9 +209,9 @@ fn resolve_in_pbes_expr(expr: &mut PbesExpr, scope: &mut Scope) {
             resolve_in_pbes_expr(rhs, scope);
         }
         PbesExprKind::Quantifier { variables, body, .. } => {
-            let pushed = push_binder(scope, variables);
+            let pushed = scope.push_declarations(variables);
             resolve_in_pbes_expr(body, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
     }
 }
@@ -213,9 +238,9 @@ fn resolve_in_pres_expr(expr: &mut PresExpr, scope: &mut Scope) {
             resolve_in_pres_expr(expr, scope);
         }
         PresExprKind::Bound { variables, expr, .. } => {
-            let pushed = push_binder(scope, variables);
+            let pushed = scope.push_declarations(variables);
             resolve_in_pres_expr(expr, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
     }
 }
@@ -232,7 +257,7 @@ fn resolve_in_prop_var_inst(inst: &mut PropVarInst, scope: &mut Scope) {
 fn resolve_in_data_expr(expr: &mut DataExpr, scope: &mut Scope) {
     match &mut expr.node {
         DataExprKind::Id(name) => {
-            if let Some((_, declaration)) = scope.iter().rev().find(|(bound, _)| bound == name) {
+            if let Some(declaration) = scope.resolve(name) {
                 expr.node = DataExprKind::Resolved(name.clone(), declaration.clone());
             }
         }
@@ -260,14 +285,14 @@ fn resolve_in_data_expr(expr: &mut DataExpr, scope: &mut Scope) {
             }
         }
         DataExprKind::SetBagComp { variable, predicate } => {
-            let pushed = push_binder(scope, std::slice::from_ref(variable));
+            let pushed = scope.push_declarations(std::slice::from_ref(variable));
             resolve_in_data_expr(predicate, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
         DataExprKind::Lambda { variables, body } | DataExprKind::Quantifier { variables, body, .. } => {
-            let pushed = push_binder(scope, variables);
+            let pushed = scope.push_declarations(variables);
             resolve_in_data_expr(body, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
         DataExprKind::Unary { expr, .. } => resolve_in_data_expr(expr, scope),
         DataExprKind::Binary { lhs, rhs, .. } => {
@@ -287,10 +312,10 @@ fn resolve_in_data_expr(expr: &mut DataExpr, scope: &mut Scope) {
             }
             let pushed = assignments.len();
             for assignment in assignments.iter() {
-                scope.push((assignment.identifier.clone(), assignment.span.clone()));
+                scope.push(assignment.identifier.clone(), assignment.span.clone());
             }
             resolve_in_data_expr(expr, scope);
-            scope.truncate(scope.len() - pushed);
+            scope.pop(pushed);
         }
     }
 }

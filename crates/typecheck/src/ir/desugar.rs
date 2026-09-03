@@ -89,11 +89,7 @@ pub(crate) fn hoist_anonymous_structs(spec: &mut UntypedDataSpecification) {
     spec.sort_declarations.append(&mut hoister.fresh);
 }
 
-/// Hoists the anonymous structs on every `lambda`/`forall`/`exists`/set-bag-
-/// comprehension binder sort inside `expr`, in place — the expression-body
-/// counterpart of the declaration-position hoisting above: without this, a
-/// binder over an anonymous `struct` would be left with an unresolvable sort
-/// and its equation rejected rather than type checked.
+/// Hoists the anonymous structs on every `expr` in place.
 fn hoist_binder_sorts_in_place(hoister: &mut Hoister, expr: &mut DataExpr) {
     expr.transform(|expr| match &mut expr.node {
         DataExprKind::SetBagComp { variable, predicate: _ } => {

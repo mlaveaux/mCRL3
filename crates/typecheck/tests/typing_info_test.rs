@@ -69,7 +69,6 @@ fn test_hovering_each_side_of_an_upcast_equation_shows_its_own_sort() {
     assert_eq!(hover(text, "1;"), "Pos");
 }
 
-
 #[test]
 fn test_hovering_a_numeric_operator_resolves_to_its_system_mapping() {
     // `+` on a concrete numeric sort resolves to a real Appendix-B mapping overload (`+: Pos #
