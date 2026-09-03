@@ -84,7 +84,7 @@ following publication:
 
   > Maurice Laveaux, Wieger Wesselink, Tim A.C. Willemse, *On-The-Fly Solving
   > for Symbolic Parity Games*, TACAS 2022, LNCS 13244, pp. 137-155.
-  > https://doi.org/10.1007/978-3-030-99527-0_8
+  > [DOI](https://doi.org/10.1007/978-3-030-99527-0_8)
 
 ## Safety
 

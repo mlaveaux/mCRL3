@@ -244,7 +244,7 @@ impl SymbolicParityGame {
     /// `alpha`-owned vertices in `search_space` with *any* edge into `u` are
     /// pulled in outright; `¬alpha`-owned vertices are pulled in only once
     /// *every* edge leaving them lands inside the attractor.
-    /// 
+    ///
     /// `search_space` bounds where candidates are looked for; `outside` bounds
     /// what a `¬alpha` candidate must have no edge into.
     ///

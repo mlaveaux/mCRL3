@@ -23,10 +23,7 @@ pub type RecursionProgress = TimeProgress<(usize, usize)>;
 /// The winning sets of both players in a symbolic parity game, indexed by [`Player::to_index`].
 ///
 /// `strategy[Player::to_index()]` is `None` unless the [`SymbolicParityGame`] this solution was
-/// computed for was built with `compute_strategy: true`; when present, it is that player's
-/// winning strategy over the doubled, interleaved global vector `[from_0, to_0, from_1, to_1, …]`
-/// (see [`SymbolicParityGame::apply_strategy`]). Both entries are always `Some` together, or
-/// `None` together, matching whether `compute_strategy` was set.
+/// computed for was built with `compute_strategy: true`.
 pub struct SymbolicSolution {
     pub winning: [LDDFunction; 2],
     pub strategy: [Option<LDDFunction>; 2],
@@ -54,8 +51,8 @@ pub(crate) fn includes(winning: &LDDFunction, vertex: &LDDFunction) -> Result<bo
     Ok(vertex.minus(winning)?.is_empty())
 }
 
-/// The problem instance every on-the-fly solving entry point in this module and
-/// [`crate::symbolic::partial_solve`] operates over.
+/// An extended parity game, which includes the initial vertex and the deadlock
+/// vertices (sinks).
 pub struct ExtendedParityGame {
     /// The symbolic parity game to solve.
     pub game: SymbolicParityGame,
