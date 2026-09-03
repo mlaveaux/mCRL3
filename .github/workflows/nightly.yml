@@ -22,12 +22,18 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:        
-    - name: Install Ubuntu Dependencies
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: libfontconfig1-dev, libfreetype6-dev
-        version: 1.0
+    - name: Cache APT packages
       if: matrix.os == 'ubuntu-latest'
+      uses: actions/cache@v5
+      with:
+        path: /var/cache/apt/archives/*.deb
+        key: apt-${{ runner.os }}-fontconfig-freetype-v1
+
+    - name: Install Ubuntu Dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libfontconfig1-dev libfreetype6-dev
 
     - name: Setup sccache
       uses: mozilla-actions/sccache-action@v0.0.11    

@@ -32,11 +32,16 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Install Ubuntu Dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+      - name: Cache APT packages
+        uses: actions/cache@v5
         with:
-          packages: build-essential, cmake, git, grcov, libboost-dev, libfontconfig1-dev, libfreetype6-dev
-          version: 1.0
+          path: /var/cache/apt/archives/*.deb
+          key: apt-${{ runner.os }}-doc-build-deps-v1
+
+      - name: Install Ubuntu Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git grcov libboost-dev libfontconfig1-dev libfreetype6-dev
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.11
