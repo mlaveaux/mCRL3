@@ -216,6 +216,19 @@ fn test_assignment_to_an_unknown_parameter_is_rejected() {
 
 #[test]
 #[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_duplicate_assignment_target_in_instantiation_is_rejected() {
+    // mCRL2: test_double_variable_assignment_in_process. `v` is assigned twice in the same
+    // instantiation; unlike test_assignment_form_instantiation_may_omit_parameters (leaving a
+    // parameter unassigned is fine), assigning the same one twice never makes sense.
+    let error = check_err("proc X(v: Bool) = tau . X(v = true, v = false); init X(true);");
+    assert!(
+        matches!(error, ProcessError::DuplicateAssignment { .. }),
+        "got {error:?}"
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_anonymous_struct_in_action_declaration_is_rejected() {
     let error = check_err("act a: struct x | y; init a(x);");
     assert!(

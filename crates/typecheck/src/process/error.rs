@@ -30,6 +30,8 @@ pub enum ProcessError {
     ActionAndProcessConflict { name: String, span: Span },
     #[error("the parameter '{name}' of process '{process}' is declared more than once")]
     DuplicateProcessParameter { process: String, name: String, span: Span },
+    #[error("the parameter '{name}' of process '{process}' is assigned more than once")]
+    DuplicateAssignment { process: String, name: String, span: Span },
     #[error("the global variable '{name}' is declared more than once")]
     DuplicateGlobalVariable { name: String, span: Span },
 
@@ -88,6 +90,7 @@ impl ProcessError {
             ProcessError::AnonymousStructInDeclaration { span }
             | ProcessError::ActionAndProcessConflict { span, .. }
             | ProcessError::DuplicateProcessParameter { span, .. }
+            | ProcessError::DuplicateAssignment { span, .. }
             | ProcessError::DuplicateGlobalVariable { span, .. }
             | ProcessError::UndeclaredActionOrProcess { span, .. }
             | ProcessError::NoMatchingOverload { span, .. }

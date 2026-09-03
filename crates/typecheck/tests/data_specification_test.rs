@@ -6,6 +6,7 @@ use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification;
+use merc_typecheck::InferenceError;
 use merc_typecheck::WellTypedError;
 use merc_utilities::random_test;
 use rand::Rng;
@@ -364,6 +365,165 @@ fn test_many_aliases_to_nat_and_struct() {
          H_t = Nat; I_t = Nat; J_t = Nat; K_t = Nat; L_t = Nat; M_t = Nat; N_t = Nat; O_t = Nat;
          S_t = struct s(a: A_t, b: B_t, c: C_t, d: D_t, e: E_t, f: F_t, g: G_t, h: H_t,
                         i: I_t, j: J_t, k: K_t, l: L_t, m: M_t, n: N_t, o: O_t);",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_list_concat_of_element_and_list_is_rejected() {
+    match check_err("map place: List(Nat) -> List(Nat); var l: List(Nat); eqn place(l) = head(l) ++ tail(l);") {
+        WellTypedError::Inference(InferenceError::NoTyping { .. }) => {}
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_list_concat_of_two_lists_is_accepted() {
+    check(
+        "map place: List(Nat) -> List(Nat); var l: List(Nat); eqn place(l) = l ++ tail(l);",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_mapping_named_like_a_system_function_prefix_is_accepted() {
+    check("sort S = struct c; map succ_: S -> S; eqn succ_(c) = c;", true);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_two_parameter_mapping_over_distinct_abstract_sorts_is_accepted() {
+    check(
+        "sort S, T; map count_: S # T -> Nat; var x: S; y: T; eqn count_(x, y) = 0;",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_one_parameter_mapping_over_an_abstract_sort_is_accepted() {
+    check("sort S; map count_: S -> Nat; var x: S; eqn count_(x) = 0;", true);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_redeclaring_the_system_count_function_is_rejected() {
+    match check_err("map count: Pos # Bag(Pos) -> Nat; map f: Nat -> Pos; map g: Nat; eqn g = count(3, {3:4});") {
+        WellTypedError::SystemFunctionRedeclared { name, .. } => assert_eq!(name, "count"),
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_constructor_for_the_built_in_bool_sort_is_rejected() {
+    match check_err("cons maybe: Bool;") {
+        WellTypedError::ConstructorForBasicSort { constructor, sort, .. } => {
+            assert_eq!(constructor, "maybe");
+            assert_eq!(sort, "Bool");
+        }
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_struct_projection_applied_inside_a_lambda_argument_is_accepted() {
+    check(
+        "sort S = struct c(proj: Int);
+         map  f: (S -> Bool) # S -> S;
+         var  pre: S -> Bool;
+              s: S;
+         eqn  f(pre, s) = s;
+         map  g: S;
+         eqn  g = f(lambda x: S. proj(x) < 0, c(0));",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_struct_projection_named_x_applied_inside_a_lambda_argument_is_accepted() {
+    check(
+        "sort S = struct c(x: Int);
+         map  f: (S -> Bool) # S -> S;
+         var  pre: S -> Bool;
+              s: S;
+         eqn  f(pre, s) = s;
+         map  g: S;
+         eqn  g = f(lambda i: S. x(i) < 0, c(0));",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_constant_mapping_passed_to_another_mapping_is_accepted() {
+    check(
+        "map const: Pos; f: Nat -> Pos;
+         eqn  const = 10;
+         map  g: Pos;
+         eqn  g = f(const);",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_pos_literal_upcasts_to_real_in_an_addition() {
+    check(
+        "sort T = Real;
+         map  x: List(T) -> List(T);
+         var  l: List(T);
+              r: T;
+         eqn  x(r |> l) = (r + 0) |> l;",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_unapplied_function_as_a_set_comprehension_body_is_rejected() {
+    match check_err("map b: Bool # Pos -> Nat; map s: Set(Nat); eqn s = { n: Nat | b };") {
+        WellTypedError::Inference(InferenceError::NoTyping { .. }) => {}
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_unapplied_function_as_an_equation_condition_is_rejected() {
+    match check_err("map b: Bool # Pos -> Nat; map n: Nat; eqn b -> n = 0;") {
+        WellTypedError::Inference(InferenceError::ConditionNotBool { condition, .. }) => {
+            assert_eq!(condition, "b");
+        }
+        other => panic!("unexpected error {other}"),
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_constant_mapping_upcasts_from_pos_to_nat() {
+    check("map const: Pos; eqn const = 10; map g: Nat; eqn g = const;", true);
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_constant_mapping_round_trips_through_pos_nat_conversions() {
+    check(
+        "map const: Pos; eqn const = 10; map g: Nat; eqn g = Nat2Pos(Pos2Nat(const));",
+        true,
+    );
+}
+
+#[test]
+#[cfg_attr(miri, ignore)] // Test is too slow under miri
+fn test_constant_mapping_converted_from_pos_to_nat() {
+    check(
+        "map const: Pos; eqn const = 10; map g: Nat; eqn g = Pos2Nat(const);",
         true,
     );
 }

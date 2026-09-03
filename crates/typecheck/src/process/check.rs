@@ -406,6 +406,7 @@ fn check_one_instantiation(
     process: &str,
     typing: &mut TypingInfo,
 ) -> Result<(), ProcessError> {
+    let mut assigned: Vec<&str> = Vec::with_capacity(assignments.len());
     for assignment in assignments {
         let Some(&(_, sort)) = params.iter().find(|(param, _)| *param == assignment.identifier) else {
             return Err(ProcessError::UnknownProcessParameter {
@@ -414,6 +415,14 @@ fn check_one_instantiation(
                 span: assignment.span.clone(),
             });
         };
+        if assigned.contains(&assignment.identifier.as_str()) {
+            return Err(ProcessError::DuplicateAssignment {
+                process: process.to_string(),
+                name: assignment.identifier.clone(),
+                span: assignment.span.clone(),
+            });
+        }
+        assigned.push(&assignment.identifier);
         check_expression_against::<ProcessError>(data, scope, &assignment.expr, sort, typing)?;
     }
     Ok(())
