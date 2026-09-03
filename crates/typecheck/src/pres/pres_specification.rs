@@ -116,7 +116,7 @@ pub(super) struct DeclarationTables {
     pub(super) global_sorts: Vec<ResolvedSortId>,
     /// Resolved `(name, sort)` parameters of each equation, parallel to `spec.equations`.
     pub(super) equation_params: Vec<Vec<(String, ResolvedSortId)>>,
-    /// `spec.equations[i].variable.span`, parallel to `equation_params` — mirrors
+    /// `spec.equations[i].variable.identifier.span`, parallel to `equation_params` — mirrors
     /// `crate::pbes::pbes_specification::DeclarationTables::equation_decl_spans`.
     pub(super) equation_decl_spans: Vec<Span>,
     /// Propositional-variable name -> index into `spec.equations`/`equation_params`. A single
@@ -148,7 +148,7 @@ impl DeclarationTables {
             for param in &eqn.variable.parameters {
                 if !seen.insert(param.identifier.as_str()) {
                     return Err(PresError::DuplicateEquationParameter {
-                        equation: eqn.variable.identifier.clone(),
+                        equation: eqn.variable.identifier.node.clone(),
                         name: param.identifier.clone(),
                         span: param.span.clone(),
                     });
@@ -158,16 +158,16 @@ impl DeclarationTables {
             }
 
             if equations_by_name
-                .insert(eqn.variable.identifier.clone(), index)
+                .insert(eqn.variable.identifier.node.clone(), index)
                 .is_some()
             {
                 return Err(PresError::DuplicatePropositionalVariable {
-                    name: eqn.variable.identifier.clone(),
-                    span: eqn.variable.span.clone(),
+                    name: eqn.variable.identifier.node.clone(),
+                    span: eqn.variable.identifier.span.clone(),
                 });
             }
             equation_params.push(params);
-            equation_decl_spans.push(eqn.variable.span.clone());
+            equation_decl_spans.push(eqn.variable.identifier.span.clone());
         }
 
         Ok(DeclarationTables {

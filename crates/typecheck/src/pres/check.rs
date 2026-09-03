@@ -20,21 +20,30 @@ use crate::checking::Scope;
 use crate::checking::check_expression_against;
 use crate::checking::collect_binder_sorts;
 use crate::declared_span;
+use crate::lsp_info;
 
 use super::PresError;
 use super::pres_specification::DeclarationTables;
 use super::pres_specification::resolve_declared_sort;
 
-/// Checks every equation's `formula` and `init` in `spec` against `tables` (already built by
-/// [`super::pres_specification::DeclarationTables::build`], which resolved every declared sort —
-/// global variables' and each equation's own parameters'), returning every checked expression's
-/// merged [`TypingInfo`] in declaration order.
+/// Checks a PRES specification against the declared sorts, returning the merged
+/// typing information.
 pub(super) fn check_pres_specification(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
     spec: &UntypedPres,
 ) -> Result<TypingInfo, PresError> {
     let mut typing = TypingInfo::default();
+    let mut sort_references = Vec::new();
+
+    for decl in &spec.global_variables {
+        lsp_info::collect_sort_name_references(&decl.sort, &mut sort_references);
+    }
+    for eqn in &spec.equations {
+        for param in &eqn.variable.parameters {
+            lsp_info::collect_sort_name_references(&param.sort, &mut sort_references);
+        }
+    }
 
     let globals: Vec<(Span, ResolvedSortId)> = spec
         .global_variables
@@ -53,7 +62,7 @@ pub(super) fn check_pres_specification(
                 .zip(params)
                 .map(|(decl, &(_, sort))| (decl.span.clone(), sort)),
         );
-        collect_scope(data, &eqn.formula, &mut scope)?;
+        collect_scope(data, &eqn.formula, &mut scope, &mut sort_references)?;
         check_pres_expr(data, tables, &scope, &eqn.formula, &mut typing)?;
     }
 
@@ -61,39 +70,39 @@ pub(super) fn check_pres_specification(
     // scope = globals only, since it sits outside every equation's own parameter scope.
     check_prop_var_inst(data, tables, &globals, &spec.init, &mut typing)?;
 
+    lsp_info::push_sort_references(data, &sort_references, &mut typing);
     Ok(typing)
 }
 
-/// Resolves the declared sort of every `Bound` (`inf`/`sup`/`sum`) binder in `expr`, extending
-/// `scope` with each — every variable occurrence in `expr` already names its own declaration's
-/// span (`crate::resolve_pres_variables`), so this only needs to run once, before checking any of
-/// `expr`'s leaves, not interleaved with the check walk itself.
+/// Collects the scope for a PRES expression, resolving the declared sorts of
+/// all `Bound` binders
 fn collect_scope(
     data: &mut DataSpecification,
     expr: &PresExpr,
     scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
 ) -> Result<(), PresError> {
     match &expr.node {
         PresExprKind::True | PresExprKind::False | PresExprKind::DataValExpr(_) | PresExprKind::PropVarInst(_) => {
             Ok(())
         }
-        PresExprKind::Negation(inner) => collect_scope(data, inner, scope),
+        PresExprKind::Negation(inner) => collect_scope(data, inner, scope, sort_references),
         PresExprKind::Binary { lhs, rhs, .. } => {
-            collect_scope(data, lhs, scope)?;
-            collect_scope(data, rhs, scope)
+            collect_scope(data, lhs, scope, sort_references)?;
+            collect_scope(data, rhs, scope, sort_references)
         }
-        PresExprKind::Equal { body, .. } => collect_scope(data, body, scope),
+        PresExprKind::Equal { body, .. } => collect_scope(data, body, scope, sort_references),
         PresExprKind::Condition { lhs, then, else_, .. } => {
-            collect_scope(data, lhs, scope)?;
-            collect_scope(data, then, scope)?;
-            collect_scope(data, else_, scope)
+            collect_scope(data, lhs, scope, sort_references)?;
+            collect_scope(data, then, scope, sort_references)?;
+            collect_scope(data, else_, scope, sort_references)
         }
         PresExprKind::RightConstantMultiply { expr, .. } | PresExprKind::LeftConstantMultiply { expr, .. } => {
-            collect_scope(data, expr, scope)
+            collect_scope(data, expr, scope, sort_references)
         }
         PresExprKind::Bound { variables, expr, .. } => {
-            collect_binder_sorts(data, scope, variables, resolve_declared_sort)?;
-            collect_scope(data, expr, scope)
+            collect_binder_sorts(data, scope, sort_references, variables, resolve_declared_sort)?;
+            collect_scope(data, expr, scope, sort_references)
         }
     }
 }

@@ -3,19 +3,24 @@
 //! bounds, `dist` weights — against its own expected sort and its own enclosing variable scope,
 //! and accumulating each checked expression's [`TypingInfo`].
 //!
-//! By the time this runs, [`super::reparse`] has already fixed up every `Condition` the grammar
+//! By the time this runs, [`super::disambiguation`] has already fixed up every `Condition` the grammar
 //! misparsed because of mCRL2's `.`/`+` ambiguity (see its module doc comment and the crate
 //! README); this walk assumes every `Condition` it sees is already correctly shaped.
 
+use std::cmp::Ordering;
+
 use merc_syntax::ActionName;
 use merc_syntax::Assignment;
+use merc_syntax::CommExpr;
 use merc_syntax::DataExpr;
 use merc_syntax::ProcessExpr;
 use merc_syntax::ProcessExprKind;
+use merc_syntax::Rename;
 use merc_syntax::Span;
 use merc_syntax::UntypedProcessSpecification;
 
 use crate::DataSpecification;
+use crate::DisplaySortContext;
 use crate::ResolvedName;
 use crate::ResolvedSortId;
 use crate::TypingInfo;
@@ -23,21 +28,35 @@ use crate::checking::Scope;
 use crate::checking::check_expression_against;
 use crate::checking::collect_binder_sorts;
 use crate::declared_span;
+use crate::lsp_info;
 
 use super::ProcessError;
 use super::process_specification::DeclarationTables;
 use super::process_specification::resolve_declared_sort;
 
-/// Checks every `proc` body and `init` in `spec` against `tables` (already built by
-/// [`super::process_specification::DeclarationTables::build`], which resolved every declared
-/// sort — actions' argument sorts, processes' parameter sorts, and global variables'), returning
-/// every checked expression's merged [`TypingInfo`] in declaration order.
+/// Checks a process specification against the declared sorts, returning the
+/// merged typing information.
 pub(super) fn check_process_specification(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
     spec: &UntypedProcessSpecification,
 ) -> Result<TypingInfo, ProcessError> {
     let mut typing = TypingInfo::default();
+    let mut sort_references = Vec::new();
+
+    for decl in &spec.action_declarations {
+        for sort in &decl.args {
+            lsp_info::collect_sort_name_references(sort, &mut sort_references);
+        }
+    }
+    for decl in &spec.process_declarations {
+        for param in &decl.params {
+            lsp_info::collect_sort_name_references(&param.sort, &mut sort_references);
+        }
+    }
+    for decl in &spec.global_variables {
+        lsp_info::collect_sort_name_references(&decl.sort, &mut sort_references);
+    }
 
     let globals: Vec<(Span, ResolvedSortId)> = spec
         .global_variables
@@ -56,55 +75,55 @@ pub(super) fn check_process_specification(
                 .zip(params)
                 .map(|(decl, &(_, sort))| (decl.span.clone(), sort)),
         );
-        collect_scope(data, &proc_decl.body, &mut scope)?;
+        collect_scope(data, &proc_decl.body, &mut scope, &mut sort_references)?;
         check_process_expr(data, tables, &scope, &proc_decl.body, &mut typing)?;
     }
 
     if let Some(init) = &spec.init {
         let mut scope = globals.clone();
-        collect_scope(data, init, &mut scope)?;
+        collect_scope(data, init, &mut scope, &mut sort_references)?;
         check_process_expr(data, tables, &scope, init, &mut typing)?;
     }
 
+    lsp_info::push_sort_references(data, &sort_references, &mut typing);
     Ok(typing)
 }
 
-/// Resolves the declared sort of every `sum`/`dist` binder in `expr`, extending `scope` with each
-/// — every variable occurrence in `expr` already names its own declaration's span
-/// (`crate::resolve_process_variables`), so this only needs to run once, before checking any of
-/// `expr`'s leaves, not interleaved with the check walk itself.
+/// Collects the scope for a process expression, resolving the declared sorts of
+/// all `sum`/`dist` binders.
 fn collect_scope(
     data: &mut DataSpecification,
     expr: &ProcessExpr,
     scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
 ) -> Result<(), ProcessError> {
     match &expr.node {
         ProcessExprKind::Delta | ProcessExprKind::Tau | ProcessExprKind::Action(..) | ProcessExprKind::Id(..) => Ok(()),
         ProcessExprKind::Sum { variables, operand } => {
-            collect_binder_sorts(data, scope, variables, resolve_declared_sort)?;
-            collect_scope(data, operand, scope)
+            collect_binder_sorts(data, scope, sort_references, variables, resolve_declared_sort)?;
+            collect_scope(data, operand, scope, sort_references)
         }
         ProcessExprKind::Dist { variables, operand, .. } => {
-            collect_binder_sorts(data, scope, variables, resolve_declared_sort)?;
-            collect_scope(data, operand, scope)
+            collect_binder_sorts(data, scope, sort_references, variables, resolve_declared_sort)?;
+            collect_scope(data, operand, scope, sort_references)
         }
         ProcessExprKind::Binary { lhs, rhs, .. } => {
-            collect_scope(data, lhs, scope)?;
-            collect_scope(data, rhs, scope)
+            collect_scope(data, lhs, scope, sort_references)?;
+            collect_scope(data, rhs, scope, sort_references)
         }
         ProcessExprKind::Condition { then, else_, .. } => {
-            collect_scope(data, then, scope)?;
+            collect_scope(data, then, scope, sort_references)?;
             match else_ {
-                Some(else_) => collect_scope(data, else_, scope),
+                Some(else_) => collect_scope(data, else_, scope, sort_references),
                 None => Ok(()),
             }
         }
-        ProcessExprKind::At { expr, .. } => collect_scope(data, expr, scope),
+        ProcessExprKind::At { expr, .. } => collect_scope(data, expr, scope, sort_references),
         ProcessExprKind::Hide { operand, .. }
         | ProcessExprKind::Block { operand, .. }
         | ProcessExprKind::Allow { operand, .. }
         | ProcessExprKind::Comm { operand, .. }
-        | ProcessExprKind::Rename { operand, .. } => collect_scope(data, operand, scope),
+        | ProcessExprKind::Rename { operand, .. } => collect_scope(data, operand, scope, sort_references),
     }
 }
 
@@ -178,6 +197,7 @@ fn check_process_expr(
             for c in comm {
                 check_action_names(tables, &c.from.actions, typing)?;
                 check_action_names(tables, std::slice::from_ref(&c.to), typing)?;
+                check_comm_sorts(data, tables, c)?;
             }
             check_process_expr(data, tables, scope, operand, typing)
         }
@@ -185,6 +205,7 @@ fn check_process_expr(
             for r in renames {
                 check_action_names(tables, std::slice::from_ref(&r.from), typing)?;
                 check_action_names(tables, std::slice::from_ref(&r.to), typing)?;
+                check_rename_sorts(data, tables, r)?;
             }
             check_process_expr(data, tables, scope, operand, typing)
         }
@@ -209,7 +230,7 @@ enum Candidate {
 /// must never reach `typing`, since it would otherwise misreport a sort for the wrong overload at
 /// the same span. On success, also pushes a [`ResolvedName::Action`]/[`ResolvedName::Process`] at
 /// `name`'s own span (not `span`, the whole `name(args)` node) — the winning candidate identifies
-/// exactly which declaration `name` names, the same way `typing_info::resolved_name` already picks
+/// exactly which declaration `name` names, the same way `lsp_info::resolved_name` already picks
 /// a `Constructor`/`Mapping` declaration by its resolved overload.
 fn check_action_or_process(
     data: &mut DataSpecification,
@@ -429,4 +450,178 @@ fn check_action_names(
         );
     }
     Ok(())
+}
+
+/// Checks that `comm`'s combined actions have a jointly compatible sort.
+///
+/// Called after [`check_action_names`] has already confirmed every name `comm` mentions is
+/// declared, so every name here has at least one candidate overload.
+fn check_comm_sorts(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    comm: &CommExpr,
+) -> Result<(), ProcessError> {
+    let from_options: Vec<&[usize]> = comm
+        .from
+        .actions
+        .iter()
+        .map(|name| {
+            tables
+                .actions_by_name
+                .get(name.as_str())
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+        })
+        .collect();
+    let to_options: &[usize] = tables
+        .actions_by_name
+        .get(comm.to.as_str())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+
+    let mut chosen = Vec::with_capacity(from_options.len());
+    let mut reason = None;
+    if try_from_overloads(data, tables, &from_options, &mut chosen, to_options, &mut reason) {
+        return Ok(());
+    }
+
+    Err(ProcessError::IncompatibleCommunication {
+        lhs: comm
+            .from
+            .actions
+            .iter()
+            .map(|name| name.as_str())
+            .collect::<Vec<_>>()
+            .join("|"),
+        result: comm.to.node.clone(),
+        reason: reason.unwrap_or_else(|| "no declared overload combination matches".to_string()),
+        span: comm.to.span.clone(),
+    })
+}
+
+/// Backtracks over every combination of one overload per left-hand action name.
+fn try_from_overloads(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    remaining: &[&[usize]],
+    chosen: &mut Vec<usize>,
+    to_options: &[usize],
+    reason: &mut Option<String>,
+) -> bool {
+    let Some((options, rest)) = remaining.split_first() else {
+        for &to_index in to_options {
+            match combined_sort_matches(data, tables, chosen, to_index) {
+                Ok(()) => return true,
+                Err(message) => {
+                    reason.get_or_insert(message);
+                }
+            }
+        }
+        return false;
+    };
+
+    for &index in *options {
+        chosen.push(index);
+        let matched = try_from_overloads(data, tables, rest, chosen, to_options, reason);
+        chosen.pop();
+        if matched {
+            return true;
+        }
+    }
+    false
+}
+
+/// The `rename` counterpart of [`check_comm_sorts`].
+fn check_rename_sorts(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    rename: &Rename,
+) -> Result<(), ProcessError> {
+    let from_options: &[usize] = tables
+        .actions_by_name
+        .get(rename.from.as_str())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let to_options: &[usize] = tables
+        .actions_by_name
+        .get(rename.to.as_str())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+
+    let mut reason = None;
+    for &from_index in from_options {
+        for &to_index in to_options {
+            match combined_sort_matches(data, tables, std::slice::from_ref(&from_index), to_index) {
+                Ok(()) => return Ok(()),
+                Err(message) => {
+                    reason.get_or_insert(message);
+                }
+            }
+        }
+    }
+
+    Err(ProcessError::IncompatibleRename {
+        from: rename.from.node.clone(),
+        to: rename.to.node.clone(),
+        reason: reason.unwrap_or_else(|| "no declared overload combination matches".to_string()),
+        span: rename.to.span.clone(),
+    })
+}
+
+/// Checks one concrete choice of overloads.
+fn combined_sort_matches(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    from_indices: &[usize],
+    to_index: usize,
+) -> Result<(), String> {
+    let to_domain = &tables.action_domains[to_index];
+    let arity = to_domain.len();
+    if let Some(&mismatched) = from_indices
+        .iter()
+        .find(|&&index| tables.action_domains[index].len() != arity)
+    {
+        return Err(format!(
+            "one action takes {} parameter(s), another takes {arity}",
+            tables.action_domains[mismatched].len(),
+        ));
+    }
+
+    let mut failure: Option<(usize, ResolvedSortId, ResolvedSortId)> = None;
+    {
+        let (ctx, _, _) = data.context_and_specs_mut();
+        'positions: for (position, &expected) in to_domain.iter().enumerate() {
+            let mut joined = tables.action_domains[from_indices[0]][position];
+            for &index in &from_indices[1..] {
+                let candidate = tables.action_domains[index][position];
+                joined = match ctx.sorts.join(joined, candidate) {
+                    Some(sort) => sort,
+                    None => {
+                        failure = Some((position, joined, candidate));
+                        break 'positions;
+                    }
+                };
+            }
+            match ctx.sorts.partial_cmp(joined, expected) {
+                Some(Ordering::Less | Ordering::Equal) => {}
+                _ => {
+                    failure = Some((position, joined, expected));
+                    break;
+                }
+            }
+        }
+    }
+
+    match failure {
+        None => Ok(()),
+        Some((position, lhs, rhs)) => {
+            let (ctx, spec, system) = data.context_and_specs_mut();
+            Err(format!(
+                "parameter {} has sort '{}', which is not compatible with '{}'",
+                position + 1,
+                DisplaySortContext::new(ctx, spec, system, lhs),
+                DisplaySortContext::new(ctx, spec, system, rhs),
+            ))
+        }
+    }
 }

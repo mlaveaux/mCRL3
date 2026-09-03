@@ -75,6 +75,8 @@ pub use syntax_tree::ProcDecl;
 pub use syntax_tree::ProcExprBinaryOp;
 pub use syntax_tree::ProcessExpr;
 pub use syntax_tree::ProcessExprKind;
+pub use syntax_tree::ProcessName;
+pub use syntax_tree::PropVarDecl;
 pub use syntax_tree::PropVarInst;
 pub use syntax_tree::PropVarInstData;
 pub use syntax_tree::PropVarName;

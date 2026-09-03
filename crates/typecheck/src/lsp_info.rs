@@ -1,31 +1,54 @@
-//! Public typing and name-resolution information for a checked data specification, keyed by
-//! [`Span`] rather than [`crate::ExprId`]: `ExprId` is assigned over the *lowered* expression
-//! tree and can contain nodes with no counterpart in the original `DataExpr` a caller parsed, so
-//! it cannot be reconstructed externally.
+//! Public typing and name-resolution information for a checked specification,
+//! keyed by [`Span`] rather than [`crate::ExprId`]: `ExprId` is assigned over
+//! the *lowered* expression tree and can contain nodes with no counterpart in
+//! the original `DataExpr` a caller parsed, so it cannot be reconstructed
+//! externally.
+//!
+//! This module this deliberately kept apart from the rest of the crate:
+//! everything else here is the type checker proper (sort resolution, signature
+//! building, inference, lowering), while [`TypingInfo`] is a read-only
+//! projection of what that pipeline already decided, re-keyed by source
+//! position instead of by whichever internal id each phase happens to use. A
+//! caller outside this crate only ever needs
+//! [`TypingInfo`]/[`TypedNode`]/[`ResolvedName`], never the machinery that
+//! builds them.
 //!
 //! # Caveats
 //!
-//! - A node synthesized during lowering has no span of its own and inherits the span of the whole
-//!   surface expression it was lowered from — so more than one [`TypedNode`] can share a span; see
-//!   [`TypingInfo::at_offset`]'s tie-break rule.
-//! - [`TypedNode::sort`] is *reconstructed* from the resolved sort the type checker interned, not
-//!   read from a declaration. It always carries [`Span::default`]: a resolved sort has no reliable
-//!   source location of its own — name resolution and alias normalization both discard or
-//!   relocate a [`SortExpression`]'s original span. Do not read source positions out of it.
-//! - `TypedNode::sort` is `None` for a node with no data sort at all — currently only an
-//!   [`ResolvedName::Action`]/[`ResolvedName::Process`] occurrence (`ProcessExprKind::Action`/
-//!   `Id`'s own name span): mCRL2 gives an action/process reference no data-expression sort to
-//!   report (its declared argument sorts are a *domain*, not a value sort), unlike every other
-//!   `TypedNode`, which is always built from a checked [`merc_syntax::DataExpr`] and so always has
-//!   one.
+//! - A node synthesized during lowering has no span of its own and inherits the
+//!   span of the whole surface expression it was lowered from — so more than
+//!   one [`TypedNode`] can share a span; see [`TypingInfo::at_offset`]'s
+//!   tie-break rule.
+//! - [`TypedNode::sort`] is *reconstructed* from the resolved sort the type
+//!   checker interned, not read from a declaration. It always carries
+//!   [`Span::default`]: a resolved sort has no reliable source location of its
+//!   own — name resolution and alias normalization both discard or relocate a
+//!   [`SortExpression`]'s original span. Do not read source positions out of
+//!   it. A sort *reference* (as opposed to the inferred sort of a
+//!   data-expression node) is a different thing entirely — see
+//!   [`ResolvedName::Sort`] — and its own span is exactly the occurrence's own
+//!   source position, since it's captured before normalization ever touches it.
+//! - `TypedNode::sort` is `None` for a node with no data sort at all — an
+//!   [`ResolvedName::Action`]/[`ResolvedName::Process`] occurrence
+//!   (`ProcessExprKind::Action`/ `Id`'s own name span): mCRL2 gives an
+//!   action/process reference no data-expression sort to report (its declared
+//!   argument sorts are a *domain*, not a value sort) — or a
+//!   [`ResolvedName::Sort`] occurrence, which isn't a data expression at all —
+//!   unlike every other `TypedNode`, which is always built from a checked
+//!   [`merc_syntax::DataExpr`] and so always has one.
 
 use std::collections::HashMap;
+use std::convert::Infallible;
+use std::ops::ControlFlow;
 
 use merc_syntax::ConstructorId;
+use merc_syntax::DataExpr;
+use merc_syntax::DataExprKind;
 use merc_syntax::MapId;
 use merc_syntax::SortExpression;
 use merc_syntax::SortExpressionKind;
 use merc_syntax::Span;
+use merc_syntax::Traverse;
 use merc_syntax::UntypedDataSpecification;
 
 use crate::DataSpecification;
@@ -125,9 +148,36 @@ pub enum ResolvedName {
     /// [`ResolvedName::Action::declaration`]'s counterpart in `check_action_or_process`.
     PropositionalVariable {
         name: String,
-        /// The equation's own declaration span (`X(n: Nat)`, not just `X`) — see
-        /// [`ResolvedName::Process::declaration`], which this mirrors. `None` only for a
-        /// declaration with no real span, which should not arise in practice.
+        /// See [`ResolvedName::Action::declaration`].
+        declaration: Option<Span>,
+    },
+    /// A sort-name reference: `D` in `map f: D -> D;`, on the right-hand side of a `sort E = D;`
+    /// alias, a `struct`'s own field sort, a `List(D)`'s parameter, or a `sum`/`dist`/quantifier/
+    /// `lambda`/comprehension binder's declared sort — anywhere a user writes a sort *by name*.
+    ///
+    /// Every built-in (`Bool`, `Nat`, `List`, …) parses straight to its own dedicated
+    /// [`SortExpressionKind`] variant, never a named `Reference`/`Resolved`, so there is nothing
+    /// to report for one — a [`ResolvedName::Sort`] node is only ever produced for a name that
+    /// refers to a user's own `sort` declaration, unlike every other `ResolvedName` variant, which
+    /// can report a symbol declared only on the system-defined specification
+    /// ([`ResolvedName::SystemDefined`]).
+    ///
+    /// Unlike [`ResolvedName::Constructor`]/[`ResolvedName::Mapping`], a sort name is never
+    /// overloaded — mCRL2 has one flat sort namespace — so resolving one needs no accompanying
+    /// resolved-sort key the way `Op` resolution does.
+    ///
+    /// Captured and pushed directly via [`TypingInfo::push`], the same way as
+    /// [`ResolvedName::Action`]/[`ResolvedName::Process`]/[`ResolvedName::PropositionalVariable`]:
+    /// a sort name never appears inside a checked `DataExpr`, only in a declaration's own
+    /// signature, so [`build`] itself never produces one. See
+    /// [`collect_sort_name_references`]/[`push_sort_references`] for where every occurrence is
+    /// gathered from, and [`crate::DataSpecification::from_untyped_with`] for *why* the
+    /// data-specification half of that gathering has to run before alias normalization touches
+    /// the tree.
+    Sort {
+        name: String,
+        /// The declaring `sort` block's own span. `None` only for a declaration with no real
+        /// span, which should not arise in practice — see [`ResolvedName::Constructor::declaration`].
         declaration: Option<Span>,
     },
 }
@@ -180,7 +230,8 @@ impl TypingInfo {
     }
 
     /// Records a single resolved name at `span` directly, with no backing `DataExpr`/sort — the
-    /// only way a [`ResolvedName::Action`]/[`ResolvedName::Process`] node is ever added, since
+    /// only way a [`ResolvedName::Action`]/[`ResolvedName::Process`]/
+    /// [`ResolvedName::PropositionalVariable`]/[`ResolvedName::Sort`] node is ever added, since
     /// [`build`] only ever sees the `DataExpr` half of a specification.
     pub(crate) fn push(&mut self, span: Span, name: ResolvedName) {
         self.nodes.push(TypedNode {
@@ -199,7 +250,7 @@ pub(crate) fn build(spec: &DataSpecification, typing: &EquationTyping) -> Typing
     debug_assert_eq!(
         typing.spans.len(),
         typing.sorts.len(),
-        "typing_info::build requires an EquationTyping built for EquationRole::User"
+        "lsp_info::build requires an EquationTyping built for EquationRole::User"
     );
 
     let index = DeclarationIndex::build(spec);
@@ -310,6 +361,140 @@ pub(crate) fn declared_span(span: &Span) -> Option<Span> {
     (*span != Span::default()).then(|| span.clone())
 }
 
+// ─── sort-name references (`ResolvedName::Sort`) ────────────────────────────
+//
+// Everything below gathers the raw material [`push_sort_references`] turns into
+// [`ResolvedName::Sort`] nodes. Two-phase, because a sort-name occurrence can live in either of
+// two places with very different lifetimes:
+//
+// - Inside the data specification's own declarations (`cons`/`map` signatures, a `var`-block, a
+//   sort alias's own right-hand side, an equation's own `lambda`/quantifier/comprehension binder)
+//   — [`collect_data_specification_sort_references`] gathers these, and *must* run before
+//   [`crate::normalize_sorts`] rewrites the tree in place (an alias reference is replaced by its
+//   own expansion, discarding both the reference's span and its name — see this module's caveat
+//   on why a resolved sort's span can't be trusted). [`crate::DataSpecification::from_untyped_with`]
+//   calls this at exactly the right point in its own pipeline and stashes the raw `(span, name)`
+//   pairs on `self` for [`crate::DataSpecification::typing_info`] to resolve once the
+//   specification (and its declaration spans, which normalization never touches) is final.
+// - Inside a process/PBES/PRES specification's own declarations (`act`/`proc` signatures, `glob`
+//   variables, every `sum`/`dist`/quantifier/`inf`/`sup` binder) — these live in a syntax tree
+//   `DataSpecification::from_untyped_with` never touches at all, so they can be gathered any time
+//   after parsing; `crate::checking::collect_binder_sorts` and each of
+//   `process`/`pbes`/`pres`'s own `check_*_specification` do so directly, once the whole
+//   specification (and so its final declaration spans) is available.
+
+/// Every `Reference`/`Resolved` leaf reachable in `sort`, appended to `out` as `(its own
+/// occurrence span, name)`. `sort`'s compound kinds (`Product`, `Function`, `FlattenedFunction`,
+/// `Complex`, `Struct`) are walked via [`Traverse`] until a named leaf is reached; `Simple`
+/// (`Bool`, `Nat`, …) never matches — see [`ResolvedName::Sort`]'s doc comment for why a built-in
+/// has nothing to report here.
+pub(crate) fn collect_sort_name_references(sort: &SortExpression, out: &mut Vec<(Span, String)>) {
+    sort.visit::<Infallible, _>(|node| {
+        match &node.node {
+            SortExpressionKind::Reference(name) | SortExpressionKind::Resolved(name, _) => {
+                out.push((node.span.clone(), name.clone()));
+            }
+            _ => {}
+        }
+        ControlFlow::Continue(())
+    });
+}
+
+/// Every sort-name reference reachable in `spec`'s own declarations: `cons`/`map` signatures, a
+/// `var`-block declaration, a sort alias's own right-hand side (including a `struct`'s field
+/// sorts — already flattened into fresh `cons`/`map` declarations by the time this runs, see
+/// [`crate::desugar_structured_sorts`], so no separate `Struct` case is needed here), and a
+/// `lambda`/quantifier/comprehension binder inside an equation. Does *not* cover
+/// `act`/`proc`/`glob`/`sum`/`dist`/PBES-or-PRES-binder sorts — see this section's own doc
+/// comment for where those are gathered instead.
+///
+/// Must be called before [`crate::normalize_sorts`] — see this section's doc comment.
+pub(crate) fn collect_data_specification_sort_references(spec: &UntypedDataSpecification) -> Vec<(Span, String)> {
+    let mut out = Vec::new();
+
+    for expr in spec.sort_declarations.iter().filter_map(|decl| decl.expr.as_ref()) {
+        collect_sort_name_references(expr, &mut out);
+    }
+    for decl in &spec.constructor_declarations {
+        collect_sort_name_references(&decl.sort, &mut out);
+    }
+    for decl in &spec.map_declarations {
+        collect_sort_name_references(&decl.sort, &mut out);
+    }
+    for eqn_spec in &spec.equation_declarations {
+        for var in &eqn_spec.variables {
+            collect_sort_name_references(&var.sort, &mut out);
+        }
+        for eqn in &eqn_spec.equations {
+            collect_data_expr_sort_references(&eqn.lhs, &mut out);
+            collect_data_expr_sort_references(&eqn.rhs, &mut out);
+            if let Some(condition) = &eqn.condition {
+                collect_data_expr_sort_references(condition, &mut out);
+            }
+        }
+    }
+
+    out
+}
+
+/// Every `lambda`/quantifier/comprehension binder's declared sort inside `expr`, appended to
+/// `out`. `Traverse` recurses into `expr`'s own `DataExpr` children for free; only the binder's
+/// own `sort` (an `IdDecl`, a different node type) needs handling at each matching node — mirrors
+/// `docs/name_resolution.md`'s pending TODO to consolidate this with
+/// `checking::collect_binder_sorts`, the equivalent walk for a `sum`/`dist`/quantifier binder
+/// *outside* the data specification.
+fn collect_data_expr_sort_references(expr: &DataExpr, out: &mut Vec<(Span, String)>) {
+    expr.visit::<Infallible, _>(|node| {
+        match &node.node {
+            DataExprKind::Lambda { variables, .. } | DataExprKind::Quantifier { variables, .. } => {
+                for var in variables {
+                    collect_sort_name_references(&var.sort, out);
+                }
+            }
+            DataExprKind::SetBagComp { variable, .. } => collect_sort_name_references(&variable.sort, out),
+            _ => {}
+        }
+        ControlFlow::Continue(())
+    });
+}
+
+/// Resolves each `(occurrence span, sort name)` pair in `references` against `spec`'s own sort
+/// declarations, pushing a [`ResolvedName::Sort`] node into `typing` for each. A name with no
+/// user declaration is silently skipped, never pushed with `declaration: None`: unlike
+/// `Op`/`Constructor`/`Mapping` resolution, a sort name captured by
+/// [`collect_sort_name_references`] is never a system-defined-only symbol — see
+/// [`ResolvedName::Sort`]'s doc comment — so a name genuinely missing here means the specification
+/// didn't actually type check (this function's callers only ever run once it did).
+///
+/// A sort name is never overloaded (mCRL2 has one flat sort namespace), so — unlike
+/// [`DeclarationIndex`] — this only needs a plain `name -> declaration span` map, built fresh per
+/// call; a caller pushing many references in one batch (every entry point today does) still pays
+/// for it only once.
+pub(crate) fn push_sort_references(spec: &DataSpecification, references: &[(Span, String)], typing: &mut TypingInfo) {
+    if references.is_empty() {
+        return;
+    }
+
+    let declared: HashMap<&str, Option<Span>> = spec
+        .data_specification()
+        .sort_declarations
+        .iter()
+        .map(|decl| (decl.identifier.as_str(), declared_span(&decl.span)))
+        .collect();
+
+    for (span, name) in references {
+        if let Some(declaration) = declared.get(name.as_str()).cloned() {
+            typing.push(
+                span.clone(),
+                ResolvedName::Sort {
+                    name: name.clone(),
+                    declaration,
+                },
+            );
+        }
+    }
+}
+
 /// Rebuilds `id` as a [`SortExpression`], so it can be displayed via its existing
 /// [`std::fmt::Display`] impl and so a `Def` sort carries a `DefId` a consumer can use for sort
 /// go-to-definition. Mirrors [`crate::lower_sort`]'s structural recursion (same crate, targeting
@@ -325,7 +510,7 @@ fn sort_expression(
     match ctx.sorts.get(id) {
         ResolvedSort::Unit => unreachable!(
             "Unit is only used for the sort of an action, never a data-expression sort, and \
-             typing_info only ever renders the sort of a data expression"
+             sort_expression only ever renders the sort of a data expression"
         ),
         ResolvedSort::Primitive(sort) => SortExpressionKind::Simple(*sort).into(),
         ResolvedSort::Generic { op, subsort } => {

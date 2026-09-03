@@ -22,7 +22,7 @@ use crate::TypingInfo;
 use crate::WellTypedError;
 use crate::infer_expression_in_scope;
 use crate::lower_data_expr;
-use crate::typing_info;
+use crate::lsp_info;
 
 /// Every declaration reachable from the `proc` body/PBES equation currently being checked —
 /// global variables, that declaration's own parameters, and every `sum`/`dist`/quantifier binder
@@ -60,21 +60,21 @@ where
     let lowered = prepare_expression::<E>(data, expr)?;
     let (ctx, spec, system) = data.context_and_specs_mut();
     let equation_typing = infer_expression_in_scope(ctx, spec, system, &lowered, scope, Some(expected))?;
-    typing.merge(typing_info::build(data, &equation_typing));
+    typing.merge(lsp_info::build(data, &equation_typing));
     Ok(())
 }
 
-/// Resolves each of `variables`' declared sorts, extending `scope` with `(declaration span,
-/// resolved sort)` for each — the shared leaf [`crate::process::check`]'s `Sum`/`Dist`,
-/// [`crate::pbes::check`]'s `Quantifier`, and [`crate::pres::check`]'s `Bound` scope collection
-/// calls into.
+/// Collects the sorts of the given binder variables, extending the current
+/// scope and recording sort references.
 pub(crate) fn collect_binder_sorts<E>(
     data: &mut DataSpecification,
     scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
     variables: &[IdDecl],
     mut resolve: impl FnMut(&mut DataSpecification, &SortExpression) -> Result<ResolvedSortId, E>,
 ) -> Result<(), E> {
     for var in variables {
+        lsp_info::collect_sort_name_references(&var.sort, sort_references);
         let sort = resolve(data, &var.sort)?;
         scope.push((var.span.clone(), sort));
     }

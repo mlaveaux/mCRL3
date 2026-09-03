@@ -1,5 +1,5 @@
-//! A semantic-aware reparse pass, public so it can run independently of type checking (see
-//! [`reparse_process_specification`]): mCRL2's concrete grammar shares tokens between the
+//! A semantic-aware disambiguation pass, public so it can run independently of type checking (see
+//! [`disambiguate_process_specification`]): mCRL2's concrete grammar shares tokens between the
 //! process algebra and the data language (most notably `.`, `+`, `||`), so a context-free parser
 //! can misparse a [`ProcessExprKind::Condition`]'s `condition` field — the one `DataExpr` slot in
 //! the process grammar with no delimiter bounding how far it extends — swallowing what should
@@ -15,7 +15,7 @@
 //! as, so [`super::check`]'s walk can then assume every `Condition` it sees is already correctly
 //! shaped.
 //!
-//! [`merc_syntax::Traverse::apply_mut`] drives the walk (see [`reparse_mut`]): only [`Condition`]
+//! [`merc_syntax::Traverse::apply_mut`] drives the walk (see [`disambiguate_mut`]): only [`Condition`]
 //! is special-cased, in [`fix_swallow`]; every other `ProcessExprKind` variant's own recursion
 //! into its children comes for free from `Traverse`'s generated per-type implementation.
 //!
@@ -43,8 +43,12 @@ struct Names(HashSet<String>);
 impl Names {
     fn build(spec: &UntypedProcessSpecification) -> Self {
         let mut names = HashSet::new();
-        names.extend(spec.action_declarations.iter().map(|decl| decl.identifier.clone()));
-        names.extend(spec.process_declarations.iter().map(|decl| decl.identifier.clone()));
+        names.extend(spec.action_declarations.iter().map(|decl| decl.identifier.node.clone()));
+        names.extend(
+            spec.process_declarations
+                .iter()
+                .map(|decl| decl.identifier.node.clone()),
+        );
         Names(names)
     }
 
@@ -54,18 +58,18 @@ impl Names {
 }
 
 /// Rewrites every `proc` body and `init` in `spec` in place, fixing every misparsed `Condition`
-/// this module's doc comment describes. Idempotent — see [`tests::reparse_is_idempotent`] and
-/// [`tests::reparse_is_idempotent_for_the_long_guarded_choice_chain`] — running it again on an
+/// this module's doc comment describes. Idempotent — see [`tests::disambiguation_is_idempotent`] and
+/// [`tests::disambiguation_is_idempotent_for_the_long_guarded_choice_chain`] — running it again on an
 /// already-fixed specification finds nothing left to rewrite, so a caller unsure whether a
 /// specification has already been through this pass can simply call it again rather than track
 /// that themselves.
-pub fn reparse_process_specification(spec: &mut UntypedProcessSpecification) {
+pub fn disambiguate_process_specification(spec: &mut UntypedProcessSpecification) {
     let names = Names::build(spec);
     for decl in &mut spec.process_declarations {
-        reparse_mut(&names, &mut decl.body);
+        disambiguate_mut(&names, &mut decl.body);
     }
     if let Some(init) = &mut spec.init {
-        reparse_mut(&names, init);
+        disambiguate_mut(&names, init);
     }
 }
 
@@ -74,21 +78,21 @@ pub fn reparse_process_specification(spec: &mut UntypedProcessSpecification) {
 /// `operand`, `Binary`'s `lhs`/`rhs`, …) generically — [`fix_swallow`] only has to know about
 /// `Condition` — top-down, so it always sees a not-yet-rewritten `then`/`else_` in its original,
 /// as-parsed shape, which the swallow it looks for needs (see [`fix_condition`]'s doc comment).
-fn reparse_mut(names: &Names, expr: &mut ProcessExpr) {
+fn disambiguate_mut(names: &Names, expr: &mut ProcessExpr) {
     match expr.apply_mut::<Infallible, _>(|node| Ok(fix_swallow(names, node))) {
         Ok(()) => {}
         Err(error) => match error {},
     }
 }
 
-/// See [`reparse_mut`]; for call sites (inside [`fix_condition`] and friends) that have an owned
+/// See [`disambiguate_mut`]; for call sites (inside [`fix_condition`] and friends) that have an owned
 /// `ProcessExpr` rather than a `&mut` one already in hand.
-fn reparse(names: &Names, mut expr: ProcessExpr) -> ProcessExpr {
-    reparse_mut(names, &mut expr);
+fn disambiguate(names: &Names, mut expr: ProcessExpr) -> ProcessExpr {
+    disambiguate_mut(names, &mut expr);
     expr
 }
 
-/// The [`Traverse::apply_mut`] callback [`reparse_mut`] drives: `None` for every `ProcessExpr`
+/// The [`Traverse::apply_mut`] callback [`disambiguate_mut`] drives: `None` for every `ProcessExpr`
 /// variant other than `Condition`, letting `Traverse`'s own generated recursion continue into
 /// that node's children unchanged. For a `Condition`, always clones and fully re-derives it via
 /// [`fix_condition`]. The replacement is not itself re-descended into by `Traverse` (see its doc
@@ -100,11 +104,11 @@ fn fix_swallow(names: &Names, node: &ProcessExpr) -> Option<ProcessExpr> {
     Some(fix_condition(names, condition.clone(), (**then).clone(), else_.clone()))
 }
 
-/// Fixes one `Condition` node. `then` is not yet reparsed — this function recurses into it
+/// Fixes one `Condition` node. `then` is not yet disambiguated — this function recurses into it
 /// itself, since the `+`/`||` swallow (see the module doc comment) needs to see it in its raw,
 /// as-parsed shape to recognize it: a bare `cond -> then` (no `<>`) leaves `then` unrestricted, so
 /// a further `+ cond2 -> ...` (or `|| cond2 -> ...`) can swallow straight into it (`take_swallow`'s
-/// job). `else_`, when present, is reparsed normally and re-attached to whichever clause
+/// job). `else_`, when present, is disambiguated normally and re-attached to whichever clause
 /// `condition`/`then` end up belonging to — it is *not* itself a place this swallow can start (an
 /// explicit `<>` always closes the construct it belongs to), but it must never be dropped,
 /// including when `then` did hide a swallow: a nested `if` inside `then` can have its own,
@@ -124,7 +128,7 @@ fn fix_condition(
     // run with no `->` of its own at all, up to the *one* `->` this construct actually has — see
     // `peel_condition`), then a leading `.`-prefix off whatever's left (the plain `.` case).
     let (branches, prefix, condition) = peel_condition(names, condition);
-    let else_ = else_.map(|boxed| Box::new(reparse(names, *boxed)));
+    let else_ = else_.map(|boxed| Box::new(disambiguate(names, *boxed)));
 
     let result = match take_swallow(names, then) {
         Ok((op, this_then, rest)) => {
@@ -153,7 +157,7 @@ fn fix_condition(
             .spanned(choice_span)
         }
         Err(then) => {
-            let this_then = reparse(names, *then);
+            let this_then = disambiguate(names, *then);
             let this_span = Span {
                 start: condition.span.start,
                 end: this_then.span.end,
@@ -241,7 +245,7 @@ fn peel_condition(
 /// If `node` is `Condition { condition: Binary { op, lhs, rhs }, then: inner_then, else_:
 /// inner_else }` with `op` a swallowed operator (see [`swallowed_op`]) and `lhs` pure declared
 /// process content (see [`is_fully_process_content`]), fixes and extracts it as `Ok((process_op,
-/// this_clause_content, rest))` — `rest` fully reparsed and ready to use as-is. Otherwise hands
+/// this_clause_content, rest))` — `rest` fully disambiguated and ready to use as-is. Otherwise hands
 /// `node` straight back, boxed, as `Err` (boxed only to keep this `Result` from ballooning to
 /// `ProcessExprKind`'s own size — clippy's `result_large_err`).
 ///
@@ -556,15 +560,15 @@ mod tests {
 
     use super::*;
 
-    fn reparsed_body(text: &str) -> ProcessExpr {
+    fn disambiguated_body(text: &str) -> ProcessExpr {
         let mut spec = UntypedProcessSpecification::parse(text).expect("the fixture should parse");
-        reparse_process_specification(&mut spec);
+        disambiguate_process_specification(&mut spec);
         spec.init.take().expect("the fixture always has an init")
     }
 
-    fn reparsed_proc_body(text: &str) -> ProcessExpr {
+    fn disambiguated_proc_body(text: &str) -> ProcessExpr {
         let mut spec = UntypedProcessSpecification::parse(text).expect("the fixture should parse");
-        reparse_process_specification(&mut spec);
+        disambiguate_process_specification(&mut spec);
         let decl = spec.process_declarations.pop().expect("the fixture always has a proc");
         decl.body
     }
@@ -573,7 +577,7 @@ mod tests {
     /// `act(args) . cond -> P <> Q` shape.
     #[test]
     fn dot_swallowed_action_prefix_is_recovered() {
-        let body = reparsed_body("act a: Nat; init a(1) . true -> delta;");
+        let body = disambiguated_body("act a: Nat; init a(1) . true -> delta;");
         let ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Sequence,
             lhs,
@@ -590,7 +594,7 @@ mod tests {
     /// condition.
     #[test]
     fn choice_swallowed_guarded_actions_are_recovered() {
-        let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);");
+        let body = disambiguated_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);");
         let ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Choice,
             lhs,
@@ -614,7 +618,7 @@ mod tests {
     /// followed by the real condition.
     #[test]
     fn parallel_swallowed_condition_is_recovered() {
-        let body = reparsed_body("act a; proc P = delta; init P || (true) -> a;");
+        let body = disambiguated_body("act a; proc P = delta; init P || (true) -> a;");
         let ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Parallel,
             lhs,
@@ -635,7 +639,7 @@ mod tests {
     /// both swallow shapes at once.
     #[test]
     fn three_way_choice_with_sequenced_actions_is_recovered() {
-        let body = reparsed_body(
+        let body = disambiguated_body(
             "act a: Nat; b: Nat; c: Nat; init (true) -> a(1) . b(1) + (false) -> a(2) . b(2) + (true) -> c(3);",
         );
         let ProcessExprKind::Binary {
@@ -689,7 +693,7 @@ mod tests {
     /// [`take_swallow`]'s doc comment.
     #[test]
     fn choice_directly_in_else_position_is_left_alone() {
-        let body = reparsed_proc_body(
+        let body = disambiguated_proc_body(
             "act jump, ready; proc X(f: Bool) = (f) -> jump . X(f) <> delta + (!f) -> ready . delta <> delta; init X(true);",
         );
         let ProcessExprKind::Condition { then, else_, .. } = &body.node else {
@@ -722,7 +726,7 @@ mod tests {
     /// actually attaches it.
     #[test]
     fn else_branch_survives_a_swallow_one_level_down() {
-        let body = reparsed_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);");
+        let body = disambiguated_body("act a: Nat; b: Nat; init (true) -> a(1) + (false) -> a(2) <> b(9);");
         let ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Choice,
             lhs: first,
@@ -749,7 +753,7 @@ mod tests {
     /// (not folded into `cond`'s own guard) *and* keep `c` as the `else_`.
     #[test]
     fn choice_directly_in_then_position_keeps_its_own_else() {
-        let body = reparsed_body("act a: Nat; b: Nat; c: Nat; init (true) -> a(1) + b(2) <> c(3);");
+        let body = disambiguated_body("act a: Nat; b: Nat; c: Nat; init (true) -> a(1) + b(2) <> c(3);");
         let ProcessExprKind::Condition { condition, then, else_ } = &body.node else {
             panic!("expected a Condition, got {body:?}");
         };
@@ -777,7 +781,7 @@ mod tests {
     /// + (t==A) -> s_read_turnA|label(true).Turn(A)`.
     #[test]
     fn unconditional_leading_branches_are_recovered() {
-        let body = reparsed_proc_body("act a, b, c; proc P = a.P + b.P + (true) -> c.P; init P;");
+        let body = disambiguated_proc_body("act a, b, c; proc P = a.P + b.P + (true) -> c.P; init P;");
         // The two unconditional branches (`a.P`, `b.P`) peel off together, in one `Add`-chain
         // piece, as a nested `Choice` of their own; the real, guarded clause (`c.P`) is the
         // right-hand side.
@@ -829,14 +833,14 @@ mod tests {
     /// action or process appears in it — must be left untouched.
     #[test]
     fn a_genuine_condition_using_at_and_plus_is_left_alone() {
-        let body = reparsed_body("sort L = List(Nat); init (([1,2,3] . 0) + 1 == 2) -> delta;");
+        let body = disambiguated_body("sort L = List(Nat); init (([1,2,3] . 0) + 1 == 2) -> delta;");
         assert!(matches!(&body.node, ProcessExprKind::Condition { .. }));
     }
 
     /// Nothing to fix at all: a plain, already-well-formed condition is unchanged.
     #[test]
     fn an_ordinary_condition_is_left_alone() {
-        let body = reparsed_body("init true -> delta;");
+        let body = disambiguated_body("init true -> delta;");
         let ProcessExprKind::Condition { condition, then, else_ } = &body.node else {
             panic!("expected a Condition, got {body:?}");
         };
@@ -851,7 +855,7 @@ mod tests {
     /// `actions`.
     #[test]
     fn hide_swallowed_guarded_choice_is_recovered() {
-        let body = reparsed_body("act a, b; proc P = delta; init hide({a}, P) + (true) -> b;");
+        let body = disambiguated_body("act a, b; proc P = delta; init hide({a}, P) + (true) -> b;");
         let ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Choice,
             lhs,
@@ -883,7 +887,7 @@ mod tests {
                 .is_err()
         );
 
-        let body = reparsed_body("act a, b; proc P = delta; init rename({a -> b}, P) + (true) -> b;");
+        let body = disambiguated_body("act a, b; proc P = delta; init rename({a -> b}, P) + (true) -> b;");
         let ProcessExprKind::Binary {
             op: ProcExprBinaryOp::Choice,
             lhs,
@@ -897,7 +901,7 @@ mod tests {
     }
 
     /// The fixture [`long_guarded_choice_chain_with_comments_is_recovered`] and
-    /// [`reparse_is_idempotent_for_the_long_guarded_choice_chain`] share: a long `is_x(state) ->
+    /// [`disambiguation_is_idempotent_for_the_long_guarded_choice_chain`] share: a long `is_x(state) ->
     /// (...) + is_y(state) -> (...) + ...` chain of eight guarded clauses, each `then` a
     /// parenthesized `.`/`+` mix, with a `%`-comment sitting between two clauses.
     const LONG_GUARDED_CHOICE_CHAIN: &str = r#"act _JobWrapper_initialize, _JobWrapper_transferInputSandbox, _JobWrapper_resolveInputData, _JobWrapper_execute, _JobWrapper_processJobOutputs, _JobWrapper_finalize, AppPayload;
@@ -986,7 +990,7 @@ init JobWrapper([],0);
     /// own `Condition`, in order, not swallow a neighboring clause.
     #[test]
     fn long_guarded_choice_chain_with_comments_is_recovered() {
-        let body = reparsed_proc_body(LONG_GUARDED_CHOICE_CHAIN);
+        let body = disambiguated_proc_body(LONG_GUARDED_CHOICE_CHAIN);
 
         // Flattens the top-level `Choice` spine, returning each clause's guard name (the
         // function name of its `Condition`'s `condition`, which is always a plain application
@@ -1031,14 +1035,14 @@ init JobWrapper([],0);
         );
     }
 
-    /// Reparsing an already-reparsed specification must find nothing left to rewrite. Covers every shape the
+    /// Disambiguating an already-disambiguated specification must find nothing left to rewrite. Covers every shape the
     /// tests above exercise (a dot-prefix swallow, a choice/parallel swallow, a swallow nested one
     /// level down inside `then`, `else_` surviving every which way, leading unconditional
     /// branches, `hide`/`rename`, and a genuine data condition that must be left alone) in one
-    /// pass; [`reparse_is_idempotent_for_the_long_guarded_choice_chain`] covers the long
+    /// pass; [`disambiguation_is_idempotent_for_the_long_guarded_choice_chain`] covers the long
     /// real-world chain separately, since it needs the whole `spec` (not one extracted body).
     #[test]
-    fn reparse_is_idempotent() {
+    fn disambiguation_is_idempotent() {
         let fixtures = [
             "act a: Nat; init a(1) . true -> delta;",
             "act a: Nat; b: Nat; init (true) -> a(1) + (false) -> b(2);",
@@ -1056,30 +1060,30 @@ init JobWrapper([],0);
 
         for text in fixtures {
             let mut spec = UntypedProcessSpecification::parse(text).expect("the fixture should parse");
-            reparse_process_specification(&mut spec);
+            disambiguate_process_specification(&mut spec);
             let once = spec.clone();
 
-            reparse_process_specification(&mut spec);
+            disambiguate_process_specification(&mut spec);
             assert_eq!(
                 spec, once,
-                "reparsing an already-reparsed specification must be a no-op for {text:?}"
+                "disambiguating an already-disambiguated specification must be a no-op for {text:?}"
             );
         }
     }
 
-    /// As [`reparse_is_idempotent`], for [`LONG_GUARDED_CHOICE_CHAIN`] — the fixture
+    /// As [`disambiguation_is_idempotent`], for [`LONG_GUARDED_CHOICE_CHAIN`] — the fixture
     /// [`long_guarded_choice_chain_with_comments_is_recovered`] also uses — on its own, since it
     /// needs the real `proc`/`init` split rather than one extracted body.
     #[test]
-    fn reparse_is_idempotent_for_the_long_guarded_choice_chain() {
+    fn disambiguation_is_idempotent_for_the_long_guarded_choice_chain() {
         let mut spec = UntypedProcessSpecification::parse(LONG_GUARDED_CHOICE_CHAIN).expect("the fixture should parse");
-        reparse_process_specification(&mut spec);
+        disambiguate_process_specification(&mut spec);
         let once = spec.clone();
 
-        reparse_process_specification(&mut spec);
+        disambiguate_process_specification(&mut spec);
         assert_eq!(
             spec, once,
-            "reparsing an already-reparsed specification must be a no-op"
+            "disambiguating an already-disambiguated specification must be a no-op"
         );
     }
 }

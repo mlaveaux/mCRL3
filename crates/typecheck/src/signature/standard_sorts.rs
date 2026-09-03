@@ -16,9 +16,7 @@ use crate::BASIC_SORT_NAMES;
 use crate::NumberEncoding;
 use crate::apply_sorts_in_spec;
 
-/// Parses a bundled `spec/*.mcrl2` file. The templates are compiled in, so a
-/// parse failure is a build defect, not a runtime condition — the statics
-/// below panic instead of threading a `Result` through every caller.
+/// Parses a bundled `spec/*.mcrl2` file..
 fn parse_template(text: &str) -> UntypedDataSpecification {
     UntypedDataSpecification::parse(text).expect("the bundled templates parse")
 }

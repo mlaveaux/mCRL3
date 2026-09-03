@@ -297,16 +297,21 @@ fn grouped_constructor_declarations_get_distinct_precise_spans() {
     assert_eq!(spans, ["c1", "c2"]);
 }
 
+/// Each `ActDecl` exploded out of a grouped `act a, b: Bool;` gets its own precise identifier
+/// span.
 #[test]
 fn grouped_action_declarations_get_distinct_precise_spans() {
     let text = "act a, b: Bool;";
     let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
-    let spans: Vec<&str> = spec
+    let identifier_spans: Vec<&str> = spec
         .action_declarations
         .iter()
-        .map(|decl| &text[decl.span.start..decl.span.end])
+        .map(|decl| &text[decl.identifier.span.start..decl.identifier.span.end])
         .collect();
-    assert_eq!(spans, ["a", "b"]);
+    assert_eq!(identifier_spans, ["a", "b"]);
+    for decl in &spec.action_declarations {
+        assert_eq!(&text[decl.span.start..decl.span.end], "a, b: Bool;");
+    }
 }
 
 /// `Assignment` (a process instantiation's `x = e`, as in `P(x = 1)`) carries a span precisely
@@ -322,17 +327,23 @@ fn assignment_span_is_precisely_the_identifier() {
     assert_eq!(&text[assignment.span.start..assignment.span.end], "x");
 }
 
-/// `ProcDecl`'s span is precisely the identifier, not the whole `P(params) = body;`.
+/// `ProcDecl` carries both its own span and the identifier span.
 #[test]
-fn process_declaration_span_is_precisely_the_identifier() {
+fn process_declaration_identifier_span_is_precisely_the_identifier() {
     let text = "proc P(x: Bool) = delta;\nproc Q = tau;\ninit P(true);";
     let spec = UntypedProcessSpecification::parse(text).expect("the specification should parse");
-    let spans: Vec<&str> = spec
+    let identifier_spans: Vec<&str> = spec
+        .process_declarations
+        .iter()
+        .map(|decl| &text[decl.identifier.span.start..decl.identifier.span.end])
+        .collect();
+    assert_eq!(identifier_spans, ["P", "Q"]);
+    let whole_spans: Vec<&str> = spec
         .process_declarations
         .iter()
         .map(|decl| &text[decl.span.start..decl.span.end])
         .collect();
-    assert_eq!(spans, ["P", "Q"]);
+    assert_eq!(whole_spans, ["P(x: Bool) = delta;", "Q = tau;"]);
 }
 
 /// `PropVarInst` (`X(0)`) carries both its own span, covering `Id(args)` in full, and its
@@ -347,4 +358,23 @@ fn prop_var_inst_identifier_span_is_precisely_the_identifier() {
         &text[pbes.init.identifier.span.start..pbes.init.identifier.span.end],
         "X"
     );
+}
+
+/// `PropVarDecl` carries both its own span and the identifier span
+#[test]
+fn prop_var_decl_identifier_span_is_precisely_the_identifier() {
+    let text = "pbes mu X(n: Nat) = val(n == n) && Y; nu Y = val(true); init X(0);";
+    let pbes = merc_syntax::UntypedPbes::parse(text).expect("the specification should parse");
+    let identifier_spans: Vec<&str> = pbes
+        .equations
+        .iter()
+        .map(|eqn| &text[eqn.variable.identifier.span.start..eqn.variable.identifier.span.end])
+        .collect();
+    assert_eq!(identifier_spans, ["X", "Y"]);
+    let whole_spans: Vec<&str> = pbes
+        .equations
+        .iter()
+        .map(|eqn| &text[eqn.variable.span.start..eqn.variable.span.end])
+        .collect();
+    assert_eq!(whole_spans, ["X(n: Nat)", "Y"]);
 }

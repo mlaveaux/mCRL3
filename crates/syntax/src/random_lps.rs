@@ -44,7 +44,7 @@ pub fn random_lps<R: Rng>(
     let action_declarations = action_names
         .iter()
         .map(|name| ActDecl {
-            identifier: name.clone(),
+            identifier: synthetic_name(name.clone()),
             args: Vec::new(),
             span: Span::default(),
         })
@@ -112,7 +112,7 @@ pub fn random_lps<R: Rng>(
         .expect("summands is non-empty");
 
     let process_declarations = vec![ProcDecl {
-        identifier: "P".to_string(),
+        identifier: respan(Span::default(), "P".to_string()),
         params: vec![s_param],
         body,
         span: Span::default(),
@@ -323,8 +323,7 @@ fn random_process_expr<R: Rng>(
     }
 }
 
-/// Wraps a synthetically-generated action name in a default (empty) [Span], since random
-/// generation has no source location to attach.
+/// Wraps a synthetically-generated action name in a default (empty) [Span].
 fn synthetic_name(name: String) -> ActionName {
     respan(Span::default(), name)
 }
@@ -453,7 +452,7 @@ pub fn make_process_specification<R: Rng>(
     let action_declarations = ACTIONS
         .iter()
         .map(|&name| ActDecl {
-            identifier: name.to_string(),
+            identifier: synthetic_name(name.to_string()),
             args: Vec::new(),
             span: Span::default(),
         })
@@ -464,7 +463,7 @@ pub fn make_process_specification<R: Rng>(
         .map(|pv| {
             let body = random_process_expr(rng, depth, &pv.params, ACTIONS, &proc_vars, true);
             ProcDecl {
-                identifier: pv.name.clone(),
+                identifier: respan(Span::default(), pv.name.clone()),
                 params: pv.params.clone(),
                 body,
                 span: Span::default(),

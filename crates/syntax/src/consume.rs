@@ -253,19 +253,21 @@ impl Mcrl2Parser {
     }
 
     fn PropVarDecl(decl: ParseNode) -> ParseResult<PropVarDecl> {
+        let span = decl.as_span();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params)] => {
                 Ok(PropVarDecl {
-                    identifier: identifier.node,
+                    identifier,
                     parameters: params,
-                    span: identifier.span,
+                    span: span.into(),
                 })
             },
             [Id(identifier)] => {
+                let span = identifier.span.clone();
                 Ok(PropVarDecl {
-                    identifier: identifier.node,
+                    identifier,
                     parameters: Vec::new(),
-                    span: identifier.span,
+                    span,
                 })
             }
         )
@@ -381,12 +383,23 @@ impl Mcrl2Parser {
     }
 
     fn ActDecl(decl: ParseNode) -> ParseResult<Vec<ActDecl>> {
+        // Shared by every identifier in the `a, b: Nat` group below: there is no narrower
+        // per-name "whole declaration" extent than the group itself.
+        let span: Span = decl.as_span().into();
         match_nodes!(decl.into_children();
             [IdList(identifiers)] => {
-                Ok(identifiers.into_iter().map(|(name, span)| ActDecl { identifier: name, args: Vec::new(), span }).collect())
+                Ok(identifiers.into_iter().map(|(name, id_span)| ActDecl {
+                    identifier: ActionName { node: name, span: id_span },
+                    args: Vec::new(),
+                    span: span.clone(),
+                }).collect())
             },
             [IdList(identifiers), SortProduct(args)] => {
-                Ok(identifiers.into_iter().map(|(name, span)| ActDecl { identifier: name, args: args.clone(), span }).collect())
+                Ok(identifiers.into_iter().map(|(name, id_span)| ActDecl {
+                    identifier: ActionName { node: name, span: id_span },
+                    args: args.clone(),
+                    span: span.clone(),
+                }).collect())
             },
         )
     }
@@ -584,21 +597,22 @@ impl Mcrl2Parser {
     }
 
     fn ProcDecl(decl: ParseNode) -> ParseResult<ProcDecl> {
+        let span = decl.as_span();
         match_nodes!(decl.into_children();
             [Id(identifier), VarsDeclList(params), ProcExpr(body)] => {
                 Ok(ProcDecl {
-                    identifier: identifier.node,
+                    identifier,
                     params,
                     body,
-                    span: identifier.span,
+                    span: span.into(),
                 })
             },
             [Id(identifier), ProcExpr(body)] => {
                 Ok(ProcDecl {
-                    identifier: identifier.node,
+                    identifier,
                     params: Vec::new(),
                     body,
-                    span: identifier.span,
+                    span: span.into(),
                 })
             }
         )

@@ -102,9 +102,13 @@ pub struct UntypedPres {
     pub init: PropVarInst,
 }
 
+/// A propositional-variable identifier occurrence.
+pub type PropVarName = Spanned<String>;
+
+/// A `pbes`/`pres` equation's own declaration.
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct PropVarDecl {
-    pub identifier: String,
+    pub identifier: PropVarName,
     pub parameters: Vec<IdDecl>,
     pub span: Span,
 }
@@ -113,15 +117,15 @@ impl PropVarDecl {
     /// Creates a new propositional variable declaration with the given identifier and parameters.
     pub fn new(identifier: String, parameters: Vec<IdDecl>) -> Self {
         PropVarDecl {
-            identifier,
+            identifier: PropVarName {
+                node: identifier,
+                span: Span::default(),
+            },
             parameters,
             span: Span::default(),
         }
     }
 }
-
-/// A propositional-variable identifier occurrence.
-pub type PropVarName = Spanned<String>;
 
 #[derive(Debug, Default, Eq, PartialEq, Hash)]
 pub struct PropVarInstData {
@@ -334,18 +338,21 @@ pub struct EqnDecl {
     pub id: Option<EquationId>,
 }
 
-/// Action declaration
+/// A process-declaration identifier occurrence.
+pub type ProcessName = Spanned<String>;
+
+/// Action declaration.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ActDecl {
-    pub identifier: String,
+    pub identifier: ActionName,
     pub args: Vec<SortExpression>,
     pub span: Span,
 }
 
-/// Process declaration
+/// Process declaration.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ProcDecl {
-    pub identifier: String,
+    pub identifier: ProcessName,
     pub params: Vec<IdDecl>,
     pub body: ProcessExpr,
     pub span: Span,

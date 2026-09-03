@@ -9,8 +9,8 @@ use crate::WellTypedError;
 /// declaration that doesn't type check, on top of everything [`WellTypedError`]/[`InferenceError`]
 /// already cover for the data-specification subtree.
 ///
-/// `#[non_exhaustive]`: more variants may be added (communication sort-compatibility checking,
-/// for one), so a caller matching on this needs a catch-all arm.
+/// `#[non_exhaustive]`: more variants may be added, so a caller matching on this needs a catch-all
+/// arm.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ProcessError {
@@ -50,6 +50,31 @@ pub enum ProcessError {
 
     #[error("the action '{name}' is not declared")]
     UndeclaredAction { name: String, span: Span },
+
+    /// No way to pick one declared overload per action in a `comm` rule's left-hand side and one
+    /// for its right-hand side makes every left-hand action's sort combine (see
+    /// [`crate::process::check::combined_sort_matches`]) into something assignable to the
+    /// right-hand action's declared sort. `reason` explains the first combination that was tried
+    /// and failed (an arity mismatch or an incompatible parameter sort) — with more than one
+    /// overload in play there may be other reasons the other combinations failed too, but the
+    /// first is almost always representative.
+    #[error("the communication '{lhs} -> {result}' cannot be type checked: {reason}")]
+    IncompatibleCommunication {
+        /// The left-hand actions, already joined with `|` (e.g. `"a|b"`).
+        lhs: String,
+        result: String,
+        reason: String,
+        span: Span,
+    },
+    /// The `rename` counterpart of [`Self::IncompatibleCommunication`]: no declared overload of
+    /// `from` has a sort assignable to any declared overload of `to`.
+    #[error("the rename '{from} -> {to}' cannot be type checked: {reason}")]
+    IncompatibleRename {
+        from: String,
+        to: String,
+        reason: String,
+        span: Span,
+    },
 }
 
 impl ProcessError {
@@ -68,7 +93,9 @@ impl ProcessError {
             | ProcessError::NoMatchingOverload { span, .. }
             | ProcessError::AmbiguousActionOrProcess { span, .. }
             | ProcessError::UnknownProcessParameter { span, .. }
-            | ProcessError::UndeclaredAction { span, .. } => Some(span),
+            | ProcessError::UndeclaredAction { span, .. }
+            | ProcessError::IncompatibleCommunication { span, .. }
+            | ProcessError::IncompatibleRename { span, .. } => Some(span),
         }
     }
 
