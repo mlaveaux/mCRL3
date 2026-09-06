@@ -1,0 +1,157 @@
+use std::collections::HashMap;
+use std::ops::ControlFlow;
+
+use merc_syntax::ActDecl;
+use merc_syntax::SortExpression;
+use merc_syntax::SortExpressionKind;
+use merc_syntax::Span;
+use merc_syntax::StateFrm;
+use merc_syntax::Traverse;
+use merc_syntax::UntypedStateFrmSpec;
+
+use crate::DataSpecification;
+use crate::NumberEncoding;
+use crate::ResolvedSortId;
+use crate::TypingInfo;
+
+use super::ModalError;
+use super::check;
+
+/// A type-checked modal state formula: the data specification plus its `act` declarations and the
+/// formula itself, all resolved and checked against it. See the module doc comment for what's in
+/// and out of scope.
+pub struct ModalSpecification {
+    /// The original specification, *minus* its data specification.
+    spec: UntypedStateFrmSpec,
+    data: DataSpecification,
+    /// Every checked expression's `TypingInfo`.
+    typing: TypingInfo,
+}
+
+impl ModalSpecification {
+    /// Type checks `spec`, using the default number encoding. See [`Self::from_untyped_with`].
+    pub fn from_untyped(spec: UntypedStateFrmSpec) -> Result<Self, ModalError> {
+        Self::from_untyped_with(spec, NumberEncoding::default())
+    }
+
+    /// Type checks `spec`: its data specification first (exactly as
+    /// [`DataSpecification::from_untyped_with`] does), then its `act` declarations' argument
+    /// sorts, and finally the formula itself against them.
+    pub fn from_untyped_with(mut spec: UntypedStateFrmSpec, encoding: NumberEncoding) -> Result<Self, ModalError> {
+        // A pure syntactic pass, before anything else needs `spec` — see
+        // `resolution::variable_resolution`.
+        crate::resolve_modal_variables(&mut spec);
+
+        let data_spec = std::mem::take(&mut spec.data_specification);
+        let mut data = DataSpecification::from_untyped_with(data_spec, encoding)?;
+
+        let tables = DeclarationTables::build(&mut data, &spec)?;
+        let typing = check::check_modal_specification(&mut data, &tables, &spec)?;
+
+        Ok(ModalSpecification { spec, data, typing })
+    }
+
+    /// The checked data specification.
+    pub fn data_specification(&self) -> &DataSpecification {
+        &self.data
+    }
+
+    /// Consumes `self`, returning the checked data specification.
+    pub fn into_data_specification(self) -> DataSpecification {
+        self.data
+    }
+
+    /// The `act` declarations, in scope in every modality's action/regular formula.
+    pub fn action_declarations(&self) -> &[ActDecl] {
+        &self.spec.action_declarations
+    }
+
+    /// The state formula itself.
+    pub fn formula(&self) -> &StateFrm {
+        &self.spec.formula
+    }
+
+    /// Every checked expression's typing across the *whole* specification — every `eqn` (via
+    /// [`DataSpecification::typing_info`]) plus every state/regular/action-formula expression (a
+    /// `val(...)` expression, an action argument, a fixpoint variable's initial value or reference
+    /// argument, …), span-keyed so hover/go-to-definition can look up a sub-expression by source
+    /// position anywhere in the document (see [`TypingInfo::at_offset`]) without caring which half
+    /// of the grammar it came from.
+    ///
+    /// The formula half needs no separate memoization: it was already computed once, during the
+    /// construction walk `from_untyped_with` runs anyway, and is just cloned out of the stored
+    /// value here. The `eqn` half *is* memoized, one level down — see
+    /// [`DataSpecification::typing_info`] — so a repeated call is cheap either way. Mirrors
+    /// [`crate::PresSpecification::typing_info`].
+    pub fn typing_info(&mut self) -> TypingInfo {
+        let mut info = self.data.typing_info();
+        info.merge(self.typing.clone());
+        info
+    }
+}
+
+/// The resolved `act` declaration table, built once by [`Self::build`] and used by
+/// [`super::check`]'s scoped walk to resolve every action instance it reaches. Unlike a process
+/// specification's [`crate::process::process_specification::DeclarationTables`], there is no
+/// process table (a state formula's modalities only ever reference actions) and no fixpoint-
+/// variable table here either — a fixpoint variable is lexically nested and possibly shadowed, so
+/// it is resolved against a scope stack built directly by [`super::check`] as it descends the
+/// formula, not precomputed once up front.
+pub(super) struct DeclarationTables {
+    /// Resolved argument-sort domain of each action declaration, parallel to
+    /// `spec.action_declarations`.
+    pub(super) action_domains: Vec<Vec<ResolvedSortId>>,
+    /// `spec.action_declarations[i].identifier.span`, parallel to `action_domains`.
+    pub(super) action_decl_spans: Vec<Span>,
+    /// name -> indices into `spec.action_declarations`/`action_domains` declaring it.
+    pub(super) actions_by_name: HashMap<String, Vec<usize>>,
+}
+
+impl DeclarationTables {
+    fn build(data: &mut DataSpecification, spec: &UntypedStateFrmSpec) -> Result<Self, ModalError> {
+        let mut action_domains = Vec::with_capacity(spec.action_declarations.len());
+        let mut action_decl_spans = Vec::with_capacity(spec.action_declarations.len());
+        let mut actions_by_name: HashMap<String, Vec<usize>> = HashMap::new();
+        for (index, decl) in spec.action_declarations.iter().enumerate() {
+            let domain = decl
+                .args
+                .iter()
+                .map(|sort| resolve_declared_sort(data, sort))
+                .collect::<Result<Vec<_>, _>>()?;
+            actions_by_name
+                .entry(decl.identifier.node.clone())
+                .or_default()
+                .push(index);
+            action_domains.push(domain);
+            action_decl_spans.push(decl.identifier.span.clone());
+        }
+
+        Ok(DeclarationTables {
+            action_domains,
+            action_decl_spans,
+            actions_by_name,
+        })
+    }
+}
+
+/// Resolves a sort expression occurring in an `act`/fixpoint-variable-parameter/binder declaration:
+/// rejects an anonymous `struct` (never legal here), then defers to
+/// [`DataSpecification::resolve_declared_sort`] for the rest. Mirrors
+/// `crate::process::process_specification::resolve_declared_sort`.
+pub(super) fn resolve_declared_sort(
+    data: &mut DataSpecification,
+    sort: &SortExpression,
+) -> Result<ResolvedSortId, ModalError> {
+    if let Some(span) = find_anonymous_struct(sort) {
+        return Err(ModalError::AnonymousStructInDeclaration { span });
+    }
+    Ok(data.resolve_declared_sort(sort)?)
+}
+
+/// The span of the first anonymous `struct` anywhere within `sort`, if any.
+fn find_anonymous_struct(sort: &SortExpression) -> Option<Span> {
+    sort.visit(|expr| match &expr.node {
+        SortExpressionKind::Struct { .. } => ControlFlow::Break(expr.span.clone()),
+        _ => ControlFlow::Continue(()),
+    })
+}

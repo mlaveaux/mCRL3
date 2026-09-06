@@ -1,0 +1,432 @@
+//! The scoped walk over the state formula: checks each `val(...)` expression — `Real`-valued at
+//! the state-formula level, `Bool`-valued at the action-formula level nested inside a `<...>`/
+//! `[...]` modality — resolves each action instance against the `act` table, resolves each
+//! fixpoint-variable reference (`StateFrmKind::Id`) against a lexically-scoped stack of enclosing
+//! `mu`/`nu` declarations, and pushes/pops every binder along the way — accumulating each checked
+//! expression's [`TypingInfo`].
+//!
+//! Unlike a PBES/PRES's `PropVarInst`, resolved against a flat table of equations declared once at
+//! the top level (`crate::pres::check::check_prop_var_inst`), a state formula's fixpoint variable is
+//! declared *inside* the formula itself, can be nested, and can shadow an outer variable of the
+//! same name (`mu X. nu X. ...`). So there is no [`super::modal_specification::DeclarationTables`]
+//! entry for it: [`check_state_formula`] instead threads a `state_vars` stack that grows on
+//! entering a `FixedPoint` node's body and shrinks again once it returns, exactly mirroring how
+//! `resolution::variable_resolution::Scope` scopes a *data* variable — the difference being that
+//! `StateFrmKind::Id` has no `Resolved` counterpart to rewrite in a separate syntactic pass, so this
+//! resolution happens here, during checking, instead.
+
+use std::collections::HashSet;
+
+use merc_syntax::Action;
+use merc_syntax::ActFrm;
+use merc_syntax::ActFrmKind;
+use merc_syntax::DataExpr;
+use merc_syntax::RegFrm;
+use merc_syntax::RegFrmKind;
+use merc_syntax::Span;
+use merc_syntax::StateFrm;
+use merc_syntax::StateFrmKind;
+use merc_syntax::StateVarDecl;
+use merc_syntax::UntypedStateFrmSpec;
+
+use crate::DataSpecification;
+use crate::ResolvedName;
+use crate::ResolvedSortId;
+use crate::TypingInfo;
+use crate::checking::Scope;
+use crate::checking::check_expression_against;
+use crate::checking::collect_binder_sorts;
+use crate::declared_span;
+use crate::lsp_info;
+
+use super::ModalError;
+use super::modal_specification::DeclarationTables;
+use super::modal_specification::resolve_declared_sort;
+
+/// One fixpoint variable currently in scope: its own name, declared parameter sorts (in order),
+/// and the `StateVarDecl`'s own span (used as its "declaration" for `ResolvedName`, the same way
+/// an `Id`/`Action` occurrence's own whole-node span stands in for a per-identifier span it
+/// doesn't otherwise have — see `StateFrmKind::Id`'s doc comment).
+type StateVarStack = Vec<(String, Vec<ResolvedSortId>, Span)>;
+
+/// Checks a state formula specification against the declared sorts, returning the merged typing
+/// information.
+pub(super) fn check_modal_specification(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    spec: &UntypedStateFrmSpec,
+) -> Result<TypingInfo, ModalError> {
+    let mut typing = TypingInfo::default();
+    let mut sort_references = Vec::new();
+
+    for decl in &spec.action_declarations {
+        for sort in &decl.args {
+            lsp_info::collect_sort_name_references(sort, &mut sort_references);
+        }
+    }
+
+    let mut scope = Vec::new();
+    collect_scope(data, &spec.formula, &mut scope, &mut sort_references)?;
+
+    let mut state_vars = StateVarStack::new();
+    check_state_formula(data, tables, &scope, &mut state_vars, &spec.formula, &mut typing)?;
+
+    lsp_info::push_sort_references(data, &sort_references, &mut typing);
+    Ok(typing)
+}
+
+/// Collects the scope for a state formula, resolving the declared sorts of every
+/// `forall`/`exists`/`inf`/`sup`/`sum` binder and every fixpoint variable's own parameters — the
+/// latter are ordinary data variables throughout the fixpoint's body, exactly like a PRES
+/// equation's own parameters (see `crate::pres::check::check_pres_specification`).
+///
+/// Does *not* collect anything about the fixpoint variable *name* itself — that is resolved
+/// lexically by [`check_state_formula`] instead, see this module's doc comment.
+fn collect_scope(
+    data: &mut DataSpecification,
+    formula: &StateFrm,
+    scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
+) -> Result<(), ModalError> {
+    match &formula.node {
+        StateFrmKind::True
+        | StateFrmKind::False
+        | StateFrmKind::Delay(_)
+        | StateFrmKind::Yaled(_)
+        | StateFrmKind::Id(_, _)
+        | StateFrmKind::DataValExpr(_) => Ok(()),
+        StateFrmKind::DataValExprLeftMult(_, expr) | StateFrmKind::DataValExprRightMult(expr, _) => {
+            collect_scope(data, expr, scope, sort_references)
+        }
+        StateFrmKind::Modality { formula, expr, .. } => {
+            collect_scope_regfrm(data, formula, scope, sort_references)?;
+            collect_scope(data, expr, scope, sort_references)
+        }
+        StateFrmKind::Unary { expr, .. } => collect_scope(data, expr, scope, sort_references),
+        StateFrmKind::Binary { lhs, rhs, .. } => {
+            collect_scope(data, lhs, scope, sort_references)?;
+            collect_scope(data, rhs, scope, sort_references)
+        }
+        StateFrmKind::Quantifier { variables, body, .. } | StateFrmKind::Bound { variables, body, .. } => {
+            collect_binder_sorts(data, scope, sort_references, variables, resolve_declared_sort)?;
+            collect_scope(data, body, scope, sort_references)
+        }
+        StateFrmKind::FixedPoint { variable, body, .. } => {
+            for argument in &variable.arguments {
+                lsp_info::collect_sort_name_references(&argument.sort, sort_references);
+                let sort = resolve_declared_sort(data, &argument.sort)?;
+                scope.push((argument.span.clone(), sort));
+            }
+            collect_scope(data, body, scope, sort_references)
+        }
+    }
+}
+
+fn collect_scope_regfrm(
+    data: &mut DataSpecification,
+    formula: &RegFrm,
+    scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
+) -> Result<(), ModalError> {
+    match &formula.node {
+        RegFrmKind::Action(action) => collect_scope_actfrm(data, action, scope, sort_references),
+        RegFrmKind::Iteration(inner) | RegFrmKind::Plus(inner) => {
+            collect_scope_regfrm(data, inner, scope, sort_references)
+        }
+        RegFrmKind::Sequence { lhs, rhs } | RegFrmKind::Choice { lhs, rhs } => {
+            collect_scope_regfrm(data, lhs, scope, sort_references)?;
+            collect_scope_regfrm(data, rhs, scope, sort_references)
+        }
+    }
+}
+
+fn collect_scope_actfrm(
+    data: &mut DataSpecification,
+    formula: &ActFrm,
+    scope: &mut Vec<(Span, ResolvedSortId)>,
+    sort_references: &mut Vec<(Span, String)>,
+) -> Result<(), ModalError> {
+    match &formula.node {
+        ActFrmKind::True | ActFrmKind::False | ActFrmKind::MultAct(_) | ActFrmKind::DataExprVal(_) => Ok(()),
+        ActFrmKind::Negation(inner) => collect_scope_actfrm(data, inner, scope, sort_references),
+        ActFrmKind::Quantifier { variables, body, .. } => {
+            collect_binder_sorts(data, scope, sort_references, variables, resolve_declared_sort)?;
+            collect_scope_actfrm(data, body, scope, sort_references)
+        }
+        ActFrmKind::Binary { lhs, rhs, .. } => {
+            collect_scope_actfrm(data, lhs, scope, sort_references)?;
+            collect_scope_actfrm(data, rhs, scope, sort_references)
+        }
+    }
+}
+
+fn check_state_formula(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    scope: &Scope,
+    state_vars: &mut StateVarStack,
+    formula: &StateFrm,
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    match &formula.node {
+        StateFrmKind::True | StateFrmKind::False => Ok(()),
+
+        StateFrmKind::Delay(time) | StateFrmKind::Yaled(time) => match time {
+            Some(time) => {
+                let real_sort = data.context().sorts.real_sort();
+                check_expression_against::<ModalError>(data, scope, time, real_sort, typing)
+            }
+            None => Ok(()),
+        },
+
+        StateFrmKind::Id(name, arguments) => {
+            check_state_var_inst(data, state_vars, scope, name, arguments, &formula.span, typing)
+        }
+
+        StateFrmKind::DataValExpr(data_expr) => {
+            let real_sort = data.context().sorts.real_sort();
+            check_expression_against::<ModalError>(data, scope, data_expr, real_sort, typing)
+        }
+
+        StateFrmKind::DataValExprLeftMult(constant, expr) | StateFrmKind::DataValExprRightMult(expr, constant) => {
+            let real_sort = data.context().sorts.real_sort();
+            check_expression_against::<ModalError>(data, scope, constant, real_sort, typing)?;
+            check_state_formula(data, tables, scope, state_vars, expr, typing)
+        }
+
+        StateFrmKind::Modality { formula: reg, expr, .. } => {
+            check_reg_formula(data, tables, scope, reg, typing)?;
+            check_state_formula(data, tables, scope, state_vars, expr, typing)
+        }
+
+        StateFrmKind::Unary { expr, .. } => check_state_formula(data, tables, scope, state_vars, expr, typing),
+
+        StateFrmKind::Binary { lhs, rhs, .. } => {
+            check_state_formula(data, tables, scope, state_vars, lhs, typing)?;
+            check_state_formula(data, tables, scope, state_vars, rhs, typing)
+        }
+
+        StateFrmKind::Quantifier { body, .. } | StateFrmKind::Bound { body, .. } => {
+            check_state_formula(data, tables, scope, state_vars, body, typing)
+        }
+
+        StateFrmKind::FixedPoint { variable, body, .. } => {
+            check_fixed_point(data, tables, scope, state_vars, variable, body, typing)
+        }
+    }
+}
+
+/// Checks a fixpoint variable's own declaration — each parameter's initial value against its
+/// declared sort, checked in the *outer* scope since the parameter it initializes isn't bound yet
+/// (mirrors a process instantiation's assignment value, `crate::process::check::check_one_instantiation`)
+/// — then pushes it onto `state_vars` for `body` to reference recursively, popping it again once
+/// `body` is checked so an enclosing formula never sees an inner fixpoint's own variable.
+fn check_fixed_point(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    scope: &Scope,
+    state_vars: &mut StateVarStack,
+    variable: &StateVarDecl,
+    body: &StateFrm,
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    let mut seen = HashSet::new();
+    let mut params = Vec::with_capacity(variable.arguments.len());
+    for argument in &variable.arguments {
+        if !seen.insert(argument.identifier.as_str()) {
+            return Err(ModalError::DuplicateFixedPointParameter {
+                variable: variable.identifier.clone(),
+                name: argument.identifier.clone(),
+                span: argument.span.clone(),
+            });
+        }
+        let sort = resolve_declared_sort(data, &argument.sort)?;
+        check_expression_against::<ModalError>(data, scope, &argument.expr, sort, typing)?;
+        params.push(sort);
+    }
+
+    state_vars.push((variable.identifier.clone(), params, variable.span.clone()));
+    let result = check_state_formula(data, tables, scope, state_vars, body, typing);
+    state_vars.pop();
+    result
+}
+
+/// Resolves `name(args)` against the innermost enclosing fixpoint variable of that name (last
+/// pushed wins, matching lexical shadowing), checks its argument count (`ArityMismatch`), and
+/// checks each argument against its parameter's sort. On success, also pushes a
+/// [`ResolvedName::StateVariable`] at `span` (the whole `name(args)`/bare `name` node — see
+/// `StateFrmKind::Id`'s doc comment for why there is no narrower span available here).
+fn check_state_var_inst(
+    data: &mut DataSpecification,
+    state_vars: &StateVarStack,
+    scope: &Scope,
+    name: &str,
+    arguments: &[DataExpr],
+    span: &Span,
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    let Some((_, params, declaration)) = state_vars.iter().rev().find(|(declared, _, _)| declared == name) else {
+        return Err(ModalError::UndeclaredStateVariable {
+            name: name.to_string(),
+            span: span.clone(),
+        });
+    };
+    typing.push(
+        span.clone(),
+        ResolvedName::StateVariable {
+            name: name.to_string(),
+            declaration: declared_span(declaration),
+        },
+    );
+
+    if arguments.len() != params.len() {
+        return Err(ModalError::ArityMismatch {
+            name: name.to_string(),
+            expected: params.len(),
+            found: arguments.len(),
+            span: span.clone(),
+        });
+    }
+
+    for (argument, &sort) in arguments.iter().zip(params) {
+        check_expression_against::<ModalError>(data, scope, argument, sort, typing)?;
+    }
+    Ok(())
+}
+
+fn check_reg_formula(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    scope: &Scope,
+    formula: &RegFrm,
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    match &formula.node {
+        RegFrmKind::Action(action) => check_action_formula(data, tables, scope, action, typing),
+        RegFrmKind::Iteration(inner) | RegFrmKind::Plus(inner) => check_reg_formula(data, tables, scope, inner, typing),
+        RegFrmKind::Sequence { lhs, rhs } | RegFrmKind::Choice { lhs, rhs } => {
+            check_reg_formula(data, tables, scope, lhs, typing)?;
+            check_reg_formula(data, tables, scope, rhs, typing)
+        }
+    }
+}
+
+fn check_action_formula(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    scope: &Scope,
+    formula: &ActFrm,
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    match &formula.node {
+        ActFrmKind::True | ActFrmKind::False => Ok(()),
+
+        ActFrmKind::MultAct(multi_action) => {
+            for action in &multi_action.actions {
+                check_action(data, tables, scope, action, typing)?;
+            }
+            Ok(())
+        }
+
+        ActFrmKind::DataExprVal(data_expr) => {
+            let bool_sort = data.context().sorts.bool_sort();
+            check_expression_against::<ModalError>(data, scope, data_expr, bool_sort, typing)
+        }
+
+        ActFrmKind::Negation(inner) => check_action_formula(data, tables, scope, inner, typing),
+
+        ActFrmKind::Quantifier { body, .. } => check_action_formula(data, tables, scope, body, typing),
+
+        ActFrmKind::Binary { lhs, rhs, .. } => {
+            check_action_formula(data, tables, scope, lhs, typing)?;
+            check_action_formula(data, tables, scope, rhs, typing)
+        }
+    }
+}
+
+/// Resolves one action instance inside a multi-action against the `act` table, trying every
+/// same-named overload of the right arity and requiring exactly one to succeed — the action-only
+/// counterpart of `crate::process::check::check_action_or_process` (no process table applies to a
+/// state formula's modalities).
+///
+/// Each candidate is checked against its own scratch `TypingInfo`, merged into `typing` only once
+/// the single successful candidate is known, exactly as `check_action_or_process` does. On success,
+/// also pushes a [`ResolvedName::Action`] at `action.id`'s own span.
+fn check_action(
+    data: &mut DataSpecification,
+    tables: &DeclarationTables,
+    scope: &Scope,
+    action: &Action,
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    let candidates: Vec<usize> = tables
+        .actions_by_name
+        .get(action.id.as_str())
+        .into_iter()
+        .flatten()
+        .copied()
+        .filter(|&index| tables.action_domains[index].len() == action.args.len())
+        .collect();
+
+    if candidates.is_empty() {
+        return Err(ModalError::UndeclaredAction {
+            name: action.id.node.clone(),
+            arity: action.args.len(),
+            span: action.id.span.clone(),
+        });
+    }
+
+    let mut successes = 0usize;
+    let mut first_error = None;
+    let mut matched: Option<(usize, TypingInfo)> = None;
+    for &index in &candidates {
+        let mut candidate_typing = TypingInfo::default();
+        match check_action_arguments(data, scope, &action.args, &tables.action_domains[index], &mut candidate_typing) {
+            Ok(()) => {
+                successes += 1;
+                matched = Some((index, candidate_typing));
+            }
+            Err(error) => drop(first_error.get_or_insert(error)),
+        }
+    }
+
+    match successes {
+        0 => Err(ModalError::NoMatchingOverload {
+            name: action.id.node.clone(),
+            span: action.id.span.clone(),
+            cause: Box::new(
+                first_error.expect("at least one candidate, so at least one recorded error when none succeed"),
+            ),
+        }),
+        1 => {
+            let (index, mut matched_typing) = matched.expect("successes == 1 implies a matched candidate");
+            matched_typing.push(
+                action.id.span.clone(),
+                ResolvedName::Action {
+                    name: action.id.node.clone(),
+                    declaration: declared_span(&tables.action_decl_spans[index]),
+                },
+            );
+            typing.merge(matched_typing);
+            Ok(())
+        }
+        count => Err(ModalError::AmbiguousAction {
+            name: action.id.node.clone(),
+            count,
+            span: action.id.span.clone(),
+        }),
+    }
+}
+
+fn check_action_arguments(
+    data: &mut DataSpecification,
+    scope: &Scope,
+    args: &[DataExpr],
+    expected: &[ResolvedSortId],
+    typing: &mut TypingInfo,
+) -> Result<(), ModalError> {
+    for (arg, &sort) in args.iter().zip(expected) {
+        check_expression_against::<ModalError>(data, scope, arg, sort, typing)?;
+    }
+    Ok(())
+}
