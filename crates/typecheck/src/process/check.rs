@@ -2,10 +2,6 @@
 //! `DataExpr` it contains — action arguments, process-instantiation arguments, conditions, time
 //! bounds, `dist` weights — against its own expected sort and its own enclosing variable scope,
 //! and accumulating each checked expression's [`TypingInfo`].
-//!
-//! By the time this runs, [`super::disambiguation`] has already fixed up every `Condition` the grammar
-//! misparsed because of mCRL2's `.`/`+` ambiguity (see its module doc comment and the crate
-//! README); this walk assumes every `Condition` it sees is already correctly shaped.
 
 use std::cmp::Ordering;
 
@@ -221,10 +217,9 @@ enum Candidate {
     Process(usize),
 }
 
-/// Resolves `name(args)` (an action instance or a positional process instantiation — the grammar
-/// makes these ambiguous, see the crate README) against both declaration tables, trying every
+/// Resolves `name(args)` (an action instance or a positional process instantiation against both declaration tables, trying every
 /// candidate of the right arity and requiring exactly one to succeed.
-///
+/// 
 /// Each candidate is checked against its own scratch `TypingInfo`, merged into `typing` only once
 /// the single successful candidate is known — a failed or ultimately-ambiguous candidate's typing
 /// must never reach `typing`, since it would otherwise misreport a sort for the wrong overload at

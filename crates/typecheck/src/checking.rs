@@ -1,14 +1,6 @@
-//! Shared building blocks for a `TypingInfo`-accumulating walk over an expression tree that lives
-//! *outside* the data specification proper — a process body ([`crate::process::check`]), a PBES
-//! equation ([`crate::pbes::check`]), or a PRES equation ([`crate::pres::check`]). Crate-private:
-//! every caller reaches this via `crate::checking::...`.
-//!
-//! No caller threads its own name-shadowing scope through this walk: every variable occurrence in
-//! the expression being checked is already a `Resolved` node carrying its own declaration's span
-//! (`crate::resolve_process_variables`/`crate::resolve_pbes_variables`/`crate::resolve_pres_variables`,
-//! see `docs/name_resolution.md`), so a flat [`Scope`] — every declaration reachable from the
-//! current `proc` body/PBES or PRES equation, keyed by its own span — is enough; there is no
-//! shadowing to resolve here, since two different declarations never share a span.
+//! Shared building blocks for a `TypingInfo`-accumulating walk over an
+//! expression tree that lives *outside* the data specification proper — a
+//! process body (`crate::process::check`), a PBES equation, or a PRES equation.
 
 use merc_syntax::DataExpr;
 use merc_syntax::IdDecl;

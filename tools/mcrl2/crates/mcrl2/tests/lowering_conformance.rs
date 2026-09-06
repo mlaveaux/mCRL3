@@ -31,8 +31,9 @@ use merc_data::Mcrl2DataSpecification;
 use merc_syntax::UntypedDataSpecification;
 use merc_typecheck::DataSpecification as TypecheckedSpec;
 use merc_typecheck::NumberEncoding;
-
-// ─── helpers ────────────────────────────────────────────────────────────────
+use merc_utilities::random_test;
+use rand::Rng;
+use rand::RngExt;
 
 /// Run the full merc typecheck + lowering pipeline on `text`.
 ///
@@ -136,8 +137,8 @@ fn assert_round_trips(text: &str) {
 ///
 /// Used by the specifications whose lowering is known to diverge from the
 /// toolset in *one* section (see the `known divergence` cases at the bottom of
-/// this file and `typecheck.md`): checking the remaining sections still guards
-/// everything about them that does conform, instead of dropping the case.
+/// this file): checking the remaining sections still guards everything about
+/// them that does conform, instead of dropping the case.
 #[track_caller]
 fn assert_sections_round_trip(text: &str, sections: &[Section]) {
     let lowered = lower(text);
@@ -338,19 +339,20 @@ fn test_round_trip_arithmetic() {
 
 // ─── known divergences ──────────────────────────────────────────────────────
 //
-// The three specifications below lower differently from the toolset in exactly
-// one section each, for the reasons `typecheck.md` records. Each still checks
-// every *other* section, so the parts that do conform stay guarded and the
-// excluded section names the open item rather than the case being dropped.
+// The specifications below lower differently from the toolset in exactly one
+// section each. The full rationale for each lives on the documentation site
+// (docs/developer/typechecking/data-specification.md, "Known divergences from
+// the mCRL2 toolset" in the merc-website repository); here each test still
+// checks every *other* section, so the parts that do conform stay guarded and
+// the excluded section names the open item rather than the case being dropped.
 
 #[test]
 fn test_round_trip_structured_sort() {
-    // Known divergence (typecheck.md, "Structured sorts"): merc's
-    // `desugar_structured_sorts` turns `sort D = struct …;` into an abstract
-    // sort `D` plus the constructor/recogniser/projection declarations, so `D`
-    // lands in the *sorts* section. The toolset keeps the declaration as an
-    // alias `D = SortStruct(…)` and leaves its sorts section empty. Every
-    // symbol the struct declares, and the equation using it, do conform.
+    // Known divergence: "Structured sorts" desugar into an abstract sort plus
+    // constructor/recogniser/projection declarations, so `D` lands in merc's
+    // *sorts* section while the toolset keeps it as an alias with an empty
+    // sorts section. Every symbol the struct declares, and the equation using
+    // it, do conform.
     assert_sections_round_trip(
         "sort D = struct c1(pr1: Nat, pr2: Bool)?is_c1 | c2?is_c2;\n\
          map f: D -> Bool;\n\
@@ -376,12 +378,12 @@ fn test_round_trip_recursive_structured_sort() {
 
 #[test]
 fn test_round_trip_alias_chain() {
-    // Known divergence (typecheck.md, "Canonical sort representatives"):
-    // `normalize_sorts` erases alias names, and not only in the alias section
-    // (`B = A` becomes `B = Nat`) — every *use* is expanded too, so `f: C ->
-    // Bool` lowers with `List(Nat)` where the toolset keeps `C`. Only the
-    // sections that never mention an alias round-trip, which is why the
-    // abstract sort `D` and its own constructor and equation are here.
+    // Known divergence: "Canonical sort representatives" — `normalize_sorts`
+    // erases alias names, and not only in the alias section (`B = A` becomes
+    // `B = Nat`) — every *use* is expanded too, so `f: C -> Bool` lowers with
+    // `List(Nat)` where the toolset keeps `C`. Only the sections that never
+    // mention an alias round-trip, which is why the abstract sort `D` and its
+    // own constructor and equation are here.
     //
     // The alias *declaration* itself is fine when there is no indirection to
     // expand: see `test_user_defined_aliases_match_oracle`.
@@ -469,10 +471,10 @@ fn test_round_trip_where_clause() {
 
 #[test]
 fn test_round_trip_where_clause_with_positive_binding() {
-    // Known divergence (typecheck.md, "Expected-sort propagation"): the `whr`
-    // binding `x + 1` has no expected sort, so both checkers pick the exact
-    // overload `+: Nat # Pos -> Pos` and bind `y: Pos`. The body `y + y` then
-    // has expected sort `Nat`: the toolset pushes that down, picking
+    // Known divergence: "Expected-sort propagation" — the `whr` binding
+    // `x + 1` has no expected sort, so both checkers pick the exact overload
+    // `+: Nat # Pos -> Pos` and bind `y: Pos`. The body `y + y` then has
+    // expected sort `Nat`: the toolset pushes that down, picking
     // `+: Nat # Nat -> Nat` and wrapping *both* arguments in `Pos2Nat`, while
     // merc types the body at its minimal sort `Pos` and widens the result once.
     // Both are well-sorted; only the toolset's is what the binary form holds.
@@ -540,5 +542,23 @@ fn test_round_trip_overloaded_mapping() {
          map f: D -> Bool; f: Nat -> Bool; f: D # Nat -> Bool;\n\
          map q: Bool;\n\
          eqn q = f(d) && f(0) && f(d, 0);\n",
+    );
+}
+
+#[test]
+fn test_round_trip_bag_comprehension() {
+    assert_round_trips(
+        "map squares: Bag(Nat);\n\
+         eqn squares = { x: Nat | x * x };\n",
+    );
+}
+
+#[test]
+fn test_round_trip_nested_containers() {
+    assert_round_trips(
+        "map f: List(Set(Nat)) -> Bool; g: Set(List(Nat)) -> Bool;\n\
+         var l: List(Set(Nat)); s: Set(List(Nat));\n\
+         eqn f(l) = l == [];\n\
+             g(s) = s == {};\n",
     );
 }

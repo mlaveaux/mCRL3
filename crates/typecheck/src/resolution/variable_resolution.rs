@@ -1,12 +1,13 @@
 //! Resolves *variable* references — as opposed to constructor/mapping/action/process names, which
 //! are not context-free (see `docs/name_resolution.md`) — before type checking runs: in a process
-//! specification's `proc` bodies/`init`, a PBES's or PRES's equation bodies/`init`, and a data
-//! specification's own `var`-block equations.
+//! specification's `proc` bodies/`init`, a PBES's or PRES's equation bodies/`init`, a state
+//! formula, and a data specification's own `var`-block equations.
 //!
 //! A variable occurrence's binder — `sum`/`dist`, a process's own parameters, a PBES
-//! quantifier/equation parameter, a PRES `inf`/`sup`/`sum`/equation parameter — is decided purely
-//! by lexical scoping over the untyped syntax tree, with no dependency on inferred sorts (unlike
-//! overloaded constructor/mapping resolution, or the arity-based action-vs-process disambiguation
+//! quantifier/equation parameter, a PRES `inf`/`sup`/`sum`/equation parameter, a state formula's
+//! `forall`/`exists`/`inf`/`sup`/`sum`/fixpoint-variable parameter — is decided purely by lexical
+//! scoping over the untyped syntax tree, with no dependency on inferred sorts (unlike overloaded
+//! constructor/mapping resolution, or the arity-based action-vs-process disambiguation
 //! `check_action_or_process` performs). This pass therefore needs no [`crate::DataSpecification`]
 //! and cannot fail: a name not found in scope is left as a plain `Id`, and `inference.rs`'s
 //! overload/`UndeclaredName` machinery is responsible for rejecting it if it turns out to be
@@ -15,6 +16,8 @@
 //! [`DataExprKind::Id`] resolves to [`DataExprKind::Resolved`] the same way a sort's
 //! `Reference` resolves to `Resolved` in `resolution::name_resolution::resolve_sort_id`.
 
+use merc_syntax::ActFrm;
+use merc_syntax::ActFrmKind;
 use merc_syntax::DataExpr;
 use merc_syntax::DataExprKind;
 use merc_syntax::IdDecl;
@@ -25,11 +28,16 @@ use merc_syntax::PresExprKind;
 use merc_syntax::ProcessExpr;
 use merc_syntax::ProcessExprKind;
 use merc_syntax::PropVarInst;
+use merc_syntax::RegFrm;
+use merc_syntax::RegFrmKind;
 use merc_syntax::Span;
+use merc_syntax::StateFrm;
+use merc_syntax::StateFrmKind;
 use merc_syntax::UntypedDataSpecification;
 use merc_syntax::UntypedPbes;
 use merc_syntax::UntypedPres;
 use merc_syntax::UntypedProcessSpecification;
+use merc_syntax::UntypedStateFrmSpec;
 
 /// Resolves every context-free variable reference in `spec`'s own `var`-block equations.
 pub(crate) fn resolve_data_specification_variables(spec: &mut UntypedDataSpecification) {
@@ -93,6 +101,110 @@ pub(crate) fn resolve_pres_variables(pres: &mut UntypedPres) {
     // `init` sits outside every equation's own parameter scope — only globals apply.
     let mut scope = globals.clone();
     resolve_in_prop_var_inst(&mut pres.init, &mut scope);
+}
+
+/// Resolves every context-free variable reference in `spec`'s state formula: a
+/// `forall`/`exists`/`inf`/`sup`/`sum` binder, a fixpoint (`mu`/`nu`) variable's own parameters, and
+/// an action-formula `forall`/`exists` binder nested inside a `<...>`/`[...]` modality. A state
+/// formula specification has no `glob` block, so scoping starts empty — unlike
+/// [`resolve_process_variables`]/[`resolve_pbes_variables`]/[`resolve_pres_variables`], there is no
+/// outer scope to seed.
+///
+/// A fixpoint variable *name* itself (`StateFrmKind::Id`'s reference to an enclosing `mu`/`nu`) is
+/// not resolved here: unlike a data variable, `StateFrmKind::Id` has no `Resolved` counterpart to
+/// rewrite into, so it is instead resolved directly during checking, against a lexically-scoped
+/// stack built as `crate::modal::check` walks the formula — see that module's doc comment.
+pub(crate) fn resolve_modal_variables(spec: &mut UntypedStateFrmSpec) {
+    let mut scope = Scope::default();
+    resolve_in_state_frm(&mut spec.formula, &mut scope);
+}
+
+fn resolve_in_state_frm(formula: &mut StateFrm, scope: &mut Scope) {
+    match &mut formula.node {
+        StateFrmKind::True | StateFrmKind::False => {}
+        StateFrmKind::Delay(time) | StateFrmKind::Yaled(time) => {
+            if let Some(time) = time {
+                resolve_in_data_expr(time, scope);
+            }
+        }
+        StateFrmKind::Id(_, arguments) => {
+            for argument in arguments {
+                resolve_in_data_expr(argument, scope);
+            }
+        }
+        StateFrmKind::DataValExpr(data_expr) => resolve_in_data_expr(data_expr, scope),
+        StateFrmKind::DataValExprLeftMult(constant, expr) => {
+            resolve_in_data_expr(constant, scope);
+            resolve_in_state_frm(expr, scope);
+        }
+        StateFrmKind::DataValExprRightMult(expr, constant) => {
+            resolve_in_state_frm(expr, scope);
+            resolve_in_data_expr(constant, scope);
+        }
+        StateFrmKind::Modality { formula, expr, .. } => {
+            resolve_in_reg_frm(formula, scope);
+            resolve_in_state_frm(expr, scope);
+        }
+        StateFrmKind::Unary { expr, .. } => resolve_in_state_frm(expr, scope),
+        StateFrmKind::Binary { lhs, rhs, .. } => {
+            resolve_in_state_frm(lhs, scope);
+            resolve_in_state_frm(rhs, scope);
+        }
+        StateFrmKind::Quantifier { variables, body, .. } | StateFrmKind::Bound { variables, body, .. } => {
+            let pushed = scope.push_declarations(variables);
+            resolve_in_state_frm(body, scope);
+            scope.pop(pushed);
+        }
+        StateFrmKind::FixedPoint { variable, body, .. } => {
+            // Each parameter's own initial value is a context-free read of the *outer* scope —
+            // the parameter it initializes (and any sibling parameter) isn't bound yet, mirroring
+            // `resolve_in_process_expr`'s treatment of an instantiation's assignment value.
+            for argument in &mut variable.arguments {
+                resolve_in_data_expr(&mut argument.expr, scope);
+            }
+            let pushed = variable.arguments.len();
+            for argument in &variable.arguments {
+                scope.push(argument.identifier.clone(), argument.span.clone());
+            }
+            resolve_in_state_frm(body, scope);
+            scope.pop(pushed);
+        }
+    }
+}
+
+fn resolve_in_reg_frm(formula: &mut RegFrm, scope: &mut Scope) {
+    match &mut formula.node {
+        RegFrmKind::Action(action) => resolve_in_act_frm(action, scope),
+        RegFrmKind::Iteration(inner) | RegFrmKind::Plus(inner) => resolve_in_reg_frm(inner, scope),
+        RegFrmKind::Sequence { lhs, rhs } | RegFrmKind::Choice { lhs, rhs } => {
+            resolve_in_reg_frm(lhs, scope);
+            resolve_in_reg_frm(rhs, scope);
+        }
+    }
+}
+
+fn resolve_in_act_frm(formula: &mut ActFrm, scope: &mut Scope) {
+    match &mut formula.node {
+        ActFrmKind::True | ActFrmKind::False => {}
+        ActFrmKind::MultAct(multi_action) => {
+            for action in &mut multi_action.actions {
+                for argument in &mut action.args {
+                    resolve_in_data_expr(argument, scope);
+                }
+            }
+        }
+        ActFrmKind::DataExprVal(data_expr) => resolve_in_data_expr(data_expr, scope),
+        ActFrmKind::Negation(inner) => resolve_in_act_frm(inner, scope),
+        ActFrmKind::Quantifier { variables, body, .. } => {
+            let pushed = scope.push_declarations(variables);
+            resolve_in_act_frm(body, scope);
+            scope.pop(pushed);
+        }
+        ActFrmKind::Binary { lhs, rhs, .. } => {
+            resolve_in_act_frm(lhs, scope);
+            resolve_in_act_frm(rhs, scope);
+        }
+    }
 }
 
 /// The binders currently in scope, each paired with its declaration's span so two occurrences of

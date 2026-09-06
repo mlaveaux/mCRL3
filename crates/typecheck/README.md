@@ -46,38 +46,33 @@ every checked expression node, keyed by source `Span` rather than any internal
 id, so a consumer such as an editor integration can look up hover text or a
 go-to-definition target by byte offset via `TypingInfo::at_offset` without
 needing to know anything about how inference numbers its nodes internally.
-`typecheck_expression_with_typing` returns the same information for a single
-standalone expression. Note that a resolved *sort* embedded in a `TypedNode`
-carries no reliable source span of its own — only spans on the original
-specification's declarations and expressions are meaningful. Both methods take
-`&mut self` and memoize their result on `DataSpecification` (once per equation,
-once for the whole document): a `DataSpecification` is immutable once built, so
-a second call reuses the cached result instead of re-deriving it.
 
 ### Process and PBES specifications
 
-`ProcessSpecification::from_untyped` extends `DataSpecification` to also check
-a whole `UntypedProcessSpecification`: `act`/`glob`/`proc` declarations and
-every `proc` body and `init`, resolving action/process-instantiation
-overloads and checking conditions against `Bool`. Before checking runs,
-`ProcessSpecification` reparses the specification to undo a handful of
+`ProcessSpecification::from_untyped` extends `DataSpecification` to also check a
+whole `UntypedProcessSpecification`. Before checking runs,
+`ProcessSpecification` disambiguates the specification to undo a handful of
 grammar-level ambiguities mCRL2's concrete syntax has between the process
-algebra and the data language — `.`, `+`, and `||` all lex the same in both,
-and a single-action `hide`/`block`/`allow` application can appear in the same
-ambiguous position. See `crates/typecheck/src/process/reparse.rs`'s module
-doc comment for the exact shapes, or the [Process
-Specification](https://MERCorg.github.io/merc/developer/typechecking/process-specification/)
-page for a worked example with parse trees and the known limitations.
-`ProcessSpecification::typing_info` exposes the same span-keyed `TypingInfo`
-as `DataSpecification`, merged over every checked process-body expression.
+algebra and the data language — `.`, `+`, and `||` all lex the same in both, and
+a single-action `hide`/`block`/`allow` application can appear in the same
+ambiguous position. `ProcessSpecification::typing_info` exposes the same
+span-keyed `TypingInfo` as `DataSpecification`, merged over every checked
+process-body expression.
 
-`PbesSpecification::from_untyped` similarly extends `DataSpecification` to
-check a whole PBES: `glob` declarations, each propositional-variable
-equation's parameters, and every equation's formula and `init` — resolving
-each `PropVarInst` by name and arity, checking `val(...)` expressions against
-`Bool`, and scoping quantifier binders. This covers *sorts and names* only;
-PBES well-formedness properties such as monotonicity or alternation depth are
-a separate semantic analysis and are out of scope here.
+A related grammar quirk survives disambiguation rather than being undone by it: a process
+reference with no arguments and no parentheses (`proc P = a . P;`'s recursive `P`) is not parsed
+as `ProcessExprKind::Id` — that variant requires parentheses, even empty ones (`P()`). A bare `P`
+instead falls through to the same `Action` rule a real action instantiation uses, landing as
+`ProcessExprKind::Action`. Type checking resolves this by looking such a name up against both the
+declared action names and the declared process names (`check_action_or_process`); an `act` and a
+`proc` are never allowed to share a name in the first place (`ActionAndProcessConflict`), so this
+never resolves a genuine action-vs-process ambiguity — only an arity overload within whichever one
+of the two the name actually belongs to.
+
+`PbesSpecification::from_untyped` similarly extends `DataSpecification` to check
+a whole PBES This covers *sorts and names* only; PBES well-formedness properties
+such as monotonicity or alternation depth are a separate semantic analysis and
+are out of scope here.
 
 ## Safety
 

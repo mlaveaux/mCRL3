@@ -1,10 +1,7 @@
-//! The scoped walk over every PRES equation's formula and `init`: checks each data expression
-//! embedded via `val(...)` (and each constant multiplier) against `Real`, resolves each
-//! `PropVarInst` against the equation table (name, arity, and each argument's sort), and pushes
-//! each `inf`/`sup`/`sum` binder's variables — accumulating each checked expression's
-//! [`TypingInfo`] along the way. Mirrors [`crate::pbes::check`], except a PRES's embedded data
-//! expressions are checked against `Real` rather than `Bool`, and `Equal`/`Condition`/
-//! `{Left,Right}ConstantMultiply`/`Bound` have no PBES counterpart.
+//! The scoped walk over every PRES equation's formula and `init`: checks each
+//! data expression embedded via `val(...)` against `Real`, and each
+//! `PropVarInst` against the equation table. Resolves the declared sorts of all
+//! bound variables.
 
 use merc_syntax::PresExpr;
 use merc_syntax::PresExprKind;
@@ -156,7 +153,7 @@ fn check_pres_expr(
 /// [`ResolvedName::PropositionalVariable`] at `inst.identifier`'s own span (not `inst.span`, the
 /// whole `name(args)` node) — see [`docs/name_resolution.md`](../../../../docs/name_resolution.md):
 /// unlike an action/process name, a PRES equation is never overloaded, so the equation table's
-/// single match is the answer. Mirrors [`crate::pbes::check::check_prop_var_inst`].
+/// single match is the answer. Mirrors `crate::pbes::check::check_prop_var_inst`.
 fn check_prop_var_inst(
     data: &mut DataSpecification,
     tables: &DeclarationTables,
