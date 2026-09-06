@@ -1,19 +1,10 @@
-//! The scoped walk over the state formula: checks each `val(...)` expression — `Real`-valued at
-//! the state-formula level, `Bool`-valued at the action-formula level nested inside a `<...>`/
-//! `[...]` modality — resolves each action instance against the `act` table, resolves each
-//! fixpoint-variable reference (`StateFrmKind::Id`) against a lexically-scoped stack of enclosing
-//! `mu`/`nu` declarations, and pushes/pops every binder along the way — accumulating each checked
-//! expression's [`TypingInfo`].
-//!
-//! Unlike a PBES/PRES's `PropVarInst`, resolved against a flat table of equations declared once at
-//! the top level (`crate::pres::check::check_prop_var_inst`), a state formula's fixpoint variable is
-//! declared *inside* the formula itself, can be nested, and can shadow an outer variable of the
-//! same name (`mu X. nu X. ...`). So there is no [`super::modal_specification::DeclarationTables`]
-//! entry for it: [`check_state_formula`] instead threads a `state_vars` stack that grows on
-//! entering a `FixedPoint` node's body and shrinks again once it returns, exactly mirroring how
-//! `resolution::variable_resolution::Scope` scopes a *data* variable — the difference being that
-//! `StateFrmKind::Id` has no `Resolved` counterpart to rewrite in a separate syntactic pass, so this
-//! resolution happens here, during checking, instead.
+//! The scoped walk over the state formula: checks each `val(...)` expression —
+//! `Real`-valued at the state-formula level, `Bool`-valued at the
+//! action-formula level nested inside a `<...>`/ `[...]` modality.
+//! 
+//! To resolve a state variable's sort, the checker uses the `state_vars` stack,
+//! which pairs each fixpoint variable's declaration span with its declared
+//! parameter sorts.
 
 use std::collections::HashSet;
 
@@ -43,11 +34,11 @@ use super::ModalError;
 use super::modal_specification::DeclarationTables;
 use super::modal_specification::resolve_declared_sort;
 
-/// One fixpoint variable currently in scope: its own name, declared parameter sorts (in order),
-/// and the `StateVarDecl`'s own span (used as its "declaration" for `ResolvedName`, the same way
-/// an `Id`/`Action` occurrence's own whole-node span stands in for a per-identifier span it
-/// doesn't otherwise have — see `StateFrmKind::Id`'s doc comment).
-type StateVarStack = Vec<(String, Vec<ResolvedSortId>, Span)>;
+/// One fixpoint variable currently in scope: its declaring `StateVarDecl`'s own span — matching a
+/// `StateFrmKind::Resolved` occurrence's declaration span, the same way `Id`/`Action`'s own
+/// whole-node span stands in for a per-identifier span it doesn't otherwise have — paired with its
+/// declared parameter sorts (in order).
+type StateVarStack = Vec<(Span, Vec<ResolvedSortId>)>;
 
 /// Checks a state formula specification against the declared sorts, returning the merged typing
 /// information.
@@ -94,6 +85,7 @@ fn collect_scope(
         | StateFrmKind::Delay(_)
         | StateFrmKind::Yaled(_)
         | StateFrmKind::Id(_, _)
+        | StateFrmKind::Resolved(_, _, _)
         | StateFrmKind::DataValExpr(_) => Ok(()),
         StateFrmKind::DataValExprLeftMult(_, expr) | StateFrmKind::DataValExprRightMult(expr, _) => {
             collect_scope(data, expr, scope, sort_references)
@@ -115,7 +107,7 @@ fn collect_scope(
             for argument in &variable.arguments {
                 lsp_info::collect_sort_name_references(&argument.sort, sort_references);
                 let sort = resolve_declared_sort(data, &argument.sort)?;
-                scope.push((argument.span.clone(), sort));
+                scope.push((argument.identifier.span.clone(), sort));
             }
             collect_scope(data, body, scope, sort_references)
         }
@@ -179,8 +171,15 @@ fn check_state_formula(
             None => Ok(()),
         },
 
-        StateFrmKind::Id(name, arguments) => {
-            check_state_var_inst(data, state_vars, scope, name, arguments, &formula.span, typing)
+        // `resolve_modal_variables` runs before checking and rewrites every `Id` naming an
+        // enclosing `mu`/`nu` into `Resolved`; one surviving here refers to no enclosing binder.
+        StateFrmKind::Id(name, _arguments) => Err(ModalError::UndeclaredStateVariable {
+            name: name.to_string(),
+            span: formula.span.clone(),
+        }),
+
+        StateFrmKind::Resolved(name, arguments, declaration) => {
+            check_state_var_inst(data, state_vars, scope, name, arguments, declaration, &formula.span, typing)
         }
 
         StateFrmKind::DataValExpr(data_expr) => {
@@ -236,8 +235,8 @@ fn check_fixed_point(
         if !seen.insert(argument.identifier.as_str()) {
             return Err(ModalError::DuplicateFixedPointParameter {
                 variable: variable.identifier.clone(),
-                name: argument.identifier.clone(),
-                span: argument.span.clone(),
+                name: argument.identifier.node.clone(),
+                span: argument.identifier.span.clone(),
             });
         }
         let sort = resolve_declared_sort(data, &argument.sort)?;
@@ -245,15 +244,17 @@ fn check_fixed_point(
         params.push(sort);
     }
 
-    state_vars.push((variable.identifier.clone(), params, variable.span.clone()));
+    state_vars.push((variable.span.clone(), params));
     let result = check_state_formula(data, tables, scope, state_vars, body, typing);
     state_vars.pop();
     result
 }
 
-/// Resolves `name(args)` against the innermost enclosing fixpoint variable of that name (last
-/// pushed wins, matching lexical shadowing), checks its argument count (`ArityMismatch`), and
-/// checks each argument against its parameter's sort. On success, also pushes a
+/// Type-checks an already-[`resolved`](StateFrmKind::Resolved) `name(args)` reference against its
+/// enclosing fixpoint variable's declared parameter sorts, found in `state_vars` by matching
+/// `declaration` — not `name`: shadowing is already resolved, by `resolve_modal_variables`, into
+/// the exact declaring span this occurrence carries. Checks the argument count (`ArityMismatch`)
+/// and each argument against its parameter's sort. On success, also pushes a
 /// [`ResolvedName::StateVariable`] at `span` (the whole `name(args)`/bare `name` node — see
 /// `StateFrmKind::Id`'s doc comment for why there is no narrower span available here).
 fn check_state_var_inst(
@@ -262,15 +263,20 @@ fn check_state_var_inst(
     scope: &Scope,
     name: &str,
     arguments: &[DataExpr],
+    declaration: &Span,
     span: &Span,
     typing: &mut TypingInfo,
 ) -> Result<(), ModalError> {
-    let Some((_, params, declaration)) = state_vars.iter().rev().find(|(declared, _, _)| declared == name) else {
-        return Err(ModalError::UndeclaredStateVariable {
-            name: name.to_string(),
-            span: span.clone(),
-        });
-    };
+    let (_, params) = state_vars
+        .iter()
+        .rev()
+        .find(|(declared, _)| declared == declaration)
+        .expect(
+            "a `StateFrmKind::Resolved` occurrence's declaration span always matches an \
+             enclosing `FixedPoint` pushed onto `state_vars` by `check_fixed_point`, since \
+             `resolve_modal_variables` only ever resolves a name against a genuinely enclosing \
+             binder",
+        );
     typing.push(
         span.clone(),
         ResolvedName::StateVariable {

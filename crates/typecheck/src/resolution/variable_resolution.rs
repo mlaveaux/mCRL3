@@ -104,22 +104,25 @@ pub(crate) fn resolve_pres_variables(pres: &mut UntypedPres) {
 }
 
 /// Resolves every context-free variable reference in `spec`'s state formula: a
-/// `forall`/`exists`/`inf`/`sup`/`sum` binder, a fixpoint (`mu`/`nu`) variable's own parameters, and
-/// an action-formula `forall`/`exists` binder nested inside a `<...>`/`[...]` modality. A state
-/// formula specification has no `glob` block, so scoping starts empty — unlike
+/// `forall`/`exists`/`inf`/`sup`/`sum` binder, a fixpoint (`mu`/`nu`) variable's own parameters, an
+/// action-formula `forall`/`exists` binder nested inside a `<...>`/`[...]` modality, and — in a
+/// second, separate namespace threaded alongside the first — a fixpoint-variable *name* itself
+/// (`StateFrmKind::Id`'s reference to an enclosing `mu X(...)`/`nu X(...)`), rewritten to
+/// [`StateFrmKind::Resolved`] exactly like [`DataExprKind::Id`] resolves to
+/// [`DataExprKind::Resolved`]. A state formula specification has no `glob` block, so both scopes
+/// start empty — unlike
 /// [`resolve_process_variables`]/[`resolve_pbes_variables`]/[`resolve_pres_variables`], there is no
 /// outer scope to seed.
 ///
-/// A fixpoint variable *name* itself (`StateFrmKind::Id`'s reference to an enclosing `mu`/`nu`) is
-/// not resolved here: unlike a data variable, `StateFrmKind::Id` has no `Resolved` counterpart to
-/// rewrite into, so it is instead resolved directly during checking, against a lexically-scoped
-/// stack built as `crate::modal::check` walks the formula — see that module's doc comment.
+/// This pass only decides *which* enclosing binder a name refers to; a fixpoint variable's own
+/// *parameter sorts* still aren't known here.
 pub(crate) fn resolve_modal_variables(spec: &mut UntypedStateFrmSpec) {
     let mut scope = Scope::default();
-    resolve_in_state_frm(&mut spec.formula, &mut scope);
+    let mut state_vars = Scope::default();
+    resolve_in_state_frm(&mut spec.formula, &mut scope, &mut state_vars);
 }
 
-fn resolve_in_state_frm(formula: &mut StateFrm, scope: &mut Scope) {
+fn resolve_in_state_frm(formula: &mut StateFrm, scope: &mut Scope, state_vars: &mut Scope) {
     match &mut formula.node {
         StateFrmKind::True | StateFrmKind::False => {}
         StateFrmKind::Delay(time) | StateFrmKind::Yaled(time) => {
@@ -127,32 +130,42 @@ fn resolve_in_state_frm(formula: &mut StateFrm, scope: &mut Scope) {
                 resolve_in_data_expr(time, scope);
             }
         }
-        StateFrmKind::Id(_, arguments) => {
-            for argument in arguments {
+        StateFrmKind::Id(name, arguments) => {
+            for argument in arguments.iter_mut() {
+                resolve_in_data_expr(argument, scope);
+            }
+            if let Some(declaration) = state_vars.resolve(name) {
+                formula.node = StateFrmKind::Resolved(name.clone(), std::mem::take(arguments), declaration.clone());
+            }
+        }
+        // Already resolved (this pass never runs twice on the same tree, but treating it as a
+        // leaf keeps the rewrite idempotent, the same way `DataExprKind::Resolved` does).
+        StateFrmKind::Resolved(_, arguments, _) => {
+            for argument in arguments.iter_mut() {
                 resolve_in_data_expr(argument, scope);
             }
         }
         StateFrmKind::DataValExpr(data_expr) => resolve_in_data_expr(data_expr, scope),
         StateFrmKind::DataValExprLeftMult(constant, expr) => {
             resolve_in_data_expr(constant, scope);
-            resolve_in_state_frm(expr, scope);
+            resolve_in_state_frm(expr, scope, state_vars);
         }
         StateFrmKind::DataValExprRightMult(expr, constant) => {
-            resolve_in_state_frm(expr, scope);
+            resolve_in_state_frm(expr, scope, state_vars);
             resolve_in_data_expr(constant, scope);
         }
         StateFrmKind::Modality { formula, expr, .. } => {
             resolve_in_reg_frm(formula, scope);
-            resolve_in_state_frm(expr, scope);
+            resolve_in_state_frm(expr, scope, state_vars);
         }
-        StateFrmKind::Unary { expr, .. } => resolve_in_state_frm(expr, scope),
+        StateFrmKind::Unary { expr, .. } => resolve_in_state_frm(expr, scope, state_vars),
         StateFrmKind::Binary { lhs, rhs, .. } => {
-            resolve_in_state_frm(lhs, scope);
-            resolve_in_state_frm(rhs, scope);
+            resolve_in_state_frm(lhs, scope, state_vars);
+            resolve_in_state_frm(rhs, scope, state_vars);
         }
         StateFrmKind::Quantifier { variables, body, .. } | StateFrmKind::Bound { variables, body, .. } => {
             let pushed = scope.push_declarations(variables);
-            resolve_in_state_frm(body, scope);
+            resolve_in_state_frm(body, scope, state_vars);
             scope.pop(pushed);
         }
         StateFrmKind::FixedPoint { variable, body, .. } => {
@@ -164,9 +177,13 @@ fn resolve_in_state_frm(formula: &mut StateFrm, scope: &mut Scope) {
             }
             let pushed = variable.arguments.len();
             for argument in &variable.arguments {
-                scope.push(argument.identifier.clone(), argument.span.clone());
+                scope.push(argument.identifier.node.clone(), argument.identifier.span.clone());
             }
-            resolve_in_state_frm(body, scope);
+            // The fixpoint variable's own name is in scope for its body only (it may itself
+            // shadow an outer variable of the same name, `mu X. nu X. ...`).
+            state_vars.push(variable.identifier.clone(), variable.span.clone());
+            resolve_in_state_frm(body, scope, state_vars);
+            state_vars.pop(1);
             scope.pop(pushed);
         }
     }
@@ -221,7 +238,7 @@ impl Scope {
         Scope(
             variables
                 .iter()
-                .map(|decl| (decl.identifier.clone(), decl.span.clone()))
+                .map(|decl| (decl.identifier.node.clone(), decl.identifier.span.clone()))
                 .collect(),
         )
     }
@@ -230,7 +247,8 @@ impl Scope {
     /// the caller can [`Scope::pop`] them back off once its subtree is done.
     fn push_declarations<Id>(&mut self, variables: &[IdDecl<Id>]) -> usize {
         for variable in variables {
-            self.0.push((variable.identifier.clone(), variable.span.clone()));
+            self.0
+                .push((variable.identifier.node.clone(), variable.identifier.span.clone()));
         }
         variables.len()
     }

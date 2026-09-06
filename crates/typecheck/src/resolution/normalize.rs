@@ -98,7 +98,7 @@ mod tests {
         spec.data_specification()
             .map_declarations
             .iter()
-            .find(|map| map.identifier == name)
+            .find(|map| map.identifier.node == name)
             .unwrap_or_else(|| panic!("map {name} should be declared"))
             .sort
             .clone()

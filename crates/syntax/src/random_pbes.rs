@@ -207,7 +207,7 @@ fn random_quantifier<R: Rng>(
 ) -> PbesExpr {
     let available: Vec<&str> = QUANT_INTS
         .iter()
-        .filter(|&&q| !freevars.iter().any(|fv| fv.identifier == q))
+        .filter(|&&q| !freevars.iter().any(|fv| fv.identifier.node == q))
         .copied()
         .collect();
 

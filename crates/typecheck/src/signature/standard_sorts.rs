@@ -533,7 +533,7 @@ mod tests {
             generated
                 .map_declarations
                 .iter()
-                .any(|map| map.identifier == "@func_update"),
+                .any(|map| map.identifier.node == "@func_update"),
             "the multi-argument function sort should still declare @func_update"
         );
 

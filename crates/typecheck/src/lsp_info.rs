@@ -344,7 +344,7 @@ impl<'a> DeclarationIndex<'a> {
                 continue;
             };
             let sort = spec.sort_of_constructor(id);
-            let declaration = declared_span(&decl.span);
+            let declaration = declared_span(&decl.identifier.span);
             constructors
                 .entry((decl.identifier.as_str(), sort))
                 .or_insert((id, declaration));
@@ -356,7 +356,7 @@ impl<'a> DeclarationIndex<'a> {
                 continue;
             };
             let sort = spec.sort_of_map(id);
-            let declaration = declared_span(&decl.span);
+            let declaration = declared_span(&decl.identifier.span);
             mappings
                 .entry((decl.identifier.as_str(), sort))
                 .or_insert((id, declaration));

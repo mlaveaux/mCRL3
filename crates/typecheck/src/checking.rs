@@ -68,7 +68,7 @@ pub(crate) fn collect_binder_sorts<E>(
     for var in variables {
         lsp_info::collect_sort_name_references(&var.sort, sort_references);
         let sort = resolve(data, &var.sort)?;
-        scope.push((var.span.clone(), sort));
+        scope.push((var.identifier.span.clone(), sort));
     }
     Ok(())
 }

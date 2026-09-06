@@ -167,23 +167,21 @@ impl PropVarInst {
 /// [ConstructorId] or [MapId] where appropriate.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct IdDecl<Id = DefId> {
-    /// Identifier being declared
-    pub identifier: String,
+    /// Identifier being declared.
+    pub identifier: Spanned<String>,
     /// Sort expression for this identifier
     pub sort: SortExpression,
-    /// Source location information
-    pub span: Span,
     /// Unique ID assigned to this declaration during name/id resolution.
     pub id: Option<Id>,
 }
 
 impl<Id> IdDecl<Id> {
-    /// Creates a new identifier declaration with the given identifier, sort, and span.
+    /// Creates a new identifier declaration with the given identifier, sort, and the identifier's
+    /// own span.
     pub fn new(identifier: String, sort: SortExpression, span: Span) -> Self {
         IdDecl {
-            identifier,
+            identifier: Spanned { node: identifier, span },
             sort,
-            span,
             id: None,
         }
     }
@@ -193,7 +191,6 @@ impl<Id> IdDecl<Id> {
         IdDecl {
             identifier: self.identifier,
             sort: self.sort,
-            span: self.span,
             id: None,
         }
     }
@@ -637,7 +634,8 @@ impl StateVarDecl {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct StateVarAssignment {
-    pub identifier: String,
+    /// The parameter's own name.
+    pub identifier: Spanned<String>,
     pub sort: SortExpression,
     pub expr: DataExpr,
 }
@@ -660,6 +658,8 @@ pub enum StateFrmKind {
     /// `yaled` or `yaled@t`; the optional time is `None` for a bare `yaled`.
     Yaled(Option<DataExpr>),
     Id(String, Vec<DataExpr>),
+    /// A fixpoint-variable reference resolved to its declaring `mu`/`nu`.
+    Resolved(String, Vec<DataExpr>, Span),
     DataValExprLeftMult(DataExpr, Box<StateFrm>),
     DataValExprRightMult(Box<StateFrm>, DataExpr),
     DataValExpr(DataExpr),

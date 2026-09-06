@@ -1070,7 +1070,7 @@ impl<'a> ConstraintGenerator<'a> {
                 self.bind_fresh(node, bag);
             }
             DataExprKind::SetBagComp { variable, predicate } => {
-                let element = self.binder_sort(&variable.sort, &variable.span)?;
+                let element = self.binder_sort(&variable.sort, &variable.identifier.span)?;
                 let element_node = self.unifier.resolved_node(element);
 
                 // The bound variable shadows an equation variable of the same
@@ -1200,7 +1200,7 @@ impl<'a> ConstraintGenerator<'a> {
         let mut sorts = Vec::with_capacity(variables.len());
         let mut shadowed = Vec::with_capacity(variables.len());
         for variable in variables {
-            let sort = self.binder_sort(&variable.sort, &variable.span)?;
+            let sort = self.binder_sort(&variable.sort, &variable.identifier.span)?;
             let node = self.unifier.resolved_node(sort);
             let name = variable.identifier.as_str();
             shadowed.push((name, self.variables.insert(name, node)));

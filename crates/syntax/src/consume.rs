@@ -1544,11 +1544,7 @@ impl Mcrl2Parser {
     fn StateVarAssignment(input: ParseNode) -> ParseResult<StateVarAssignment> {
         match_nodes!(input.into_children();
             [Id(identifier), SortExpr(sort), DataExpr(expr)] => {
-                Ok(StateVarAssignment {
-                    identifier: identifier.node,
-                    sort,
-                    expr,
-                })
+                Ok(StateVarAssignment { identifier, sort, expr })
             }
         )
     }

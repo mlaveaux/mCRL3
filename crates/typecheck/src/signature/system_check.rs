@@ -89,8 +89,8 @@ pub(crate) fn check_system_specification(
         for variable in &eqn_spec.variables {
             if !variables.insert(variable.identifier.as_str()) {
                 return Err(WellTypedError::DuplicateEquationVariable {
-                    variable: variable.identifier.clone(),
-                    span: variable.span.clone(),
+                    variable: variable.identifier.node.clone(),
+                    span: variable.identifier.span.clone(),
                 });
             }
             checker.check_sort(&variable.sort)?;

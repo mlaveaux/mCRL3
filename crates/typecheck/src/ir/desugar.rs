@@ -352,12 +352,12 @@ mod tests {
         let constructors = spec
             .constructor_declarations
             .iter()
-            .map(|declaration| declaration.identifier.clone())
+            .map(|declaration| declaration.identifier.node.clone())
             .collect();
         let mappings = spec
             .map_declarations
             .iter()
-            .map(|declaration| declaration.identifier.clone())
+            .map(|declaration| declaration.identifier.node.clone())
             .collect();
         (constructors, mappings)
     }

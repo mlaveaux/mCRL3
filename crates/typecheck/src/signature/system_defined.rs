@@ -284,16 +284,16 @@ pub(crate) fn check_no_system_function_redeclaration(
     for decl in &spec.constructor_declarations {
         if reserved.contains(decl.identifier.as_str()) {
             return Err(WellTypedError::SystemFunctionRedeclared {
-                name: decl.identifier.clone(),
-                span: decl.span.clone(),
+                name: decl.identifier.node.clone(),
+                span: decl.identifier.span.clone(),
             });
         }
     }
     for decl in &spec.map_declarations {
         if reserved.contains(decl.identifier.as_str()) {
             return Err(WellTypedError::SystemFunctionRedeclared {
-                name: decl.identifier.clone(),
-                span: decl.span.clone(),
+                name: decl.identifier.node.clone(),
+                span: decl.identifier.span.clone(),
             });
         }
     }

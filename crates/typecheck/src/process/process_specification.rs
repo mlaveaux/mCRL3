@@ -169,12 +169,12 @@ impl DeclarationTables {
                 if !seen.insert(param.identifier.as_str()) {
                     return Err(ProcessError::DuplicateProcessParameter {
                         process: decl.identifier.node.clone(),
-                        name: param.identifier.clone(),
-                        span: param.span.clone(),
+                        name: param.identifier.node.clone(),
+                        span: param.identifier.span.clone(),
                     });
                 }
                 let sort = resolve_declared_sort(data, &param.sort)?;
-                params.push((param.identifier.clone(), sort));
+                params.push((param.identifier.node.clone(), sort));
             }
             processes_by_name
                 .entry(decl.identifier.node.clone())
@@ -203,8 +203,8 @@ impl DeclarationTables {
         for decl in &spec.global_variables {
             if !seen_globals.insert(decl.identifier.as_str()) {
                 return Err(ProcessError::DuplicateGlobalVariable {
-                    name: decl.identifier.clone(),
-                    span: decl.span.clone(),
+                    name: decl.identifier.node.clone(),
+                    span: decl.identifier.span.clone(),
                 });
             }
             global_sorts.push(resolve_declared_sort(data, &decl.sort)?);

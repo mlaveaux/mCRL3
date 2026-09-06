@@ -50,11 +50,11 @@ pub(crate) fn resolve_system_signature(
 
     for decl in &system.constructor_declarations {
         let id = resolve_system_sort(ctx, user_spec, &sort_ids, &decl.sort)?;
-        push_overload(signature.constructors.entry(decl.identifier.clone()).or_default(), id);
+        push_overload(signature.constructors.entry(decl.identifier.node.clone()).or_default(), id);
     }
     for decl in &system.map_declarations {
         let id = resolve_system_sort(ctx, user_spec, &sort_ids, &decl.sort)?;
-        push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
+        push_overload(signature.mappings.entry(decl.identifier.node.clone()).or_default(), id);
     }
 
     ctx.system_signature = Some(Arc::new(signature));
@@ -109,11 +109,11 @@ pub(crate) fn resolve_system_signature_full(
         };
         for decl in &group.declarations.constructor_declarations {
             let id = resolve_system_sort(ctx, user_spec, &sort_ids, &decl.sort)?;
-            push_overload(signature.constructors.entry(decl.identifier.clone()).or_default(), id);
+            push_overload(signature.constructors.entry(decl.identifier.node.clone()).or_default(), id);
         }
         for decl in &group.declarations.map_declarations {
             let id = resolve_system_sort(ctx, user_spec, &sort_ids, &decl.sort)?;
-            push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
+            push_overload(signature.mappings.entry(decl.identifier.node.clone()).or_default(), id);
         }
         let group_signature = Arc::new(merge_signatures(&signature, &ambient));
         for slot in &mut by_group[group.equation_range.clone()] {
@@ -318,7 +318,7 @@ fn collect_overloads(ops: &mut HashMap<String, Vec<SortExpression>>, spec: &Unty
         .map(|decl| (&decl.identifier, &decl.sort))
         .chain(spec.map_declarations.iter().map(|decl| (&decl.identifier, &decl.sort)))
     {
-        let overloads = ops.entry(identifier.clone()).or_default();
+        let overloads = ops.entry(identifier.node.clone()).or_default();
         if !overloads.contains(sort) {
             overloads.push(sort.clone());
         }

@@ -292,7 +292,7 @@ fn grouped_constructor_declarations_get_distinct_precise_spans() {
     let spans: Vec<&str> = spec
         .constructor_declarations
         .iter()
-        .map(|decl| &text[decl.span.start..decl.span.end])
+        .map(|decl| &text[decl.identifier.span.start..decl.identifier.span.end])
         .collect();
     assert_eq!(spans, ["c1", "c2"]);
 }

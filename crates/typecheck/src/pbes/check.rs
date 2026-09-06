@@ -46,7 +46,7 @@ pub(super) fn check_pbes_specification(
         .global_variables
         .iter()
         .zip(&tables.global_sorts)
-        .map(|(decl, &sort)| (decl.span.clone(), sort))
+        .map(|(decl, &sort)| (decl.identifier.span.clone(), sort))
         .collect();
 
     for (eqn, params) in spec.equations.iter().zip(&tables.equation_params) {
@@ -57,7 +57,7 @@ pub(super) fn check_pbes_specification(
                 .parameters
                 .iter()
                 .zip(params)
-                .map(|(decl, &(_, sort))| (decl.span.clone(), sort)),
+                .map(|(decl, &(_, sort))| (decl.identifier.span.clone(), sort)),
         );
         collect_scope(data, &eqn.formula, &mut scope, &mut sort_references)?;
         check_pbes_expr(data, tables, &scope, &eqn.formula, &mut typing)?;

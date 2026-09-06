@@ -91,6 +91,8 @@ pub use syntax_tree::SortExpressionKind;
 pub use syntax_tree::StateFrm;
 pub use syntax_tree::StateFrmKind;
 pub use syntax_tree::StateFrmOp;
+pub use syntax_tree::StateFrmUnaryOp;
+pub use syntax_tree::StateVarAssignment;
 pub use syntax_tree::StateVarDecl;
 pub use syntax_tree::UntypedDataSpecification;
 pub use syntax_tree::UntypedPbes;

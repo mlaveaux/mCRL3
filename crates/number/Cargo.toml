@@ -9,12 +9,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 merc_utilities.workspace = true
 
 rand.workspace = true
 bitstream-io.workspace = true
 num.workspace = true
-
-[lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(kani)'] }

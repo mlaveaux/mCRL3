@@ -91,23 +91,26 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
         match ctx.sorts.get(target) {
             ResolvedSort::Primitive(_) => {
                 return Err(WellTypedError::ConstructorForBasicSort {
-                    constructor: decl.identifier.clone(),
+                    constructor: decl.identifier.node.clone(),
                     sort: target_sort(&decl.sort).to_string(),
-                    span: decl.span.clone(),
+                    span: decl.identifier.span.clone(),
                 });
             }
             ResolvedSort::Function { .. } => {
                 return Err(WellTypedError::ConstructorForFunctionSort {
-                    constructor: decl.identifier.clone(),
+                    constructor: decl.identifier.node.clone(),
                     sort: target_sort(&decl.sort).to_string(),
-                    span: decl.span.clone(),
+                    span: decl.identifier.span.clone(),
                 });
             }
             _ => {}
         }
 
-        check_constant_name(&mut constants, ctx, &decl.identifier, decl.span.clone(), id)?;
-        push_overload(signature.constructors.entry(decl.identifier.clone()).or_default(), id);
+        check_constant_name(&mut constants, ctx, &decl.identifier, decl.identifier.span.clone(), id)?;
+        push_overload(
+            signature.constructors.entry(decl.identifier.node.clone()).or_default(),
+            id,
+        );
     }
 
     for decl in &spec.map_declarations {
@@ -120,18 +123,18 @@ fn compute_signature(ctx: &mut TypeCheckContext, spec: &UntypedDataSpecification
         // alias. Overloading the name with a different sort remains allowed.
         if signature
             .constructors
-            .get(&decl.identifier)
+            .get(&decl.identifier.node)
             .is_some_and(|overloads| overloads.contains(&id))
         {
             return Err(WellTypedError::ConstructorAndMappingConflict {
-                constructor: decl.identifier.clone(),
-                map: decl.identifier.clone(),
-                span: decl.span.clone(),
+                constructor: decl.identifier.node.clone(),
+                map: decl.identifier.node.clone(),
+                span: decl.identifier.span.clone(),
             });
         }
 
-        check_constant_name(&mut constants, ctx, &decl.identifier, decl.span.clone(), id)?;
-        push_overload(signature.mappings.entry(decl.identifier.clone()).or_default(), id);
+        check_constant_name(&mut constants, ctx, &decl.identifier, decl.identifier.span.clone(), id)?;
+        push_overload(signature.mappings.entry(decl.identifier.node.clone()).or_default(), id);
     }
 
     Ok(signature)

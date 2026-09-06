@@ -191,7 +191,7 @@ fn random_process_instance<R: Rng>(rng: &mut R, pv: &ProcVar, freevars: &[IdDecl
             } else {
                 random_integer_data_expression(rng, freevars)
             };
-            Assignment::new(p.identifier.clone(), expr)
+            Assignment::new(p.identifier.node.clone(), expr)
         })
         .collect();
     ProcessExprKind::Id(respan(Span::default(), pv.name.clone()), assignments).into()
@@ -254,7 +254,7 @@ fn random_process_expr<R: Rng>(
             // Sum: bind a fresh variable chosen from SUM_VARS to avoid capture.
             let var_name = SUM_VARS
                 .iter()
-                .find(|&&n| !freevars.iter().any(|v| v.identifier == n))
+                .find(|&&n| !freevars.iter().any(|v| v.identifier.node == n))
                 .copied();
             match var_name {
                 None => random_leaf(rng, freevars, actions, proc_vars, is_guarded),
@@ -483,7 +483,7 @@ pub fn make_process_specification<R: Rng>(
                     } else {
                         DataExprKind::Number(rng.random_range(0..=2u32).to_string()).into()
                     };
-                    Assignment::new(p.identifier.clone(), expr)
+                    Assignment::new(p.identifier.node.clone(), expr)
                 })
                 .collect();
             ProcessExprKind::Id(respan(Span::default(), pv.name.clone()), assignments).into()

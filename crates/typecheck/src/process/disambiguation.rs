@@ -58,11 +58,7 @@ impl Names {
 }
 
 /// Rewrites every `proc` body and `init` in `spec` in place, fixing every misparsed `Condition`
-/// this module's doc comment describes. Idempotent — see [`tests::disambiguation_is_idempotent`] and
-/// [`tests::disambiguation_is_idempotent_for_the_long_guarded_choice_chain`] — running it again on an
-/// already-fixed specification finds nothing left to rewrite, so a caller unsure whether a
-/// specification has already been through this pass can simply call it again rather than track
-/// that themselves.
+/// this module's doc comment describes. 
 pub fn disambiguate_process_specification(spec: &mut UntypedProcessSpecification) {
     let names = Names::build(spec);
     for decl in &mut spec.process_declarations {
@@ -73,11 +69,12 @@ pub fn disambiguate_process_specification(spec: &mut UntypedProcessSpecification
     }
 }
 
-/// Recursively rewrites `expr` in place: [`merc_syntax::Traverse::apply_mut`] provides the
-/// descent into every non-`Condition` `ProcessExpr` variant's own children (`Sum`/`Dist`'s
-/// `operand`, `Binary`'s `lhs`/`rhs`, …) generically — [`fix_swallow`] only has to know about
-/// `Condition` — top-down, so it always sees a not-yet-rewritten `then`/`else_` in its original,
-/// as-parsed shape, which the swallow it looks for needs (see [`fix_condition`]'s doc comment).
+/// Recursively rewrites `expr` in place: [`merc_syntax::Traverse::apply_mut`]
+/// provides the descent into every non-`Condition` `ProcessExpr` variant's own
+/// children generically — [`fix_swallow`] only has to know about `Condition` —
+/// top-down, so it always sees a not-yet-rewritten `then`/`else_` in its
+/// original, as-parsed shape, which the swallow it looks for needs (see
+/// [`fix_condition`]'s doc comment).
 fn disambiguate_mut(names: &Names, expr: &mut ProcessExpr) {
     match expr.apply_mut::<Infallible, _>(|node| Ok(fix_swallow(names, node))) {
         Ok(()) => {}

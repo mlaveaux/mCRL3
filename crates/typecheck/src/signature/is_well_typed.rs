@@ -37,8 +37,8 @@ pub(crate) fn is_well_typed(spec: &UntypedDataSpecification) -> Result<(), WellT
         for var in &equation.variables {
             if !names.insert(var.identifier.as_str()) {
                 return Err(WellTypedError::DuplicateEquationVariable {
-                    variable: var.identifier.clone(),
-                    span: var.span.clone(),
+                    variable: var.identifier.node.clone(),
+                    span: var.identifier.span.clone(),
                 });
             }
             // A product sort only has meaning as the domain of a function sort.

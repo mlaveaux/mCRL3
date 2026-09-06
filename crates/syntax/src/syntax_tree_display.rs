@@ -355,7 +355,7 @@ impl fmt::Display for DataExpr {
 
 impl<Id> fmt::Display for IdDecl<Id> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.identifier, self.sort)
+        write!(f, "{}: {}", self.identifier.node, self.sort)
     }
 }
 
@@ -420,7 +420,7 @@ impl fmt::Display for StateFrm {
             StateFrmKind::True => write!(f, "true"),
             StateFrmKind::False => write!(f, "false"),
             StateFrmKind::DataValExpr(expr) => write!(f, "val({expr})"),
-            StateFrmKind::Id(identifier, args) => {
+            StateFrmKind::Id(identifier, args) | StateFrmKind::Resolved(identifier, args, _) => {
                 if args.is_empty() {
                     write!(f, "{identifier}")
                 } else {
@@ -482,7 +482,7 @@ impl fmt::Display for StateVarDecl {
 
 impl fmt::Display for StateVarAssignment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} : {} = {}", self.identifier, self.sort, self.expr)
+        write!(f, "{} : {} = {}", self.identifier.node, self.sort, self.expr)
     }
 }
 

@@ -58,7 +58,7 @@ pub(super) fn check_process_specification(
         .global_variables
         .iter()
         .zip(&tables.global_sorts)
-        .map(|(decl, &sort)| (decl.span.clone(), sort))
+        .map(|(decl, &sort)| (decl.identifier.span.clone(), sort))
         .collect();
 
     for (proc_decl, params) in spec.process_declarations.iter().zip(&tables.process_params) {
@@ -69,7 +69,7 @@ pub(super) fn check_process_specification(
                 .params
                 .iter()
                 .zip(params)
-                .map(|(decl, &(_, sort))| (decl.span.clone(), sort)),
+                .map(|(decl, &(_, sort))| (decl.identifier.span.clone(), sort)),
         );
         collect_scope(data, &proc_decl.body, &mut scope, &mut sort_references)?;
         check_process_expr(data, tables, &scope, &proc_decl.body, &mut typing)?;

@@ -41,16 +41,16 @@ pub fn random_boolean_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDe
         .filter(|v| matches!(&v.sort.node, SortExpressionKind::Simple(Sort::Bool)))
         .collect();
 
-    let mut candidates: Vec<DataExpr> = booleans.iter().map(|v| id(v.identifier.clone())).collect();
+    let mut candidates: Vec<DataExpr> = booleans.iter().map(|v| id(v.identifier.node.clone())).collect();
 
     for m in &integers {
-        let mv = id(m.identifier.clone());
+        let mv = id(m.identifier.node.clone());
         candidates.push(binary(DataExprBinaryOp::GreaterThan, mv.clone(), number("0")));
         candidates.push(binary(DataExprBinaryOp::GreaterThan, mv.clone(), number("1")));
         candidates.push(binary(DataExprBinaryOp::LessThan, mv.clone(), number("2")));
         candidates.push(binary(DataExprBinaryOp::LessThan, mv.clone(), number("3")));
         for n in &integers {
-            candidates.push(binary(DataExprBinaryOp::Equal, mv.clone(), id(n.identifier.clone())));
+            candidates.push(binary(DataExprBinaryOp::Equal, mv.clone(), id(n.identifier.node.clone())));
         }
     }
 
@@ -72,14 +72,14 @@ pub fn random_integer_data_expression<R: Rng, Id>(rng: &mut R, variables: &[IdDe
     let extras = [number("1"), number("2")];
     let rhs_operands: Vec<DataExpr> = integers
         .iter()
-        .map(|v| id(v.identifier.clone()))
+        .map(|v| id(v.identifier.node.clone()))
         .chain(extras)
         .collect();
 
-    let mut candidates: Vec<DataExpr> = integers.iter().map(|v| id(v.identifier.clone())).collect();
+    let mut candidates: Vec<DataExpr> = integers.iter().map(|v| id(v.identifier.node.clone())).collect();
 
     for m in &integers {
-        let mv = id(m.identifier.clone());
+        let mv = id(m.identifier.node.clone());
         for n in &rhs_operands {
             candidates.push(binary(DataExprBinaryOp::Add, mv.clone(), n.clone()));
             candidates.push(binary(DataExprBinaryOp::Subtract, mv.clone(), n.clone()));

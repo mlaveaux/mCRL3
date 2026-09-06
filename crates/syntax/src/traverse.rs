@@ -462,6 +462,7 @@ define_traversal! {
         | StateFrmKind::Delay(_)
         | StateFrmKind::Yaled(_)
         | StateFrmKind::Id(_, _)
+        | StateFrmKind::Resolved(_, _, _)
         | StateFrmKind::DataValExpr(_) => {}
     },
 }
