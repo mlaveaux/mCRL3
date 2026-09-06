@@ -56,13 +56,8 @@ members = [
     "tools/vpg",
 ]
 
-[workspace.lints.rustdoc]
-# Several public functions/types intentionally link to crate-internal items
-# from their doc comments (e.g. to explain an implementation detail without
-# exposing it). Keep the links themselves (so a rename still trips the
-# separate, still-denied `broken_intra_doc_links` lint) but don't fail the
-# build just because the linked item isn't publicly reachable.
-private_intra_doc_links = "allow"
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(loom)', 'cfg(kani)'] }
 
 [workspace.dependencies]
 ahash = "0.8"
@@ -70,7 +65,8 @@ bitstream-io = "4.10"
 bitvec = "1.1"
 bumpalo = "3.20"
 clap = { version = "4.6", features = ["derive"] }
-core_affinity2 = "0.16"
+# Intentionally downgraded to keep the rustc msrv.
+core_affinity2 = "0.15"
 dashmap = { version = "7.0.0-rc2", features = ["inline-more"] }
 delegate = "0.13"
 ena = "0.14"

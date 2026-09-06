@@ -51,18 +51,18 @@ jobs:
       run: cargo install cargo-msrv --locked
 
     - name: Test MSRV
-      run: cargo msrv verify --rust-version 1.93.1
+      run: cargo msrv verify --rust-version 1.91.0
       env:        
         RUSTC_WRAPPER: sccache
 
     - name: Test tools/mcrl2 MSRV
-      run: cargo msrv verify --rust-version 1.93.1
+      run: cargo msrv verify --rust-version 1.91.0
       env:        
         RUSTC_WRAPPER: sccache        
       working-directory: tools/mcrl2
 
     - name: Test tools/gui MSRV
-      run: cargo msrv verify --rust-version 1.93.1
+      run: cargo msrv verify --rust-version 1.91.0
       env:        
         RUSTC_WRAPPER: sccache        
       working-directory: tools/gui

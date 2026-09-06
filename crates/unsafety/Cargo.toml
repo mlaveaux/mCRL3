@@ -9,6 +9,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 # Enables an allocator that counts additional metrics, this disables features `jemalloc` and `mimalloc`. The allocator has
 # performance overhead.
@@ -43,10 +46,3 @@ thread_local.workspace = true
 
 mimalloc = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }
-
-[lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(loom)', 'cfg(kani)'] }
-
-[lints.rustdoc]
-# See the note on [workspace.lints.rustdoc] in the workspace root Cargo.toml.
-private_intra_doc_links = "allow"
