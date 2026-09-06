@@ -118,12 +118,11 @@ struct Hoister {
 }
 
 impl Hoister {
-    /// Replaces every anonymous struct in `sort` by a reference to its (fresh
-    /// or reused) named declaration.  The named declaration retains the struct
-    /// *body*, so [`desugar_structured_sorts`] will generate its constructors,
-    /// recognisers and projections.  Use only for structs nested inside a
-    /// named sort declaration's constructor arguments (the only positions that
-    /// should expose global constructors).
+    /// Replaces every anonymous struct in `sort` by a reference to its named
+    /// declaration.  The named declaration retains the struct *body*, so
+    /// [`desugar_structured_sorts`] will generate its constructors, recognisers
+    /// and projections.  Use only for structs nested inside a named sort
+    /// declaration's constructor arguments.
     fn hoist(&mut self, sort: SortExpression) -> SortExpression {
         sort.apply(|expr| -> Result<Option<SortExpression>, Infallible> {
             if let SortExpressionKind::Struct { inner } = &expr.node {
@@ -146,17 +145,23 @@ impl Hoister {
         .expect("The inner function never fails")
     }
 
-    /// Like `hoist` but generates an **abstract** (body-less) declaration for
-    /// any anonymous struct not already registered from a declaration-position
-    /// `sort X = struct …;`.
+    /// Like `hoist` but generates an body-less declaration for any anonymous
+    /// struct not already registered from a declaration-position `sort X =
+    /// struct …;`.
     ///
-    /// This matches mCRL2's behaviour: an anonymous `struct` appearing in a
-    /// map/constructor sort, an equation variable sort, or a binder annotation
-    /// introduces a fresh nominal sort for typing purposes only — it does NOT
-    /// add the struct's constructors/recognisers/projections to the global
-    /// signature.  If the same struct body was already registered by a
-    /// declaration-position occurrence, the existing name (with its full body)
-    /// is reused, preserving the constructor visibility of that declaration.
+    /// # Example
+    ///
+    /// ```text
+    /// sort D = struct c | d;
+    /// map f: struct c | d -> Bool;
+    /// ```
+    ///
+    /// Here `f`'s domain has the same body as `D`, so it is hoisted to a
+    /// reference to `D` itself and `f` can be applied to `c`/`d`. Written in
+    /// isolation, without a matching declaration-position `sort D = ...;`,
+    /// the same `struct c | d` in `f`'s domain would hoist to a fresh,
+    /// body-less `@struct<n>` sort — `c` and `d` are never registered as
+    /// constructors, so `f` would have no value it could ever be applied to.
     fn hoist_non_decl(&mut self, sort: SortExpression) -> SortExpression {
         sort.apply(|expr| -> Result<Option<SortExpression>, Infallible> {
             if let SortExpressionKind::Struct { inner } = &expr.node {
@@ -177,10 +182,7 @@ impl Hoister {
     }
 
     /// The name declaring `body`, generating a fresh `@struct<n>` declaration
-    /// WITH a body when it has not been seen before (declaration-position).
-    /// If the same struct was previously registered as abstract (by
-    /// `name_for_non_decl`), the body is attached retroactively so
-    /// `desugar_structured_sorts` will generate its constructors.
+    /// WITH a body when it has not been seen before.
     fn name_for(&mut self, body: SortExpression) -> String {
         if let Some((_, name)) = self.table.iter().find(|(existing, _)| *existing == body) {
             let name = name.clone();
@@ -241,9 +243,7 @@ impl Hoister {
 ///
 /// Returns the constructor list of every desugared structured sort, from which
 /// `structured_sort_equations` generates the defining equations (Appendix
-/// B.10) for the system-defined specification. Anonymous structured sorts have
-/// already been hoisted into named declarations by
-/// [`hoist_anonymous_structs`], so every struct encountered here is named.
+/// B.10) for the system-defined specification.
 ///
 /// Runs after name resolution, so the generated sorts are already resolved and
 /// flattened, and the structured sort keeps its `DefId`.
