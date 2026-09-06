@@ -162,13 +162,19 @@ fn test_upcast_pos_plus_nat_via_variables() {
 #[test]
 #[cfg_attr(miri, ignore)] // Test is too slow under miri
 fn test_repeated_arithmetic_stays_tractable() {
-    // Before the `Numeric` constraint replaced the `+`/`*` overload
-    // disjunction with a direct lookup, an equation with several repeated
-    // `2*i+k`-shaped sub-expressions (one of the two costs that used to keep
-    // `cellular_automata.mcrl2` out of the corpus harness) explored every
-    // combination of every occurrence's candidate overloads and did not
-    // terminate in reasonable time. A regression here would show up as this
-    // test taking far longer than the rest of the suite.
+    // Every arithmetic operator resolves through the ordinary `Disjunction`
+    // search over the system-defined overloads — there is no separate
+    // direct-lookup fast path (removed: it only ever benefited `/`, `div`,
+    // `mod`, `exp`, `max` and `min`, never `+`/`-`/`*` themselves, since those
+    // three are also the Set/Bag union/difference/intersection operators, and
+    // the ranked backtracking solver's branch-and-bound pruning already keeps
+    // the general search tractable on its own). This test guards exactly that
+    // tractability for many repeated `2*i+k`-shaped sub-expressions (one of
+    // the two costs that used to keep `cellular_automata.mcrl2` out of the
+    // corpus harness): before that pruning, exploring every combination of
+    // every occurrence's candidate overloads did not terminate in reasonable
+    // time. A regression here would show up as this test taking far longer
+    // than the rest of the suite.
     check_ok(
         "map f: Nat -> Bool;
          var i: Nat;

@@ -41,17 +41,3 @@ pub(crate) fn builtin_scheme_names() -> impl Iterator<Item = &'static str> {
         .iter()
         .map(|decl| decl.identifier.as_str())
 }
-
-/// The arithmetic operator names that, absent a user overload, resolve by a
-/// direct numeric-promotion lookup during inference instead of a disjunction
-/// over the system-defined overloads.
-///
-/// `+`/`-`/`*` are included even though they are *also* the Set/Bag operations,
-/// because the fast path is only taken when a name has no container meaning;
-/// `gen_name` intersects this set with that condition.
-pub(crate) const NUMERIC_FAMILY: [&str; 9] = ["+", "-", "*", "/", "div", "mod", "exp", "max", "min"];
-
-/// Whether `name` is one of the [`NUMERIC_FAMILY`] operators.
-pub(crate) fn is_numeric_family(name: &str) -> bool {
-    NUMERIC_FAMILY.contains(&name)
-}

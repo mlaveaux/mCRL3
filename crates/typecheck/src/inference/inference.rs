@@ -32,7 +32,6 @@ use crate::SortInterner;
 use crate::TypeCheckContext;
 use crate::Unifier;
 use crate::is_lowered;
-use crate::is_numeric_family;
 use crate::is_supported_binder_sort;
 use crate::number_generality;
 use crate::query_sort_of_equation_var;
@@ -799,32 +798,6 @@ struct Comprehension {
     element: ResolvedSortId,
 }
 
-/// A name of the arithmetic family (`+`, `-`, `*`, `/`, `div`, `mod`, `exp`,
-/// `max`, `min`) with no user-declared overload:
-/// solved by an O(1) lookup against the argument sorts, already bound by the
-/// time this constraint is reached (via the `Sub` constraints generated for
-/// the application's arguments), instead of a [Disjunction] over every
-/// system-defined overload. The system's overloads for one of these names
-/// never overlap on argument sort, so at most one can ever match a
-/// fully-bound argument tuple — enumerating them as a `Disjunction` instead
-/// tries (and, to detect ties, fully explores) every candidate at every
-/// occurrence, which is what made repeated arithmetic sub-expressions
-/// exponential.
-struct Numeric {
-    /// The sort node of the applied name's `Id` node (its `NameTarget::Builtin`
-    /// is recorded eagerly at generation time, since every candidate here is a
-    /// `Builtin`): already unified, structurally, to
-    /// `Function { domain: <argument parameter nodes>, range: <the
-    /// application's own node> }` by the eager unify in the `Application`
-    /// case of [ConstraintGenerator::visit], before this constraint is ever
-    /// solved.
-    sort: InferSortId,
-    /// The system-defined overloads of this name (`system_signature.mappings[name]`
-    /// at generation time); their domains are pairwise distinct, so at most
-    /// one can match the bound argument sorts.
-    candidates: Vec<ResolvedSortId>,
-}
-
 /// A least-upper-bound constraint: the `target` sort is the lattice join of
 /// the `sources` (their least common supersort). It replaces a group of
 /// individual `Sub` constraints that all widen into the *same* free variable —
@@ -856,7 +829,6 @@ enum Constraint {
     Lit(LitConstraint),
     Disjunction(Disjunction),
     Comprehension(Comprehension),
-    Numeric(Numeric),
     Join(Join),
 }
 
@@ -1296,24 +1268,6 @@ impl<'a> ConstraintGenerator<'a> {
         };
 
         push_signature(&self.signature, &mut disjuncts, self.unifier);
-        if disjuncts.is_empty()
-            && is_numeric_family(name)
-            && self.system_signature.mappings.contains_key(name)
-            && !self.polymorphic.ops.contains_key(name)
-        {
-            // No user overload shadows the name, and it has no container
-            // meaning either (`+`/`-`/`*` are also Set/Bag union, difference
-            // and intersection, via the polymorphic templates below): its
-            // concrete promotion is picked by a direct lookup (`Numeric`)
-            // instead of a disjunction over the system-defined overloads.
-            self.names.insert(id, NameTarget::Builtin);
-            self.constraints.push(Constraint::Numeric(Numeric {
-                sort: node,
-                candidates: self.system_signature.mappings[name].clone(),
-            }));
-            return Ok(());
-        }
-
         push_signature(&self.system_signature, &mut disjuncts, self.unifier);
 
         // The polymorphic built-ins exist for every element sort, so they are
@@ -1464,47 +1418,8 @@ impl Solver<'_> {
             Constraint::Sub(sub) => self.solve_sub(sub, index),
             Constraint::Lit(lit) => self.solve_lit(lit, index),
             Constraint::Comprehension(comprehension) => self.solve_comprehension(comprehension, index),
-            Constraint::Numeric(numeric) => self.solve_numeric(numeric, index),
             Constraint::Join(join) => self.solve_join(join, index),
         }
-    }
-
-    /// Picks the one system-defined overload (if any) whose domain matches
-    /// the already-bound argument sorts, and continues solving — no
-    /// branching over candidates, unlike [Self::solve_disjunction], since at
-    /// most one can ever match (see [Numeric]).
-    fn solve_numeric(&mut self, numeric: &Numeric, index: usize) -> bool {
-        let InferSort::Function { domain, range } = self.unifier.head(numeric.sort) else {
-            unreachable!("the eager unify in the Application case always binds this to a function sort")
-        };
-
-        let mut arg_sorts = Vec::with_capacity(domain.len());
-        for parameter in domain {
-            match self.unifier.resolve(self.sorts, parameter) {
-                Some(resolved) => arg_sorts.push(resolved),
-                // An argument sort is still underdetermined; no promotion
-                // table entry can be picked yet, and there is nothing left to
-                // widen from this constraint's side.
-                None => return false,
-            }
-        }
-
-        for &candidate in &numeric.candidates {
-            let ResolvedSort::Function {
-                domain: candidate_domain,
-                range: candidate_range,
-            } = self.sorts.get(candidate)
-            else {
-                continue;
-            };
-            if *candidate_domain != arg_sorts {
-                continue;
-            }
-            let candidate_range = *candidate_range;
-            let range_node = self.unifier.resolved_node(candidate_range);
-            return self.unifier.unify(self.sorts, range, range_node) && self.solve(index + 1);
-        }
-        false
     }
 
     /// Binds the join `target` to the lattice least-upper-bound of the branch
@@ -1800,7 +1715,7 @@ impl Solver<'_> {
                     Constraint::Sub(_) | Constraint::Lit(_) => 1,
                     // A join contributes one widening component per branch.
                     Constraint::Join(join) => join.sources.len(),
-                    Constraint::Disjunction(_) | Constraint::Comprehension(_) | Constraint::Numeric(_) => 0,
+                    Constraint::Disjunction(_) | Constraint::Comprehension(_) => 0,
                 })
                 .sum::<usize>(),
             "every sub, literal and join-branch contributes exactly one measure component"
