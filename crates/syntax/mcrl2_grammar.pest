@@ -416,8 +416,8 @@ StateFrmPrimary = _{
     | StateFrmFalse
     | StateFrmDelay
     | StateFrmYaled
-    | StateFrmId
     | StateFrmDataValExpr
+    | StateFrmId
 }
     StateFrmBrackets = { "(" ~ StateFrm ~ ")" }
     StateFrmTrue = { "true" }                                                       // True, can also be infinity

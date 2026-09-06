@@ -604,7 +604,13 @@ pub fn parse_statefrm(pairs: Pairs<Rule>) -> ParseResult<StateFrm> {
                 Rule::StateFrmYaled => Mcrl2Parser::StateFrmYaled(Node::new(primary)),
                 Rule::StateFrmNegation => Mcrl2Parser::StateFrmNegation(Node::new(primary)),
                 Rule::StateFrmDataValExpr => {
-                    Ok(StateFrmKind::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(primary))?).spanned(span))
+                    // `StateFrmDataValExpr` only wraps a `DataValExpr` child; unwrap before
+                    // consuming it, the same way `StateFrmBrackets` unwraps its own child below.
+                    let inner = primary
+                        .into_inner()
+                        .next()
+                        .expect("StateFrmDataValExpr always wraps a DataValExpr child");
+                    Ok(StateFrmKind::DataValExpr(Mcrl2Parser::DataValExpr(Node::new(inner))?).spanned(span))
                 }
                 Rule::StateFrmBrackets => {
                     // Handle parentheses by recursively parsing the inner expression
