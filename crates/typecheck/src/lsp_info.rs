@@ -119,8 +119,8 @@ pub enum ResolvedName {
     /// A declared action, resolved from a `ProcessExprKind::Action` occurrence by
     /// `check_action_or_process` once argument-sort overload resolution settles on exactly one
     /// `act` candidate — unlike `Variable`/`Constructor`/`Mapping`, this is never produced by
-    /// [`build`] itself (an action name isn't part of any `DataExpr`), only pushed directly via
-    /// [`TypingInfo::push`].
+    /// `build` itself (an action name isn't part of any `DataExpr`), only pushed directly via
+    /// `TypingInfo::push`.
     Action {
         name: String,
         /// The winning `act` declaration's own span. `None` only for a declaration with no real
@@ -151,6 +151,18 @@ pub enum ResolvedName {
         /// See [`ResolvedName::Action::declaration`].
         declaration: Option<Span>,
     },
+    /// A state-formula fixpoint-variable instantiation (`X(e1, e2)` referencing an enclosing
+    /// `mu X(...)`/`nu X(...)`).
+    ///
+    /// Pushed at the whole `Id` node's own span, not a separate identifier span —
+    /// `StateFrmKind::Id` carries no span narrower than the whole `name`/`name(args)` occurrence,
+    /// unlike [`ResolvedName::PropositionalVariable`]'s `PropVarInst`, which does. `declaration` is
+    /// its enclosing `mu`/`nu`'s own `StateVarDecl` span, for the same reason.
+    StateVariable {
+        name: String,
+        /// See [`ResolvedName::Action::declaration`].
+        declaration: Option<Span>,
+    },
     /// A sort-name reference: `D` in `map f: D -> D;`, on the right-hand side of a `sort E = D;`
     /// alias, a `struct`'s own field sort, a `List(D)`'s parameter, or a `sum`/`dist`/quantifier/
     /// `lambda`/comprehension binder's declared sort — anywhere a user writes a sort *by name*.
@@ -166,11 +178,11 @@ pub enum ResolvedName {
     /// overloaded — mCRL2 has one flat sort namespace — so resolving one needs no accompanying
     /// resolved-sort key the way `Op` resolution does.
     ///
-    /// Captured and pushed directly via [`TypingInfo::push`], the same way as
+    /// Captured and pushed directly via `TypingInfo::push`, the same way as
     /// [`ResolvedName::Action`]/[`ResolvedName::Process`]/[`ResolvedName::PropositionalVariable`]:
     /// a sort name never appears inside a checked `DataExpr`, only in a declaration's own
-    /// signature, so [`build`] itself never produces one. See
-    /// [`collect_sort_name_references`]/[`push_sort_references`] for where every occurrence is
+    /// signature, so `build` itself never produces one. See
+    /// `collect_sort_name_references`/`push_sort_references` for where every occurrence is
     /// gathered from, and [`crate::DataSpecification::from_untyped_with`] for *why* the
     /// data-specification half of that gathering has to run before alias normalization touches
     /// the tree.
